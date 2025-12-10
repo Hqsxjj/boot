@@ -7,6 +7,7 @@ __pycache__
 config.json
 /config
 /logs
+/backend/logs/
 /data
 *.egg-info
 .pytest_cache

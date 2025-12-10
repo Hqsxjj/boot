@@ -1,9 +1,10 @@
+import atexit
 import logging
 import threading
 import time
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from queue import Queue
 from typing import Any, Callable, Dict, List, Optional
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -20,12 +21,18 @@ if not job_logger.handlers:
 
 
 class JobRunner:
-    """Simple background job runner backed by ThreadPoolExecutor."""
+    """Simple job runner backed by a queue and daemon worker threads."""
 
     def __init__(self, max_workers: int = 2):
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="job")
+        self._queue: "Queue[Optional[tuple[str, Dict[str, Any], Callable[[str, Dict[str, Any]], Any]]]]" = Queue()
         self._jobs: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._workers: List[threading.Thread] = []
+        self._stopping = False
+        for idx in range(max_workers):
+            thread = threading.Thread(target=self._worker, name=f"job-{idx}", daemon=True)
+            thread.start()
+            self._workers.append(thread)
 
     def submit(
         self,
@@ -45,12 +52,11 @@ class JobRunner:
             "metadata": metadata or {},
             "result": None,
             "error": None,
+            "event": threading.Event(),
         }
         with self._lock:
             self._jobs[job_id] = job_record
-        future = self._executor.submit(self._run_job, job_id, func)
-        with self._lock:
-            self._jobs[job_id]["_future"] = future
+        self._queue.put((job_id, job_record, func))
         return job_id
 
     def list_jobs(self) -> List[Dict[str, Any]]:
@@ -63,41 +69,58 @@ class JobRunner:
             return self._public_view(job) if job else None
 
     def wait_for(self, job_id: str, timeout: float = 10.0) -> Optional[Dict[str, Any]]:
-        future: Optional[Future[Any]] = None
         with self._lock:
             job = self._jobs.get(job_id)
-            if job:
-                future = job.get("_future")
-        if future:
-            future.result(timeout=timeout)
+            event = job.get("event") if job else None
+        if event:
+            event.wait(timeout=timeout)
         return self.get_job(job_id)
 
-    def _run_job(self, job_id: str, func: Callable[[str, Dict[str, Any]], Any]):
-        with self._lock:
-            job = self._jobs.get(job_id, {})
-            job["status"] = "running"
-            job["startedAt"] = time.time()
-        try:
-            result = func(job_id, job.get("metadata", {}))
+    def shutdown(self, wait: bool = False):
+        if self._stopping:
+            return
+        self._stopping = True
+        for _ in self._workers:
+            self._queue.put(None)
+        if wait:
+            for worker in self._workers:
+                worker.join(timeout=1)
+
+    def _worker(self):
+        while True:
+            item = self._queue.get()
+            if item is None:
+                break
+            job_id, job_record, func = item
             with self._lock:
-                job = self._jobs.get(job_id, {})
-                job["status"] = "finished"
-                job["finishedAt"] = time.time()
-                job["result"] = result
-            job_logger.info("Job %s (%s) finished", job_id, job.get("type"))
-        except Exception as exc:  # pragma: no cover - defensive logging
-            with self._lock:
-                job = self._jobs.get(job_id, {})
-                job["status"] = "failed"
-                job["finishedAt"] = time.time()
-                job["error"] = str(exc)
-            job_logger.exception("Job %s failed", job_id)
+                stored = self._jobs.get(job_id, job_record)
+                stored["status"] = "running"
+                stored["startedAt"] = time.time()
+            try:
+                result = func(job_id, job_record.get("metadata", {}))
+                with self._lock:
+                    stored = self._jobs.get(job_id, job_record)
+                    stored["status"] = "finished"
+                    stored["finishedAt"] = time.time()
+                    stored["result"] = result
+                job_logger.info("Job %s (%s) finished", job_id, job_record.get("type"))
+            except Exception as exc:  # pragma: no cover - defensive logging
+                with self._lock:
+                    stored = self._jobs.get(job_id, job_record)
+                    stored["status"] = "failed"
+                    stored["finishedAt"] = time.time()
+                    stored["error"] = str(exc)
+                job_logger.exception("Job %s failed", job_id)
+            finally:
+                job_record["event"].set()
 
     @staticmethod
     def _public_view(job: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not job:
             return None
-        return {k: v for k, v in job.items() if k != "_future"}
+        filtered = {k: v for k, v in job.items() if k != "event"}
+        return filtered
 
 
 job_runner = JobRunner()
+atexit.register(job_runner.shutdown)

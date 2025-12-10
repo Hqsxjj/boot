@@ -22,10 +22,5 @@ def require_auth(fn):
                 'success': False,
                 'error': 'Missing or invalid authorization header'
             }), 401
-        except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': 'Authentication failed'
-            }), 401
     
     return wrapper

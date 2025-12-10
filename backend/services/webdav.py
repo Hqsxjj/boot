@@ -196,13 +196,14 @@ class WebDavServer:
                     "username": username,
                 }
             )
+            snapshot = dict(self._status)
             webdav_logger.info("WebDAV server started on %s:%s", addr[0], addr[1])
-            return self.status()
+        return snapshot
 
     def stop(self) -> Dict[str, Any]:
         with self._lock:
             if not self._server:
-                return self.status()
+                return dict(self._status)
             server = self._server
             thread = self._thread
             server.shutdown()
@@ -212,8 +213,9 @@ class WebDavServer:
             self._server = None
             self._thread = None
             self._status.update({"running": False, "port": None, "startedAt": None})
+            snapshot = dict(self._status)
             webdav_logger.info("WebDAV server stopped")
-            return self.status()
+        return snapshot
 
     def status(self) -> Dict[str, Any]:
         with self._lock:
