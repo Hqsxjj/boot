@@ -9,7 +9,11 @@ from flask_limiter.util import get_remote_address
 from persistence.store import DataStore
 from blueprints.auth import auth_bp, init_auth_blueprint
 from blueprints.config import config_bp, init_config_blueprint
+from blueprints.emby import emby_bp, init_emby_blueprint
 from blueprints.health import health_bp
+from blueprints.p115 import p115_bp, init_p115_blueprint
+from blueprints.strm import strm_bp, init_strm_blueprint
+from blueprints.webhook import webhook_bp
 
 
 def create_app(config=None):
@@ -76,10 +80,17 @@ def create_app(config=None):
     # Initialize and register blueprints
     init_auth_blueprint(store)
     init_config_blueprint(store)
+    init_p115_blueprint(store)
+    init_emby_blueprint(store)
+    init_strm_blueprint(store)
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
+    app.register_blueprint(p115_bp)
+    app.register_blueprint(emby_bp)
+    app.register_blueprint(strm_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(webhook_bp)
     
     # Root endpoint
     @app.route('/')

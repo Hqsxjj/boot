@@ -2,6 +2,9 @@ import unittest
 import json
 import tempfile
 import os
+import shutil
+from types import SimpleNamespace
+from unittest.mock import patch
 from werkzeug.security import generate_password_hash
 import pyotp
 
@@ -10,6 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from main import create_app
 from persistence.store import DataStore
+from services.job_runner import job_runner
+from services.webdav import webdav_server
 
 
 class TestFlaskApp(unittest.TestCase):
@@ -36,6 +41,22 @@ class TestFlaskApp(unittest.TestCase):
         """Clean up temporary file."""
         if os.path.exists(self.temp_file.name):
             os.unlink(self.temp_file.name)
+    
+    def _auth_headers(self):
+        """Helper to obtain auth headers for integration endpoints."""
+        token = getattr(self, "_auth_token", None)
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        password = "secretpass"
+        self.store.update_admin_password(generate_password_hash(password))
+        response = self.client.post('/api/auth/login',
+            json={'username': 'admin', 'password': password},
+            content_type='application/json'
+        )
+        data = json.loads(response.data)
+        token = data['data']['token']
+        self._auth_token = token
+        return {"Authorization": f"Bearer {token}"}
     
     def test_health_endpoint(self):
         """Test health check endpoint."""
@@ -227,20 +248,133 @@ class TestFlaskApp(unittest.TestCase):
             content_type='application/json'
         )
         token = json.loads(login_response.data)['data']['token']
-        
+
         # Get user info
         response = self.client.get('/api/me',
             headers={'Authorization': f'Bearer {token}'}
         )
-        
+
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data['success'])
         self.assertEqual(data['data']['username'], 'admin')
 
+    @patch('blueprints.p115.P115Bridge')
+    def test_p115_cookie_login_endpoint(self, mock_bridge):
+        """Ensure /api/115/login updates config via P115Bridge."""
+        headers = self._auth_headers()
+        instance = mock_bridge.return_value
+        instance.get_user_profile.return_value = {'uid': 'u1'}
+        instance.check_login.return_value = True
+        payload = {
+            'cookies': 'UID=demo;',
+            'userAgent': 'Mozilla/5.0',
+            'loginApp': 'web'
+        }
+        response = self.client.post('/api/115/login',
+            json=payload,
+            headers=headers,
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertTrue(data['success'])
+        updated = self.store.get_config()
+        self.assertEqual(updated['cloud115']['cookies'], 'UID=demo;')
+        mock_bridge.assert_called_once()
+
+    @patch('blueprints.p115._get_bridge')
+    def test_p115_folder_listing(self, mock_get_bridge):
+        """Ensure folders endpoint proxies to bridge."""
+        headers = self._auth_headers()
+        stub = SimpleNamespace(list_folders=lambda **kwargs: {'cid': kwargs['cid'], 'items': [{'id': '1'}]})
+        mock_get_bridge.return_value = stub
+        response = self.client.get('/api/115/folders?cid=0&limit=5', headers=headers)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['data']['cid'], '0')
+        self.assertEqual(len(data['data']['items']), 1)
+
+    def test_strm_job_queue(self):
+        """Queue a STRM job and ensure it completes."""
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir)
+        config = self.store.get_config()
+        config['strm']['outputDir'] = tmpdir
+        self.store.update_config(config)
+        headers = self._auth_headers()
+        response = self.client.post('/api/strm/run', json={'module': '115'}, headers=headers, content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        job_id = json.loads(response.data)['data']['jobId']
+        job_runner.wait_for(job_id, timeout=5)
+        job_response = self.client.get(f'/api/strm/jobs/{job_id}', headers=headers)
+        job_data = json.loads(job_response.data)
+        self.assertEqual(job_data['data']['status'], 'finished')
+
+    def test_webdav_lifecycle(self):
+        """Start and stop the internal WebDAV server."""
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir)
+        self.addCleanup(webdav_server.stop)
+        config = self.store.get_config()
+        config['strm']['outputDir'] = tmpdir
+        config['strm']['webdav']['port'] = '0'
+        config['strm']['webdav']['username'] = 'user'
+        config['strm']['webdav']['password'] = 'pass'
+        self.store.update_config(config)
+        headers = self._auth_headers()
+        start_resp = self.client.post('/api/strm/webdav/start', headers=headers)
+        self.assertEqual(start_resp.status_code, 200)
+        start_data = json.loads(start_resp.data)
+        self.assertTrue(start_data['data']['running'])
+        stop_resp = self.client.post('/api/strm/webdav/stop', headers=headers)
+        stop_data = json.loads(stop_resp.data)
+        self.assertFalse(stop_data['data']['running'])
+
+    @patch('blueprints.emby.emby_service.test_connection')
+    def test_emby_connection_test_route(self, mock_test_connection):
+        """Emby connection endpoint proxies to helper."""
+        mock_test_connection.return_value = {'version': '1.0.0'}
+        headers = self._auth_headers()
+        response = self.client.post('/api/emby/test',
+            json={'serverUrl': 'http://emby.local', 'apiKey': 'abc'},
+            headers=headers,
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['data']['version'], '1.0.0')
+
+    @patch('blueprints.emby.emby_service.fetch_missing_episodes')
+    def test_emby_missing_endpoint(self, mock_fetch_missing):
+        """Missing episodes endpoint returns remote data."""
+        mock_fetch_missing.return_value = [{'series': 'Demo', 'episodeName': 'Pilot'}]
+        config = self.store.get_config()
+        config['emby']['serverUrl'] = 'http://emby.local'
+        config['emby']['apiKey'] = 'abc'
+        self.store.update_config(config)
+        headers = self._auth_headers()
+        response = self.client.get('/api/emby/missing', headers=headers)
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['data']['count'], 1)
+
+    def test_webhook_ingest_and_recent(self):
+        """Webhook endpoint should store events for later inspection."""
+        from blueprints import webhook as webhook_module
+        webhook_module._RECENT_EVENTS.clear()
+        payload = {'event': 'PlaybackStart'}
+        ingest_resp = self.client.post('/api/webhook/115bot', json=payload, content_type='application/json')
+        self.assertEqual(ingest_resp.status_code, 200)
+        headers = self._auth_headers()
+        recent_resp = self.client.get('/api/webhook/recent', headers=headers)
+        data = json.loads(recent_resp.data)
+        self.assertGreaterEqual(len(data['data']), 1)
+        self.assertEqual(data['data'][0]['payload']['event'], 'PlaybackStart')
+
 
 class TestDataStore(unittest.TestCase):
-    """Test DataStore persistence layer."""
+
     
     def setUp(self):
         """Set up temporary data file."""
