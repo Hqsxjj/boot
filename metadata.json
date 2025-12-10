@@ -1,0 +1,5 @@
+{
+  "name": "115-TG-Bot-Admin",
+  "description": "A web configuration interface for the Telegram to 115 Cloud Drive bot with TMDB renaming, auto-organization, and secure login.",
+  "requestFramePermissions": []
+}

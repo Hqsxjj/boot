@@ -1,0 +1,5 @@
+flask
+requests
+gunicorn
+flask-cors
+# p115client will be installed via git in Dockerfile

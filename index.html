@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>115 Bot Configuration</title>
+    <link rel="manifest" href="/manifest.json" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#60a5fa', /* Lightened from 38bdf8 */
+                500: '#3b82f6', /* Lightened from 0ea5e9 */
+                600: '#2563eb', /* Lightened from 0284c7 */
+                700: '#1d4ed8', /* Lightened from 0369a1 */
+                800: '#1e40af',
+                900: '#1e3a8a',
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        transition: background-color 0.3s;
+      }
+      /* Custom scrollbar for webkit */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1; 
+        border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #475569; /* Lighter scrollbar thumb */
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8; 
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
+    "url": "https://aistudiocdn.com/url@^0.11.4"
+  }
+}
+</script>
+</head>
+  <body class="antialiased text-slate-900 bg-slate-50 dark:bg-slate-900 dark:text-slate-100">
+    <div id="root"></div>
+  </body>
+</html>
