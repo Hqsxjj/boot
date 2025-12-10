@@ -1,36 +1,20 @@
-name: Build and Push Multi-Arch Docker Images
+name: Build and Push Single Docker Image (Latest Only)
 
-# 触发条件
+# 触发条件：只有推送到 main 分支时触发
 on:
   push:
     branches: [ "main" ]
-    tags: [ "v*.*.*" ]
   workflow_dispatch:
 
 env:
   DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-  # 镜像名定义
-  IMAGE_NAME_FRONTEND: 115-bot-web
-  IMAGE_NAME_BACKEND: 115-bot-server
+  # 镜像名称
+  IMAGE_NAME: 115-bot
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # --- 前端配置 (修正点) ---
-          # 因为你的前端文件都在根目录，所以上下文是 "."，Dockerfile 也在 "./Dockerfile"
-          - context: .
-            file: ./Dockerfile
-            image_suffix: web
-          
-          # --- 后端配置 (保持不变) ---
-          - context: ./backend
-            file: ./backend/Dockerfile
-            image_suffix: server
-
+    
     steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
@@ -50,24 +34,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. 生成元数据
+      # 4. 生成元数据 (只生成 latest 标签)
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.DOCKER_USERNAME }}/115-bot-${{ matrix.image_suffix }}
+          images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
+          # 🌟 关键修改：只保留 latest
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=tag
-            type=sha,format=short
+            type=raw,value=latest
 
       # 5. 构建并推送
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
+          context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
