@@ -1,11 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { AppConfig } from '../types';
-import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2, XCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AppConfig } from '../types'; // 确保你的类型定义文件里有这个
+import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2 } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
 // === 配置区域 ===
-const API_PORT = 12808; // 注意：如果你已经更改了后端端口，前端这里的变量名也最好同步更新认知，虽然实际生效的是下面的 URL
-const API_BASE_URL = `http://${window.location.hostname}:18080/api`; // 已修改为 18080
+// 端口已修正为 18080
+const API_BASE_URL = `http://${window.location.hostname}:18080/api`;
+
+// === 1. 定义默认配置 (防止后端连不上时页面白屏) ===
+const DEFAULT_CONFIG: AppConfig = {
+    emby: {
+        serverUrl: "",
+        apiKey: "",
+        refreshAfterOrganize: false,
+        notifications: {
+            forwardToTelegram: false,
+            playbackReportingFreq: "daily"
+        },
+        missingEpisodes: {
+            cronSchedule: "0 0 * * *"
+        }
+    }
+    // 如果 AppConfig 里还有其他必填字段（如 p115），也需要在这里补全，否则 TS 会报错
+};
 
 export const EmbyView: React.FC = () => {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -22,33 +39,50 @@ export const EmbyView: React.FC = () => {
 
   const [missingData, setMissingData] = useState<any[]>([]);
 
-  // 1. 加载配置
+  // === 2. 修改后的加载逻辑 (核心修复) ===
   useEffect(() => {
-      fetch(`${API_BASE_URL}/config`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data.emby) data.emby = { notifications: {}, missingEpisodes: {} };
-            setConfig(data);
-            // 加载完配置后，尝试测试一次连接
-            if(data.emby.serverUrl && data.emby.apiKey) {
-                checkConnection(data);
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            setToast('无法连接后端 API');
-        });
+      const initConfig = async () => {
+          try {
+              // 设置 3 秒超时，防止 fetch 无限等待
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+              const res = await fetch(`${API_BASE_URL}/config`, { signal: controller.signal });
+              clearTimeout(timeoutId);
+
+              if (!res.ok) {
+                  throw new Error(`HTTP Error: ${res.status}`);
+              }
+
+              const data = await res.json();
+
+              // 数据补全：防止后端返回的 JSON 缺少 emby 字段导致页面报错
+              if (!data.emby) data.emby = DEFAULT_CONFIG.emby;
+
+              setConfig(data);
+
+              // 如果获取到了配置，顺便测试一下连接
+              if (data.emby.serverUrl && data.emby.apiKey) {
+                  checkConnection(data);
+              }
+
+          } catch (err) {
+              console.error("加载配置失败:", err);
+              // 【关键】失败时强制加载默认配置，让页面显示出来
+              setConfig(DEFAULT_CONFIG);
+              setToast('连接后端失败，已加载默认配置');
+              setTimeout(() => setToast(null), 3000);
+          }
+      };
+
+      initConfig();
   }, []);
 
-  // 2. 测试 Emby 连接
+  // 测试 Emby 连接
   const checkConnection = async (cfg: AppConfig = config!) => {
       if(!cfg?.emby?.serverUrl) return;
       try {
-          // 在发送测试前，先保存当前的配置到后端，确保后端用的是最新的 URL/Key 进行测试
-          // 或者，你可以修改后端接口接收参数。为了简单，这里假设后端使用已保存的配置，
-          // 但更好的做法是把当前的 URL/Key 发给后端测试接口。
-          // 这里我们采用：先保存，再测试 (简化流程)
-          
+          // 先保存当前配置 (确保后端用的是最新的 URL 测试)
           await fetch(`${API_BASE_URL}/config`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -67,7 +101,7 @@ export const EmbyView: React.FC = () => {
       }
   };
 
-  // 3. 保存配置
+  // 保存配置
   const handleSave = async () => {
     if (!config) return;
     setIsSaving(true);
@@ -81,15 +115,17 @@ export const EmbyView: React.FC = () => {
             setToast('配置已保存');
             checkConnection(); // 保存后重新测试连接
             setTimeout(() => setToast(null), 3000);
+        } else {
+             setToast('保存失败');
         }
     } catch (e) {
-        setToast('保存失败');
+        setToast('保存请求失败');
     } finally {
         setIsSaving(false);
     }
   };
 
-  // 4. 扫描缺集
+  // 扫描缺集
   const handleScan = async () => {
       setIsScanning(true);
       try {
@@ -105,7 +141,7 @@ export const EmbyView: React.FC = () => {
       }
   };
 
-  // 辅助函数
+  // 辅助更新函数
   const updateNested = (section: keyof AppConfig, key: string, value: any) => {
     if(!config) return;
     setConfig(prev => prev ? ({
@@ -146,6 +182,9 @@ export const EmbyView: React.FC = () => {
       setTimeout(() => setToast(null), 2000);
   };
 
+  // === Loading 状态判断 ===
+  // 只有当 config 真的是 null 时才显示 Loading
+  // 现在因为有了 catch -> setConfig(DEFAULT)，除非 JS 报错，否则几乎不会一直卡在这里
   if (!config) return <div className="p-10 flex justify-center text-slate-500"><RefreshCw className="animate-spin"/></div>;
 
   const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
