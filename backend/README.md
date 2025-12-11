@@ -12,6 +12,8 @@ Production-ready Flask backend for the 115 Telegram Bot Admin application.
 - **Persistence Layer**: JSON-based data store with thread-safe operations
 - **Secret Storage**: SQLAlchemy-based encrypted secret storage for sensitive credentials
 - **115 Cloud Integration**: QR code login, cookie validation, and session management for 115 cloud
+- **Offline Tasks**: Queue and manage offline download tasks with database persistence
+- **Task Polling**: Automatic background sync of task status from 115 API
 - **Secret Masking**: Automatic masking of sensitive fields in API responses
 - **Comprehensive Tests**: Unit tests for all endpoints and data operations
 
@@ -25,19 +27,24 @@ backend/
 │   ├── auth.py           # Authentication endpoints
 │   ├── config.py         # Configuration management with secret masking
 │   ├── cloud115.py       # 115 cloud login endpoints
+│   ├── offline.py        # Offline task management endpoints
 │   └── health.py         # Health check
 ├── middleware/           # Custom middleware
 │   └── auth.py          # JWT authentication decorator
 ├── models/              # Data models
 │   ├── database.py      # SQLAlchemy setup and initialization
-│   └── secret.py        # Secret model for encrypted storage
+│   ├── secret.py        # Secret model for encrypted storage
+│   └── offline_task.py  # Offline task model with status tracking
 ├── persistence/         # Data storage layer
 │   └── store.py        # JSON-based data store
 ├── services/           # Business logic services
-│   └── secret_store.py # Encrypted secret storage service
+│   ├── secret_store.py    # Encrypted secret storage service
+│   ├── offline_tasks.py   # Offline task management service
+│   └── task_poller.py     # Background task polling service
 ├── tests/              # Unit tests
 │   ├── test_app.py     # Comprehensive test suite
-│   └── test_cloud115.py # 115 cloud integration tests
+│   ├── test_cloud115.py # 115 cloud integration tests
+│   └── test_offline.py  # Offline task tests
 └── requirements.txt    # Python dependencies
 ```
 
@@ -60,6 +67,7 @@ Environment variables:
 - `DATABASE_URL`: SQLAlchemy database URL (default: `sqlite:////data/secrets.db`)
 - `SECRETS_ENCRYPTION_KEY`: Encryption key for secret store (default: auto-generated)
 - `CORS_ORIGINS`: Comma-separated list of allowed origins (default: `http://localhost:5173,http://localhost:3000`)
+- `OFFLINE_TASK_POLL_INTERVAL`: Background poller interval in seconds (default: `60`)
 - `PORT`: Server port (default: `5000`)
 - `DEBUG`: Enable debug mode (default: `False`)
 
@@ -332,6 +340,160 @@ Check 115 session health and validity.
   }
 }
 ```
+
+### Offline Tasks
+
+Offline tasks allow queuing download jobs to 115 cloud with persistence and background sync.
+
+#### Create Offline Task
+
+**POST** `/api/115/offline/tasks`
+
+Create a new offline download task.
+
+```json
+// Request (requires Authorization header)
+{
+  "sourceUrl": "magnet:?xt=urn:btih:... or https://example.com/file.zip",
+  "saveCid": "folder-cid-in-115",
+  "requestedBy": "telegram-user-id",
+  "requestedChat": "telegram-chat-id"
+}
+
+// Response (201 Created)
+{
+  "success": true,
+  "data": {
+    "id": "uuid-string",
+    "p115TaskId": null,
+    "sourceUrl": "magnet:?xt=urn:btih:...",
+    "saveCid": "folder-cid",
+    "status": "pending",
+    "progress": 0,
+    "speed": null,
+    "requestedBy": "user-id",
+    "requestedChat": "chat-id",
+    "createdAt": "2024-01-01T12:00:00.000000",
+    "updatedAt": "2024-01-01T12:00:00.000000"
+  }
+}
+```
+
+#### List Offline Tasks
+
+**GET** `/api/115/offline/tasks`
+
+List offline tasks with optional filtering and pagination.
+
+Query parameters:
+- `status`: Filter by status (pending, downloading, completed, failed, cancelled)
+- `requestedBy`: Filter by requesting user
+- `limit`: Maximum results (default: 50)
+- `offset`: Pagination offset (default: 0)
+- `refresh`: Set to `true` to sync with 115 before responding
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": {
+    "tasks": [
+      {
+        "id": "uuid-string",
+        "status": "downloading",
+        "progress": 45,
+        "sourceUrl": "magnet:?xt=urn:btih:...",
+        "saveCid": "folder-cid",
+        ...
+      }
+    ],
+    "total": 10,
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+#### Get Single Task
+
+**GET** `/api/115/offline/tasks/<taskId>`
+
+Get details of a single offline task.
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": {
+    "id": "uuid-string",
+    "status": "downloading",
+    "progress": 45,
+    ...
+  }
+}
+```
+
+#### Cancel Task
+
+**PATCH** `/api/115/offline/tasks/<taskId>`
+
+Cancel an offline task.
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": {
+    "id": "uuid-string",
+    "status": "cancelled",
+    ...
+  }
+}
+```
+
+#### Delete Task
+
+**DELETE** `/api/115/offline/tasks/<taskId>`
+
+Delete an offline task record.
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+#### Retry Failed Task
+
+**POST** `/api/115/offline/tasks/<taskId>/retry`
+
+Retry a failed offline task (resets to pending status).
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": {
+    "id": "uuid-string",
+    "status": "pending",
+    "progress": 0,
+    ...
+  }
+}
+```
+
+### Offline Task Polling
+
+The backend includes a background poller that periodically syncs offline task status with the 115 API. This ensures:
+
+- **Status Updates**: Task progress and status are automatically refreshed
+- **Completion Detection**: Completed tasks are marked as done
+- **Error Handling**: Failed tasks can be retried
+- **Configurable Interval**: Set via `OFFLINE_TASK_POLL_INTERVAL` environment variable
+
+The poller is started automatically when the app initializes (unless in TESTING mode) and runs as a daemon thread.
 
 ## Authentication
 

@@ -11,8 +11,12 @@ from blueprints.auth import auth_bp, init_auth_blueprint
 from blueprints.config import config_bp, init_config_blueprint
 from blueprints.health import health_bp
 from blueprints.cloud115 import cloud115_bp, init_cloud115_blueprint
+from blueprints.offline import offline_bp, init_offline_blueprint
 from models.database import init_db, get_session_factory
+from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
+from services.offline_tasks import OfflineTaskService
+from services.task_poller import create_task_poller
 
 
 def create_app(config=None):
@@ -86,15 +90,29 @@ def create_app(config=None):
     app.db_engine = engine
     app.session_factory = session_factory
     
+    # Initialize offline task service and poller
+    offline_task_service = OfflineTaskService(session_factory, store, None)
+    task_poller = create_task_poller(offline_task_service)
+    
+    # Store services in app context
+    app.offline_task_service = offline_task_service
+    app.task_poller = task_poller
+    
+    # Start task poller
+    if not app.config.get('TESTING'):
+        task_poller.start()
+    
     # Initialize and register blueprints
     init_auth_blueprint(store)
     init_config_blueprint(store, secret_store)
     init_cloud115_blueprint(secret_store)
+    init_offline_blueprint(offline_task_service)
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(cloud115_bp)
+    app.register_blueprint(offline_bp)
     
     # Root endpoint
     @app.route('/')
