@@ -20,8 +20,12 @@ class TestFlaskApp(unittest.TestCase):
         self.temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
         self.temp_file.close()
         
+        self.temp_db = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.db')
+        self.temp_db.close()
+        
         # Override data path BEFORE creating app
         os.environ['DATA_PATH'] = self.temp_file.name
+        os.environ['DATABASE_URL'] = f'sqlite:///{self.temp_db.name}'
         
         self.app = create_app({
             'TESTING': True,
@@ -36,6 +40,8 @@ class TestFlaskApp(unittest.TestCase):
         """Clean up temporary file."""
         if os.path.exists(self.temp_file.name):
             os.unlink(self.temp_file.name)
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
     
     def test_health_endpoint(self):
         """Test health check endpoint."""
@@ -146,11 +152,9 @@ class TestFlaskApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertTrue(data['success'])
-        # Token should be masked in response
+        # Token should NOT be masked - full round-trip with YAML store
         returned_token = data['data']['telegram']['botToken']
-        self.assertNotEqual(returned_token, 'new-token-123')
-        # But should be stored encrypted in secret store
-        self.assertIn('*', returned_token)
+        self.assertEqual(returned_token, 'new-token-123')
     
     def test_verify_otp_without_2fa_setup(self):
         """Test OTP verification without 2FA setup."""

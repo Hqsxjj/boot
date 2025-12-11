@@ -2,16 +2,20 @@ import json
 import os
 from typing import Dict, Any, Optional
 from threading import Lock
+from .config_store import ConfigStore
 
 
 class DataStore:
-    """JSON-based persistence layer for app config, admin credentials, and 2FA secrets."""
+    """Persistence layer for admin credentials and 2FA secrets. Config is managed by ConfigStore."""
     
-    def __init__(self, data_path: str = None):
+    def __init__(self, data_path: str = None, config_yaml_path: str = None):
         self.data_path = data_path or os.environ.get('DATA_PATH', '/data/appdata.json')
         self._lock = Lock()
         self._ensure_data_dir()
         self._ensure_data_file()
+        
+        # Initialize YAML-backed config store
+        self.config_store = ConfigStore(yaml_path=config_yaml_path, json_path=self.data_path)
     
     def _ensure_data_dir(self):
         """Create data directory if it doesn't exist."""
@@ -198,9 +202,8 @@ class DataStore:
         return data.get('admin', {}).get('two_factor_enabled', False)
     
     def get_config(self) -> Dict[str, Any]:
-        """Get full app config."""
-        data = self._read_data()
-        config = data.get('config', self._get_default_config())
+        """Get full app config from YAML store."""
+        config = self.config_store.get_config()
         
         # Add 2FA secret to config if enabled
         if self.is_two_factor_enabled():
@@ -209,14 +212,13 @@ class DataStore:
         return config
     
     def update_config(self, config: Dict[str, Any]):
-        """Update app config."""
-        data = self._read_data()
-        
-        # Extract 2FA secret if present and update separately
-        if 'twoFactorSecret' in config:
-            two_factor_secret = config.pop('twoFactorSecret')
+        """Update app config in YAML store."""
+        # Extract 2FA secret if present and update separately in JSON
+        config_copy = config.copy()
+        if 'twoFactorSecret' in config_copy:
+            two_factor_secret = config_copy.pop('twoFactorSecret')
             if two_factor_secret:
                 self.update_two_factor_secret(two_factor_secret)
         
-        data['config'] = config
-        self._write_data(data)
+        # Update config in YAML store
+        self.config_store.update_config(config_copy)
