@@ -325,8 +325,8 @@ class TestConfigSecretMasking(unittest.TestCase):
         if os.path.exists(self.temp_db.name):
             os.unlink(self.temp_db.name)
     
-    def test_config_update_masks_sensitive_fields(self):
-        """Test that sensitive fields are masked in returned config."""
+    def test_config_update_returns_unmasked_sensitive_fields(self):
+        """Test that sensitive fields are returned without masking."""
         config = self.store.get_config()
         config['telegram']['botToken'] = 'my-secret-bot-token-12345'
         
@@ -339,14 +339,11 @@ class TestConfigSecretMasking(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         
-        # Check that returned value is masked
         returned_token = data['data']['telegram']['botToken']
-        self.assertNotEqual(returned_token, 'my-secret-bot-token-12345')
-        # Should contain asterisks and show first 2 and last 2 chars
-        self.assertIn('*', returned_token)
+        self.assertEqual(returned_token, 'my-secret-bot-token-12345')
     
-    def test_config_get_masks_sensitive_fields(self):
-        """Test that GET config returns masked values."""
+    def test_config_get_returns_unmasked_sensitive_fields(self):
+        """Test that GET config returns unmasked values."""
         config = self.store.get_config()
         config['telegram']['botToken'] = 'my-secret-bot-token-12345'
         self.store.update_config(config)
@@ -358,11 +355,8 @@ class TestConfigSecretMasking(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         
-        # Check that returned value is masked
         returned_token = data['data']['telegram']['botToken']
-        self.assertTrue(len(returned_token) > 0)
-        # Should be masked format
-        self.assertTrue('*' in returned_token or returned_token == '')
+        self.assertEqual(returned_token, 'my-secret-bot-token-12345')
     
     def test_config_has_valid_session_flag(self):
         """Test that config includes hasValidSession flag."""
