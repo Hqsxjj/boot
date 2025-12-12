@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { AppConfig } from '../types'; // 确保你的类型定义文件里有这个
+import { AppConfig } from '../types';
+import { api } from '../services/api';
 import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2 } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
-// === 配置区域 ===
-// 端口已修正为 18080
-const API_BASE_URL = `http://${window.location.hostname}:18080/api`;
-
-// === 1. 定义默认配置 (防止后端连不上时页面白屏) ===
+// === 定义默认配置 (防止后端连不上时页面白屏) ===
 const DEFAULT_CONFIG: AppConfig = {
     emby: {
         serverUrl: "",
@@ -21,8 +18,8 @@ const DEFAULT_CONFIG: AppConfig = {
             cronSchedule: "0 0 * * *"
         }
     }
-    // 如果 AppConfig 里还有其他必填字段（如 p115），也需要在这里补全，否则 TS 会报错
-};
+    // 其他必填字段会由 api.getConfig() 提供
+} as any;
 
 export const EmbyView: React.FC = () => {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -39,36 +36,22 @@ export const EmbyView: React.FC = () => {
 
   const [missingData, setMissingData] = useState<any[]>([]);
 
-  // === 2. 修改后的加载逻辑 (核心修复) ===
+  // 加载配置
   useEffect(() => {
       const initConfig = async () => {
           try {
-              // 设置 3 秒超时，防止 fetch 无限等待
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-              const res = await fetch(`${API_BASE_URL}/config`, { signal: controller.signal });
-              clearTimeout(timeoutId);
-
-              if (!res.ok) {
-                  throw new Error(`HTTP Error: ${res.status}`);
+              const data = await api.getConfig();
+              if (data?.emby) {
+                  setConfig(data);
+                  // 如果获取到了配置，顺便测试一下连接
+                  if (data.emby.serverUrl && data.emby.apiKey) {
+                      checkConnection(data);
+                  }
+              } else {
+                  setConfig(DEFAULT_CONFIG);
               }
-
-              const data = await res.json();
-
-              // 数据补全：防止后端返回的 JSON 缺少 emby 字段导致页面报错
-              if (!data.emby) data.emby = DEFAULT_CONFIG.emby;
-
-              setConfig(data);
-
-              // 如果获取到了配置，顺便测试一下连接
-              if (data.emby.serverUrl && data.emby.apiKey) {
-                  checkConnection(data);
-              }
-
           } catch (err) {
               console.error("加载配置失败:", err);
-              // 【关键】失败时强制加载默认配置，让页面显示出来
               setConfig(DEFAULT_CONFIG);
               setToast('连接后端失败，已加载默认配置');
               setTimeout(() => setToast(null), 3000);
@@ -82,19 +65,14 @@ export const EmbyView: React.FC = () => {
   const checkConnection = async (cfg: AppConfig = config!) => {
       if(!cfg?.emby?.serverUrl) return;
       try {
-          // 先保存当前配置 (确保后端用的是最新的 URL 测试)
-          await fetch(`${API_BASE_URL}/config`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(cfg)
-          });
-
-          const res = await fetch(`${API_BASE_URL}/emby/test-connection`, { method: 'POST' });
-          const result = await res.json();
+          // 先保存当前配置
+          await api.saveConfig(cfg);
+          
+          const result = await api.testEmbyConnection();
           setConnectionStatus({
-              success: result.success,
-              latency: result.latency,
-              msg: result.msg
+              success: result.data.success,
+              latency: result.data.latency,
+              msg: result.data.msg
           });
       } catch (e) {
           setConnectionStatus({ success: false, latency: 0, msg: "网络错误" });
@@ -106,20 +84,12 @@ export const EmbyView: React.FC = () => {
     if (!config) return;
     setIsSaving(true);
     try {
-        const res = await fetch(`${API_BASE_URL}/config`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
-        });
-        if (res.ok) {
-            setToast('配置已保存');
-            checkConnection(); // 保存后重新测试连接
-            setTimeout(() => setToast(null), 3000);
-        } else {
-             setToast('保存失败');
-        }
+        await api.saveConfig(config);
+        setToast('配置已保存');
+        checkConnection(); // 保存后重新测试连接
+        setTimeout(() => setToast(null), 3000);
     } catch (e) {
-        setToast('保存请求失败');
+        setToast('保存失败');
     } finally {
         setIsSaving(false);
     }
@@ -129,9 +99,8 @@ export const EmbyView: React.FC = () => {
   const handleScan = async () => {
       setIsScanning(true);
       try {
-          const res = await fetch(`${API_BASE_URL}/emby/scan-missing`, { method: 'POST' });
-          const json = await res.json();
-          setMissingData(json.data);
+          const result = await api.scanEmbyMissing();
+          setMissingData(result.data || []);
           setToast('扫描完成');
       } catch (e) {
           setToast('扫描失败');

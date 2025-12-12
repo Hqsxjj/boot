@@ -15,6 +15,9 @@ from blueprints.cloud115 import cloud115_bp, init_cloud115_blueprint
 from blueprints.cloud123 import cloud123_bp, init_cloud123_blueprint
 from blueprints.offline import offline_bp, init_offline_blueprint
 from blueprints.bot import bot_bp, init_bot_blueprint
+from blueprints.emby import emby_bp, init_emby_blueprint
+from blueprints.strm import strm_bp, init_strm_blueprint
+from blueprints.logs import logs_bp, init_logs_blueprint
 from models.database import init_db, get_session_factory
 from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
@@ -141,6 +144,9 @@ def create_app(config=None):
     init_cloud123_blueprint(secret_store)
     init_offline_blueprint(offline_task_service)
     init_bot_blueprint(secret_store, store)
+    init_emby_blueprint(store)
+    init_strm_blueprint(store)
+    init_logs_blueprint()
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
@@ -149,6 +155,9 @@ def create_app(config=None):
     app.register_blueprint(cloud123_bp)
     app.register_blueprint(offline_bp)
     app.register_blueprint(bot_bp)
+    app.register_blueprint(emby_bp)
+    app.register_blueprint(strm_bp)
+    app.register_blueprint(logs_bp)
     
     # Root endpoint
     @app.route('/')

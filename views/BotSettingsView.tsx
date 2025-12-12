@@ -1,31 +1,59 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
-import { loadConfig, saveConfig } from '../services/mockConfig';
+import { api } from '../services/api';
 import { CommandCard } from '../components/CommandCard';
 import { Bot, Save, RefreshCw, MessageSquare } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
 export const BotSettingsView: React.FC = () => {
-  const [config, setConfig] = useState<AppConfig>(loadConfig());
+  const [botConfig, setBotConfig] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
-  const updateNested = (section: keyof AppConfig, key: string, value: any) => {
-    setConfig(prev => ({
+  useEffect(() => {
+    fetchBotConfig();
+  }, []);
+
+  const fetchBotConfig = async () => {
+    setIsLoading(true);
+    try {
+      const config = await api.getBotConfig();
+      setBotConfig(config || {});
+    } catch (e) {
+      setToast('加载机器人配置失败');
+      // Set empty config to allow editing
+      setBotConfig({
+        botToken: '',
+        adminUserId: '',
+        notificationChannelId: '',
+        whitelistMode: false
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateConfig = (key: string, value: any) => {
+    setBotConfig(prev => ({
       ...prev,
-      [section]: { ...(prev[section] as any), [key]: value }
+      [key]: value
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!botConfig) return;
     setIsSaving(true);
-    setTimeout(() => {
-      saveConfig(config);
-      setIsSaving(false);
+    try {
+      await api.saveBotConfig(botConfig);
       setToast('机器人配置已保存');
+    } catch (e) {
+      setToast('保存失败');
+    } finally {
+      setIsSaving(false);
       setTimeout(() => setToast(null), 3000);
-    }, 800);
+    }
   };
 
   const commands = [
@@ -40,6 +68,14 @@ export const BotSettingsView: React.FC = () => {
     { cmd: '/quota', desc: '查看 115 账号离线配额和空间使用情况', example: '/quota' },
     { cmd: '/tasks', desc: '查看当前正在进行的离线任务列表', example: '/tasks' },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
+        <RefreshCw className="animate-spin" /> 正在加载配置...
+      </div>
+    );
+  }
 
   const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
   const inputClass = "w-full pl-4 pr-10 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm backdrop-blur-sm shadow-inner";
@@ -64,8 +100,8 @@ export const BotSettingsView: React.FC = () => {
           <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
                <Bot size={18} className="text-blue-500" />
-               <h3 className="font-bold text-slate-700 dark:text-slate-200">核心参数</h3>
-            </div>
+                <h3 className="font-bold text-slate-700 dark:text-slate-200">核心参数</h3>
+             </div>
             <button
                 onClick={handleSave}
                 disabled={isSaving}
@@ -81,8 +117,8 @@ export const BotSettingsView: React.FC = () => {
                 机器人令牌 (Bot Token)
               </label>
               <SensitiveInput
-                  value={config.telegram.botToken}
-                  onChange={(e) => updateNested('telegram', 'botToken', e.target.value)}
+                  value={botConfig?.botToken || ''}
+                  onChange={(e) => updateConfig('botToken', e.target.value)}
                   className={inputClass}
                   placeholder="123456:ABC-DEF..."
                 />
@@ -93,39 +129,39 @@ export const BotSettingsView: React.FC = () => {
                 管理员 ID (Admin User ID)
               </label>
               <SensitiveInput
-                value={config.telegram.adminUserId}
-                onChange={(e) => updateNested('telegram', 'adminUserId', e.target.value)}
+                value={botConfig?.adminUserId || ''}
+                onChange={(e) => updateConfig('adminUserId', e.target.value)}
                 className={inputClass}
                 placeholder="123456789"
               />
             </div>
-            
+
              <div>
               <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">
                 通知频道 ID
               </label>
               <SensitiveInput
-                value={config.telegram.notificationChannelId}
-                onChange={(e) => updateNested('telegram', 'notificationChannelId', e.target.value)}
+                value={botConfig?.notificationChannelId || ''}
+                onChange={(e) => updateConfig('notificationChannelId', e.target.value)}
                 className={inputClass}
                 placeholder="-100123456789"
               />
             </div>
-            
+
              <div className="flex items-center gap-3 pt-2">
-               {/* Small Toggle for Whitelist */}
-               <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
-                  <input 
-                    id="whitelist" 
-                    type="checkbox" 
-                    className="peer sr-only"
-                    checked={config.telegram.whitelistMode}
-                    onChange={(e) => updateNested('telegram', 'whitelistMode', e.target.checked)}
-                  />
-                  <label htmlFor="whitelist" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-slate-900 dark:peer-checked:bg-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-slate-900 after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
-              </div>
-              <label htmlFor="whitelist" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">开启白名单模式 (仅管理员可用)</label>
-            </div>
+                {/* Small Toggle for Whitelist */}
+                <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
+                   <input
+                     id="whitelist"
+                     type="checkbox"
+                     className="peer sr-only"
+                     checked={botConfig?.whitelistMode || false}
+                     onChange={(e) => updateConfig('whitelistMode', e.target.checked)}
+                   />
+                   <label htmlFor="whitelist" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-slate-900 dark:peer-checked:bg-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-slate-900 after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
+               </div>
+               <label htmlFor="whitelist" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">开启白名单模式 (仅管理员可用)</label>
+             </div>
           </div>
         </section>
 

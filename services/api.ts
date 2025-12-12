@@ -235,4 +235,67 @@ export const api = {
     );
     return res.data;
   },
+
+  // --- Bot 配置接口 (真实后端 /api/bot/*) ---
+
+  getBotConfig: async () => {
+    const res = await apiClient.get<ApiResponse<any>>('/bot/config');
+    return res.data.data;
+  },
+
+  saveBotConfig: async (config: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/bot/config', config);
+    return res.data;
+  },
+
+  getBotCommands: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/bot/commands');
+    return res.data.data;
+  },
+
+  putBotCommands: async (commands: any[]) => {
+    const res = await apiClient.put<ApiResponse<any[]>>('/bot/commands', { commands });
+    return res.data;
+  },
+
+  testBotMessage: async (targetType: string = 'admin', targetId?: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/bot/test-message', { target_type: targetType, target_id: targetId });
+    return res.data;
+  },
+
+  // --- Emby 接口 (真实后端 /api/emby/*) ---
+
+  testEmbyConnection: async () => {
+    const res = await apiClient.post<ApiResponse<{ success: boolean; latency: number; msg?: string }>>('/emby/test-connection');
+    return res.data;
+  },
+
+  scanEmbyMissing: async () => {
+    const res = await apiClient.post<ApiResponse<any[]>>('/emby/scan-missing');
+    return res.data;
+  },
+
+  // --- STRM 接口 (真实后端 /api/strm/*) ---
+
+  generateStrmJob: async (type: string, config: any) => {
+    const res = await apiClient.post<ApiResponse<{ jobId: string; status: string }>>('/strm/generate', {
+      type,
+      config,
+    });
+    return res.data;
+  },
+
+  listStrmJobs: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/strm/tasks');
+    return res.data.data;
+  },
+
+  // --- Logs 接口 (真实后端 /api/logs) ---
+
+  fetchLogs: async (limit: number = 100, since?: number) => {
+    const params: any = { limit };
+    if (since) params.since = since;
+    const res = await apiClient.get<ApiResponse<any[]>>('/logs', { params });
+    return res.data.data;
+  },
 };

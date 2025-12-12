@@ -1,14 +1,15 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
-import { loadConfig, saveConfig } from '../services/mockConfig';
+import { api } from '../services/api';
 import { Save, RefreshCw, HardDrive, Globe, Cloud, Zap, Server, Network, Lock, Play } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
 
 export const StrmView: React.FC = () => {
-  const [config, setConfig] = useState<AppConfig>(loadConfig());
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   
@@ -16,42 +17,73 @@ export const StrmView: React.FC = () => {
   const [fileSelectorOpen, setFileSelectorOpen] = useState(false);
   const [activeModule, setActiveModule] = useState<'115'|'123'|'openlist'|null>(null);
 
+  useEffect(() => {
+    fetchConfig();
+  }, []);
+
+  const fetchConfig = async () => {
+    setIsLoading(true);
+    try {
+      const data = await api.getConfig();
+      setConfig(data);
+    } catch (e) {
+      setToast('加载配置失败');
+      setConfig(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const updateStrm = (key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       strm: { ...prev.strm, [key]: value }
-    }));
+    }) : null);
   };
 
   const updateWebdav = (key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       strm: { 
           ...prev.strm, 
           webdav: { ...prev.strm.webdav, [key]: value } 
       }
-    }));
+    }) : null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!config) return;
     setIsSaving(true);
-    setTimeout(() => {
-      saveConfig(config);
-      setIsSaving(false);
+    try {
+      await api.saveConfig(config);
       setToast('STRM 生成配置已保存');
+    } catch (e) {
+      setToast('保存失败');
+    } finally {
+      setIsSaving(false);
       setTimeout(() => setToast(null), 3000);
-    }, 800);
+    }
   };
 
-  const handleGenerate = (type: string) => {
+  const handleGenerate = async (type: string) => {
       setGenerating(type);
       setToast(`正在生成 ${type} STRM 文件...`);
-      // Mock API call
-      setTimeout(() => {
+      try {
+          const generConfig = {
+              type,
+              sourceCid: config?.strm?.[`sourceCid${type}` as keyof any] || '0',
+              outputDir: config?.strm?.outputDir || '/strm'
+          };
+          await api.generateStrmJob(type, generConfig);
           setGenerating(null);
           setToast(`${type} STRM 生成任务已提交`);
-          setTimeout(() => setToast(null), 3000);
-      }, 1500);
+      } catch (e) {
+          setGenerating(null);
+          setToast(`${type} STRM 生成失败`);
+      }
+      setTimeout(() => setToast(null), 3000);
   };
   
   const openSelector = (module: '115'|'123'|'openlist') => {
@@ -69,6 +101,22 @@ export const StrmView: React.FC = () => {
     const ip = window.location.hostname;
     updateStrm(key, `http://${ip}:${port}${suffix}`);
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
+        <RefreshCw className="animate-spin" /> 正在加载配置...
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
+        配置加载失败
+      </div>
+    );
+  }
 
   const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
   const inputClass = "w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 font-mono text-sm backdrop-blur-sm shadow-inner focus:ring-2 outline-none transition-all";
