@@ -15,6 +15,7 @@ from blueprints.offline import offline_bp, init_offline_blueprint
 from models.database import init_db, get_session_factory
 from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
+from services.cloud115_service import Cloud115Service
 from services.offline_tasks import OfflineTaskService
 from services.task_poller import create_task_poller
 
@@ -110,11 +111,15 @@ def create_app(config=None):
     app.db_engine = engine
     app.session_factory = session_factory
     
+    # Initialize cloud115 service
+    cloud115_service = Cloud115Service(secret_store)
+    
     # Initialize offline task service and poller
-    offline_task_service = OfflineTaskService(session_factory, store, None)
+    offline_task_service = OfflineTaskService(session_factory, store, None, cloud115_service)
     task_poller = create_task_poller(offline_task_service)
     
     # Store services in app context
+    app.cloud115_service = cloud115_service
     app.offline_task_service = offline_task_service
     app.task_poller = task_poller
     
@@ -171,6 +176,24 @@ def create_app(config=None):
         app.config.update(config)
     
     return app
+
+
+def get_offline_task_service():
+    """Get the offline task service from the current app context."""
+    try:
+        from flask import current_app
+        return getattr(current_app, 'offline_task_service', None)
+    except:
+        return None
+
+
+def get_app():
+    """Get the current app from context."""
+    try:
+        from flask import current_app
+        return current_app
+    except:
+        return None
 
 
 if __name__ == '__main__':
