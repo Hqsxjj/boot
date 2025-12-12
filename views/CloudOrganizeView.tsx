@@ -1,12 +1,14 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
-import { loadConfig, saveConfig, DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
+// [核心修改] 引入真实 API
+import { api } from '../services/api';
+// [保留] 仅保留预设常量，不再使用 loadConfig/saveConfig
+import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig'; 
 import { Save, RefreshCw, Cookie, QrCode, Smartphone, FolderInput, Gauge, Trash2, Plus, Film, Type, Globe, Cloud, Tv, LayoutList, GripVertical, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Bot, Laptop, Monitor, Tablet } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
 
-// DICTIONARIES (Kept same as before)
+// --- 字典常量 (保持不变) ---
 const GENRES = [
   { id: '28', name: '动作 (Action)' }, { id: '12', name: '冒险 (Adventure)' }, { id: '16', name: '动画 (Animation)' },
   { id: '35', name: '喜剧 (Comedy)' }, { id: '80', name: '犯罪 (Crime)' }, { id: '99', name: '纪录 (Documentary)' },
@@ -43,7 +45,10 @@ const RENAME_TAGS = [
 ];
 
 export const CloudOrganizeView: React.FC = () => {
-  const [config, setConfig] = useState<AppConfig>(loadConfig());
+  // [修改] 状态初始化为 null，等待网络请求
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   
@@ -57,66 +62,101 @@ export const CloudOrganizeView: React.FC = () => {
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [tempRule, setTempRule] = useState<ClassificationRule | null>(null);
 
-  // Mock QR Logic
-  const [qrState, setQrState] = useState<'idle' | 'loading' | 'scanned' | 'success'>('idle');
+  // [核心修改] 真实的 QR 逻辑状态
+  // 对应 cloud115.py: poll_login_status 返回的 status 字段
+  const [qrState, setQrState] = useState<'idle' | 'loading' | 'waiting' | 'scanned' | 'success' | 'expired' | 'error'>('idle');
   const [qrImage, setQrImage] = useState<string>('');
+  const [qrSessionId, setQrSessionId] = useState<string>(''); // 对应后端返回的 sessionId
+  const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      saveConfig(config);
-      setIsSaving(false);
-      setToast('配置已保存');
-      setTimeout(() => setToast(null), 3000);
-    }, 800);
+  // [新增] 初始化加载
+  useEffect(() => {
+    fetchConfig();
+    return () => stopQrCheck(); // 组件卸载时清理定时器
+  }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const data = await api.getConfig();
+      setConfig(data as AppConfig);
+    } catch (e) {
+      setToast('加载配置失败，请检查后端服务');
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // [修改] 真实的保存逻辑
+  const handleSave = async () => {
+    if (!config) return;
+    setIsSaving(true);
+    try {
+      await api.saveConfig(config);
+      setToast('配置已保存到服务器');
+      setTimeout(() => setToast(null), 3000);
+    } catch (e) {
+      setToast('保存失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- Helper Functions (增加空值保护) ---
   const updateNested = (section: keyof AppConfig, key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       [section]: { ...(prev[section] as any), [key]: value }
-    }));
+    }) : null);
   };
 
   const updateRenameRule = (key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       organize: { 
         ...prev.organize, 
         rename: { ...prev.organize.rename, [key]: value }
       }
-    }));
+    }) : null);
   };
   
   const updateAiConfig = (key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       organize: {
         ...prev.organize,
         ai: { ...prev.organize.ai, [key]: value }
       }
-    }));
+    }) : null);
   };
   
   const updateOrganize = (key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       organize: { ...prev.organize, [key]: value }
-    }));
+    }) : null);
   };
 
-  const getActiveRules = () => activeRuleTab === 'movie' ? config.organize.movieRules : config.organize.tvRules;
+  const getActiveRules = () => {
+      if (!config) return [];
+      return activeRuleTab === 'movie' ? config.organize.movieRules : config.organize.tvRules;
+  };
   
   const updateRuleList = (newRules: ClassificationRule[]) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       organize: {
         ...prev.organize,
         [activeRuleTab === 'movie' ? 'movieRules' : 'tvRules']: newRules
       }
-    }));
+    }) : null);
   };
 
+  // --- Rule Management (保持原样) ---
   const handleAddRule = () => {
     const newRule: ClassificationRule = {
       id: `custom_${Date.now()}`,
@@ -141,7 +181,6 @@ export const CloudOrganizeView: React.FC = () => {
     if (!tempRule) return;
     const currentRules = getActiveRules();
     const existingIndex = currentRules.findIndex(r => r.id === tempRule.id);
-    
     if (existingIndex >= 0) {
       const updated = [...currentRules];
       updated[existingIndex] = tempRule;
@@ -155,46 +194,37 @@ export const CloudOrganizeView: React.FC = () => {
 
   const handleRestorePresets = () => {
     if (confirm('确定要恢复默认分类模块吗？所有自定义更改将丢失。')) {
-      setConfig(prev => ({
+      if (!config) return;
+      setConfig(prev => prev ? ({
         ...prev,
         organize: {
           ...prev.organize,
           movieRules: DEFAULT_MOVIE_RULES,
           tvRules: DEFAULT_TV_RULES
         }
-      }));
+      }) : null);
       setToast('已恢复默认预设模块');
       setTimeout(() => setToast(null), 3000);
     }
   };
 
-  const toggleTempCondition = (type: MatchConditionType, value: string, isExclusive: boolean = false) => {
+  // --- Condition Toggles (保持原样) ---
+  const toggleTempCondition = (type: MatchConditionType, value: string) => {
     if (!tempRule) return;
-    
     let currentVal = tempRule.conditions[type] || '';
     let items = currentVal.replace(/^!/, '').split(',').filter(Boolean);
     const hasExclusiveFlag = currentVal.startsWith('!');
-    
-    if (items.includes(value)) {
-      items = items.filter(i => i !== value);
-    } else {
-      items.push(value);
-    }
-    
+    if (items.includes(value)) items = items.filter(i => i !== value);
+    else items.push(value);
     let newVal = items.join(',');
     if (newVal && hasExclusiveFlag) newVal = '!' + newVal;
-    
-    setTempRule({
-      ...tempRule,
-      conditions: { ...tempRule.conditions, [type]: newVal }
-    });
+    setTempRule({ ...tempRule, conditions: { ...tempRule.conditions, [type]: newVal } });
   };
   
   const toggleExclusive = (type: MatchConditionType) => {
     if (!tempRule) return;
     const currentVal = tempRule.conditions[type] || '';
     if (!currentVal) return;
-    
     if (currentVal.startsWith('!')) {
       setTempRule({ ...tempRule, conditions: { ...tempRule.conditions, [type]: currentVal.substring(1) } });
     } else {
@@ -212,21 +242,63 @@ export const CloudOrganizeView: React.FC = () => {
      return tempRule?.conditions[type]?.startsWith('!') || false;
   };
 
-  const generateMockQr = () => {
+  // --- [核心修改] 真实的 115 QR 逻辑 ---
+  
+  const stopQrCheck = () => {
+    if (qrTimerRef.current) {
+      clearInterval(qrTimerRef.current);
+      qrTimerRef.current = null;
+    }
+  };
+
+  const generateRealQr = async () => {
+    if (!config) return;
+    stopQrCheck();
     setQrState('loading');
-    setTimeout(() => {
-      setQrImage(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=115-Login-Mock-${Date.now()}-${config.cloud115.loginApp}`);
-      setQrState('idle'); 
-      setTimeout(() => {
-        setQrState('scanned');
-        setTimeout(() => {
-            setQrState('success');
-            updateNested('cloud115', 'cookies', 'UID=mock_uid_123; CID=mock_cid_456; SEID=mock_seid_789;');
-        }, 2000);
-      }, 5000);
-    }, 1000);
+    setQrImage('');
+    
+    try {
+      // 1. 调用 cloud115.py: start_qr_login
+      // api.get115QrCode 内部需要对应 POST /api/115/login/qrcode
+      const data = await api.get115QrCode(config.cloud115.loginApp);
+      
+      // cloud115.py 返回: { sessionId, qrcode, ... }
+      setQrImage(data.qrcode); // 可能是 base64 或 url
+      setQrSessionId(data.sessionId);
+      setQrState('waiting');
+
+      // 2. 开始轮询
+      qrTimerRef.current = setInterval(async () => {
+        try {
+          // 调用 cloud115.py: poll_login_status
+          const statusRes = await api.check115QrStatus(data.sessionId, 0, ''); // sessionId 是关键，uid/sign 可留空
+          
+          if (statusRes.data.status === 'scanned') {
+             setQrState('scanned');
+          } else if (statusRes.data.status === 'success') {
+             stopQrCheck();
+             setQrState('success');
+             // 登录成功后，后端已保存 Cookie，我们刷新一下配置以显示 Cookie
+             fetchConfig();
+             setToast('登录成功，Cookie 已自动保存');
+          } else if (statusRes.data.status === 'error' || statusRes.data.status === 'expired') {
+             stopQrCheck();
+             setQrState(statusRes.data.status === 'expired' ? 'expired' : 'error');
+          }
+        } catch (err) {
+           console.error("QR Poll failed", err);
+           // 允许偶尔的网络错误，不立即停止
+        }
+      }, 2000); // 每2秒检查一次
+
+    } catch (e) {
+       console.error(e);
+       setQrState('error');
+       setToast("无法获取二维码");
+    }
   };
   
+  // --- File Selection & Inputs ---
   const handleDirSelect = (cid: string, name: string) => {
      if (selectorTarget === 'download') {
          updateNested('cloud115', 'downloadPath', cid);
@@ -248,9 +320,20 @@ export const CloudOrganizeView: React.FC = () => {
   };
 
   const insertTag = (tag: string, target: 'movie' | 'series') => {
+      if (!config) return;
       const current = target === 'movie' ? config.organize.rename.movieTemplate : config.organize.rename.seriesTemplate;
       updateRenameRule(target === 'movie' ? 'movieTemplate' : 'seriesTemplate', current + ' ' + tag);
   };
+
+  // --- Render ---
+
+  if (loading || !config) {
+      return (
+          <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
+              <RefreshCw className="animate-spin" /> 正在加载配置...
+          </div>
+      );
+  }
 
   const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
   const inputClass = "w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-mono text-sm backdrop-blur-sm shadow-inner";
@@ -366,16 +449,36 @@ export const CloudOrganizeView: React.FC = () => {
                             </div>
                         )}
 
-                        {!qrImage ? (
-                           <button onClick={generateMockQr} className="px-6 py-3 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-brand-700 transition-colors">
+                        {/* [核心修改] 这里的逻辑替换为真实的 QR 生成 */}
+                        {!qrImage && qrState !== 'loading' ? (
+                           <button onClick={generateRealQr} className="px-6 py-3 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-brand-700 transition-colors">
                               <QrCode size={18} />
                               {config.cloud115.loginMethod === 'qrcode' ? '生成二维码' : '获取第三方登录二维码'}
                            </button>
                         ) : (
-                           <div className="text-center animate-in fade-in zoom-in duration-300">
-                             <img src={qrImage} alt="QR" className="w-40 h-40 rounded-lg border-4 border-white shadow-xl mx-auto mb-4" />
+                           <div className="text-center animate-in fade-in zoom-in duration-300 relative">
+                             {qrState === 'loading' ? (
+                                 <div className="w-40 h-40 flex items-center justify-center"><RefreshCw className="animate-spin text-brand-500" size={32}/></div>
+                             ) : (
+                                 <img src={qrImage} alt="QR" className={`w-40 h-40 rounded-lg border-4 border-white shadow-xl mx-auto mb-4 ${qrState === 'expired' ? 'opacity-20' : ''}`} />
+                             )}
+                             
+                             {/* 过期刷新按钮 */}
+                             {qrState === 'expired' || qrState === 'error' ? (
+                                 <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={generateRealQr}>
+                                     <div className="bg-slate-800/80 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1 hover:scale-105 transition-transform">
+                                        <RotateCcw size={14}/> 点击刷新
+                                     </div>
+                                 </div>
+                             ) : null}
+
                              <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">请使用 115 App 扫码</p>
-                             <p className="text-xs text-slate-400 mt-1">{qrState === 'scanned' ? '已扫描，请在手机上确认' : '等待扫描...'}</p>
+                             <p className={`text-xs mt-1 font-bold ${qrState === 'success' ? 'text-green-500' : 'text-slate-400'}`}>
+                                {qrState === 'scanned' ? '已扫描，请在手机上确认' : 
+                                 qrState === 'success' ? '登录成功！' : 
+                                 qrState === 'expired' ? '二维码已过期' : 
+                                 qrState === 'error' ? '获取失败，请重试' : '等待扫描...'}
+                             </p>
                            </div>
                         )}
                      </div>
@@ -755,7 +858,7 @@ export const CloudOrganizeView: React.FC = () => {
         )}
       </div>
 
-      {/* Edit Rule Modal */}
+      {/* Edit Rule Modal (保持不变) */}
       {editingRuleId && tempRule && (
          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border-[0.5px] border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
