@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from middleware.auth import optional_auth
 from persistence.store import DataStore
 from services.secret_store import SecretStore
+import json
 
 config_bp = Blueprint('config', __name__, url_prefix='/api')
 
@@ -32,12 +33,64 @@ def _add_session_flags(config: dict, secret_store: SecretStore) -> dict:
     return config
 
 
+def _parse_cookie_string(cookie_str: str) -> dict:
+    cookies = {}
+    for part in cookie_str.split(';'):
+        part = part.strip()
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"')
+        if key:
+            cookies[key] = value
+    return cookies
+
+
+def _sync_cloud115_cookies_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    if not secret_store or not isinstance(payload, dict):
+        return
+
+    cloud115 = payload.get('cloud115')
+    if not isinstance(cloud115, dict):
+        return
+
+    cookies_value = cloud115.get('cookies')
+    if not isinstance(cookies_value, str):
+        return
+
+    cookies_str = cookies_value.strip()
+
+    if not cookies_str:
+        secret_store.delete_secret('cloud115_cookies')
+        secret_store.delete_secret('cloud115_session_metadata')
+        return
+
+    parsed = _parse_cookie_string(cookies_str)
+    if not parsed:
+        return
+
+    secret_store.set_secret('cloud115_cookies', json.dumps(parsed))
+    metadata = {
+        'login_method': 'manual_import',
+        'login_app': cloud115.get('loginApp', 'web'),
+        'logged_in_at': __import__('datetime').datetime.now().isoformat(),
+    }
+    secret_store.set_secret('cloud115_session_metadata', json.dumps(metadata))
+
+
 @config_bp.route('/config', methods=['GET'])
 @optional_auth
 def get_config():
     """Get full application configuration without masking."""
     try:
         config = config_bp.store.get_config()
+
+        # Bootstrap SecretStore from persisted config for frontend compatibility
+        if config_bp.secret_store and not config_bp.secret_store.get_secret('cloud115_cookies'):
+            cloud115 = config.get('cloud115') if isinstance(config, dict) else None
+            if isinstance(cloud115, dict) and isinstance(cloud115.get('cookies'), str) and cloud115.get('cookies').strip():
+                _sync_cloud115_cookies_from_config(config, config_bp.secret_store)
         
         # Add session health flags
         config = _add_session_flags(config, config_bp.secret_store)
@@ -68,6 +121,9 @@ def update_config():
     try:
         # Update config in store (no masking, full round-trip)
         config_bp.store.update_config(data)
+
+        # Sync 115 cookies from the config payload into SecretStore for real /api/115 usage
+        _sync_cloud115_cookies_from_config(data, config_bp.secret_store)
         
         # Return updated config with session flags
         updated_config = config_bp.store.get_config()

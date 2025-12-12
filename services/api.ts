@@ -1,14 +1,27 @@
 // src/services/api.ts
 import axios from 'axios';
-import { AppConfig } from '../types'; // 确保你有定义这个类型
+import { AppConfig } from '../types';
 
-// 创建 axios 实例，配置基础路径
+type ApiResponse<T> = {
+  success: boolean;
+  data: T;
+  error?: string;
+};
+
+type CloudDirectoryEntry = {
+  id: string;
+  name: string;
+  children?: boolean;
+  date?: string;
+};
+
+const LOCAL_CONFIG_KEY = '115_BOT_CONFIG';
+
 const apiClient = axios.create({
-  baseURL: '/api', // 这里会通过 vite.config.ts 的 proxy 转发到 8000 端口
-  timeout: 15000,  // 稍微调大一点超时，防止网盘请求慢导致断开
+  baseURL: '/api',
+  timeout: 15000,
 });
 
-// 添加拦截器处理 Token
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -17,84 +30,209 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截器 (可选：统一处理 401 token 过期跳转)
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // 如果后端返回 401，说明 token 过期，可以在这里处理跳转登录页
       console.warn('Token expired or unauthorized');
     }
     return Promise.reject(error);
   }
 );
 
+const readLocalConfig = (): AppConfig | null => {
+  const raw = localStorage.getItem(LOCAL_CONFIG_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as AppConfig;
+  } catch {
+    return null;
+  }
+};
+
+const normalize115LoginMethod = (method: unknown): 'cookie' | 'open_app' => {
+  if (method === 'open_app') return 'open_app';
+  // CloudOrganizeView uses 'qrcode' as a UI option, but backend expects 'cookie'
+  return 'cookie';
+};
+
 export const api = {
   // --- 基础配置与认证 ---
-
-  // 1. 获取全局配置
   getConfig: async () => {
-    const res = await apiClient.get<{ success: boolean; data: AppConfig }>('/config');
-    // 兼容后端返回结构，如果后端直接返回对象则用 res.data
-    // 假设后端返回格式为 { success: true, data: { ... } }
-    return res.data.data || res.data; 
+    const res = await apiClient.get<ApiResponse<AppConfig>>('/config');
+    return (res.data as any).data ?? (res.data as any);
   },
 
-  // 2. 保存配置
   saveConfig: async (config: AppConfig) => {
-    const res = await apiClient.post('/config', config);
+    const res = await apiClient.post<ApiResponse<AppConfig>>('/config', config);
     return res.data;
   },
 
-  // 3. 修改管理员密码
   updatePassword: async (password: string) => {
-    const res = await apiClient.put('/auth/password', { password });
+    const res = await apiClient.put<ApiResponse<unknown>>('/auth/password', { password });
     return res.data;
   },
 
-  // 4. 开始 2FA 设置 (获取密钥和二维码)
   setup2FA: async () => {
-    const res = await apiClient.post('/auth/setup-2fa');
-    return res.data.data; // 预期返回 { secret: '...', qrCodeUri: '...' }
+    const res = await apiClient.post<ApiResponse<{ secret: string; qrCodeUri: string }>>('/auth/setup-2fa');
+    return res.data.data;
   },
 
-  // 5. 验证 2FA 验证码
   verify2FA: async (code: string) => {
-    const res = await apiClient.post('/auth/verify-otp', { code });
+    const res = await apiClient.post<ApiResponse<unknown>>('/auth/verify-otp', { code });
     return res.data;
   },
 
-  // --- 新增：115 网盘相关接口 ---
+  // --- 115 网盘相关接口 (真实后端 /api/115/*) ---
 
-  /**
-   * 6. 获取 115 登录二维码
-   * @param appType - 登录类型: 'web', 'ios', 'android', 'tv', 'mini' 等
-   */
   get115QrCode: async (appType: string) => {
-    const res = await apiClient.post('/cloud115/qr/generate', { appType });
-    // 预期后端返回: { success: true, data: { qrCodeUrl, uid, time, sign } }
-    return res.data.data; 
+    const localConfig = readLocalConfig();
+    const loginMethod = normalize115LoginMethod(localConfig?.cloud115?.loginMethod);
+
+    const res = await apiClient.post<
+      ApiResponse<{ sessionId: string; qrcode: string; loginMethod: string; loginApp: string }>
+    >('/115/login/qrcode', {
+      loginApp: appType,
+      loginMethod,
+    });
+
+    return res.data.data;
   },
 
-  /**
-   * 7. 检查二维码扫描状态
-   * @param uid - 二维码唯一 ID
-   * @param time - 时间戳
-   * @param sign - 签名
-   */
-  check115QrStatus: async (uid: string, time: number, sign: string) => {
-    const res = await apiClient.post('/cloud115/qr/status', { uid, time, sign });
-    // 预期后端返回: { status: 'waiting'|'scanned'|'success'|'expired', cookie: '...' }
-    return res.data; 
+  check115QrStatus: async (sessionId: string, _time: number, _sign: string) => {
+    try {
+      const res = await apiClient.get<ApiResponse<{ status: string; message?: string }>>(
+        `/115/login/status/${encodeURIComponent(sessionId)}`
+      );
+
+      return res.data;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const payload = err.response.data as any;
+        if (payload?.status) {
+          return {
+            success: false,
+            data: { status: payload.status, message: payload.error || payload.message },
+            error: payload.error,
+          } as ApiResponse<{ status: string; message?: string }>;
+        }
+      }
+      throw err;
+    }
   },
 
-  /**
-   * 8. 获取文件列表 (用于文件选择器)
-   * @param cid - 文件夹 ID，默认为 '0' (根目录)
-   */
+  // Compatibility wrapper for FileSelector (expects { currentCid, files: [...] })
   get115Files: async (cid: string = '0') => {
-    const res = await apiClient.get('/cloud115/files', { params: { cid } });
-    // 预期后端返回: { success: true, data: { currentCid, files: [...] } }
-    return res.data.data; 
-  }
+    const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/115/directories', {
+      params: { cid },
+    });
+
+    const entries = res.data.data || [];
+
+    return {
+      currentCid: cid,
+      files: entries.map((e) => ({
+        id: e.id,
+        cid: e.id,
+        name: e.name,
+        n: e.name,
+        is_dir: !!e.children,
+        file_type: e.children ? 0 : 1,
+        time: e.date || '',
+        t: e.date || '',
+      })),
+    };
+  },
+
+  list115Directories: async (cid: string = '0') => {
+    const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/115/directories', {
+      params: { cid },
+    });
+    return res.data.data;
+  },
+
+  rename115File: async (fileId: string, newName: string) => {
+    const res = await apiClient.post<ApiResponse<{ fileId: string; newName: string }>>('/115/files/rename', {
+      fileId,
+      newName,
+    });
+    return res.data;
+  },
+
+  move115File: async (fileId: string, targetCid: string) => {
+    const res = await apiClient.post<ApiResponse<{ fileId: string; targetCid: string }>>('/115/files/move', {
+      fileId,
+      targetCid,
+    });
+    return res.data;
+  },
+
+  delete115File: async (fileId: string) => {
+    const res = await apiClient.delete<ApiResponse<{ fileId: string }>>('/115/files', {
+      data: { fileId },
+    });
+    return res.data;
+  },
+
+  create115OfflineTask: async (sourceUrl: string, saveCid: string) => {
+    const res = await apiClient.post<ApiResponse<{ p115TaskId: string; sourceUrl: string; saveCid: string }>>(
+      '/115/files/offline',
+      {
+        sourceUrl,
+        saveCid,
+      }
+    );
+    return res.data;
+  },
+
+  // --- 123 云盘相关接口 (真实后端 /api/123/*) ---
+
+  list123Directories: async (dirId: string = '/') => {
+    const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/123/directories', {
+      params: { dirId },
+    });
+    return res.data.data;
+  },
+
+  rename123File: async (fileId: string, newName: string) => {
+    const res = await apiClient.post<ApiResponse<{ fileId: string; newName: string }>>('/123/files/rename', {
+      fileId,
+      newName,
+    });
+    return res.data;
+  },
+
+  move123File: async (fileId: string, targetDirId: string) => {
+    const res = await apiClient.post<ApiResponse<{ fileId: string; targetDirId: string }>>('/123/files/move', {
+      fileId,
+      targetDirId,
+    });
+    return res.data;
+  },
+
+  delete123File: async (fileId: string) => {
+    const res = await apiClient.delete<ApiResponse<{ fileId: string }>>('/123/files', {
+      data: { fileId },
+    });
+    return res.data;
+  },
+
+  create123OfflineTask: async (sourceUrl: string, saveDirId: string) => {
+    const res = await apiClient.post<ApiResponse<{ p123TaskId: string; sourceUrl: string; saveDirId: string }>>(
+      '/123/offline/tasks',
+      {
+        sourceUrl,
+        saveDirId,
+      }
+    );
+    return res.data;
+  },
+
+  get123OfflineTaskStatus: async (taskId: string) => {
+    const res = await apiClient.get<ApiResponse<{ status: string; progress: number; speed: number }>>(
+      `/123/offline/tasks/${encodeURIComponent(taskId)}`
+    );
+    return res.data;
+  },
 };
