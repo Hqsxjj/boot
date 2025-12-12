@@ -1,11 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api'; 
-import { Save, RefreshCw, Cookie, QrCode, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, User, KeyRound, Shield, Check } from 'lucide-react';
+import { Save, RefreshCw, KeyRound, User, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, Shield } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
+// [新增] 默认空配置 (看不见的兜底数据)
+const DEFAULT_CONFIG: Partial<AppConfig> = {
+    cloud115: { loginMethod: 'cookie', loginApp: 'web', cookies: '', userAgent: '', downloadPath: '', downloadDirName: '未连接', autoDeleteMsg: false, qps: 1.0 },
+    cloud123: { enabled: false, clientId: '', clientSecret: '', downloadPath: '', downloadDirName: '未连接', qps: 1.0 },
+    openList: { enabled: false, url: '', mountPath: '', username: '', password: '' },
+    tmdb: { apiKey: '', language: 'zh-CN', includeAdult: false },
+    telegram: { botToken: '', adminUserId: '', whitelistMode: true, notificationChannelId: '' },
+    proxy: { enabled: false, type: 'http', host: '', port: '' },
+    twoFactorSecret: ''
+};
+
 export const UserCenterView: React.FC = () => {
-  // 1. 状态管理
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -14,38 +24,47 @@ export const UserCenterView: React.FC = () => {
   const [isPwSaving, setIsPwSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   
-  // 2FA 状态
+  // 2FA Setup State
   const [isSetup2FA, setIsSetup2FA] = useState(false);
   const [tempSecret, setTempSecret] = useState('');
   const [qrCodeUri, setQrCodeUri] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [setupError, setSetupError] = useState('');
 
-  // PWA 状态
+  // PWA State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
-  // 2. 初始化
   useEffect(() => {
     fetchConfig();
 
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsPwaInstalled(true);
     }
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
+  // [核心修复] 获取配置，失败则使用默认值
   const fetchConfig = async () => {
+    setLoading(true);
     try {
       const data = await api.getConfig();
-      setConfig(data as AppConfig);
+      if (data) {
+          setConfig(data as AppConfig);
+      } else {
+          throw new Error("Empty data");
+      }
     } catch (error) {
-      setToast('连接服务器失败，请检查后端是否启动 (端口8000)');
+      console.warn("后端连接失败，加载默认界面");
+      setConfig(DEFAULT_CONFIG as AppConfig);
+      setToast('连接服务器失败，已显示默认界面'); 
     } finally {
       setLoading(false);
     }
@@ -63,7 +82,6 @@ export const UserCenterView: React.FC = () => {
     }
   };
 
-  // 更新嵌套对象通用方法
   const updateNested = (section: keyof AppConfig, key: string, value: any) => {
     if (!config) return;
     setConfig(prev => prev ? ({
@@ -72,34 +90,32 @@ export const UserCenterView: React.FC = () => {
     }) : null);
   };
 
-  // 3. 保存配置到后端
   const handleSave = async () => {
     if (!config) return;
     setIsSaving(true);
     try {
-      await api.saveConfig(config);
-      setToast('配置已保存到服务器');
-      setTimeout(() => setToast(null), 3000);
-    } catch (error) {
-      setToast('保存失败');
+        await api.saveConfig(config);
+        setToast('配置已更新');
+    } catch (e) {
+        setToast('保存失败 (网络错误)');
     } finally {
-      setIsSaving(false);
+        setIsSaving(false);
+        setTimeout(() => setToast(null), 3000);
     }
   };
 
-  // 修改密码
   const handlePasswordSave = async () => {
     if (!newPassword) return;
     setIsPwSaving(true);
     try {
-      await api.updatePassword(newPassword);
-      setNewPassword('');
-      setToast('管理员密码已修改');
-      setTimeout(() => setToast(null), 3000);
-    } catch (error) {
-      setToast('修改密码失败');
+        await api.updatePassword(newPassword);
+        setNewPassword('');
+        setToast('管理员密码已修改');
+    } catch (e) {
+        setToast('修改失败');
     } finally {
-      setIsPwSaving(false);
+        setIsPwSaving(false);
+        setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -107,17 +123,16 @@ export const UserCenterView: React.FC = () => {
       updateNested('proxy', 'host', window.location.hostname);
   };
 
-  // 4. 2FA 流程：向后端申请密钥
   const start2FASetup = async () => {
       try {
           const data = await api.setup2FA();
           setTempSecret(data.secret);
-          setQrCodeUri(data.qrCodeUri); 
+          setQrCodeUri(data.qrCodeUri);
           setVerifyCode('');
           setSetupError('');
           setIsSetup2FA(true);
       } catch (e) {
-          setToast("无法初始化 2FA");
+          setToast("无法连接后端初始化 2FA");
       }
   };
 
@@ -127,21 +142,19 @@ export const UserCenterView: React.FC = () => {
       setQrCodeUri('');
   };
 
-  // [修复部分] 向后端验证 OTP
   const confirm2FASetup = async () => {
       try {
           await api.verify2FA(verifyCode);
           setConfig(prev => prev ? ({ ...prev, twoFactorSecret: tempSecret }) : null);
           setIsSetup2FA(false);
-          setToast('2FA 已启用');
+          setToast('2FA 配置已更新');
           setTimeout(() => setToast(null), 3000);
-      } catch (error) {
-          // 这里修复了之前的语法错误 (把 else 改回了 catch)
-          setSetupError('验证码错误或已失效');
+      } catch (e) {
+          setSetupError('验证码错误或失效');
       }
   };
 
-   // Loading 界面
+  // [核心修复] 只要 loading 结束，无论 config 是否为空（其实有默认值了），都渲染界面
   if (loading) {
       return (
           <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
@@ -149,33 +162,10 @@ export const UserCenterView: React.FC = () => {
           </div>
       );
   }
-
-  // Error 界面 (加载结束但没有 config)
-  if (!config) {
-      return (
-          <div className="flex h-screen flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-900 p-6">
-              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-full text-red-500">
-                  <AlertCircle size={48} />
-              </div>
-              <div className="text-center">
-                  <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200">无法连接服务器</h3>
-                  <p className="text-slate-500 text-sm mt-1">
-                      请检查后端服务是否启动，端口 8000 是否正常监听。
-                  </p>
-              </div>
-              <button 
-                  onClick={fetchConfig}
-                  className="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-              >
-                  <RefreshCw size={16} /> 点击重试
-              </button>
-          </div>
-      );
-  }
-
-
-  // --- UI 定义 ---
   
+  if (!config) return null; // 理论上不会走到这
+
+  // Service Status Definitions
   const services = [
     {
         name: '115 网盘',
@@ -231,7 +221,7 @@ export const UserCenterView: React.FC = () => {
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight drop-shadow-sm">用户中心</h2>
       </div>
 
-      {/* 服务状态网格 */}
+      {/* Service Status Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {services.map((service) => (
             <div key={service.name} className={`${glassCardClass} p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300`}>
@@ -242,9 +232,13 @@ export const UserCenterView: React.FC = () => {
                     <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{service.name}</div>
                     <div className={`text-[10px] font-medium mt-1 flex items-center justify-center gap-1.5 ${service.isConnected ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
                         {service.isConnected ? (
-                            <> <CheckCircle2 size={12} /> 已连接 </>
+                            <>
+                                <CheckCircle2 size={12} /> 已连接
+                            </>
                         ) : (
-                            <> <AlertCircle size={12} /> 未配置 </>
+                            <>
+                                <AlertCircle size={12} /> 未配置
+                            </>
                         )}
                     </div>
                 </div>
@@ -254,7 +248,7 @@ export const UserCenterView: React.FC = () => {
             </div>
         ))}
 
-        {/* PWA 模块 */}
+        {/* PWA Module */}
         <div 
            onClick={!isPwaInstalled && deferredPrompt ? handlePwaInstall : undefined}
            className={`${glassCardClass} p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 ${!isPwaInstalled && deferredPrompt ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/50' : ''}`}
@@ -266,9 +260,13 @@ export const UserCenterView: React.FC = () => {
                 <div className="text-sm font-bold text-slate-700 dark:text-slate-200">PWA 应用</div>
                 <div className={`text-[10px] font-medium mt-1 flex items-center justify-center gap-1.5 ${isPwaInstalled ? 'text-green-600 dark:text-green-400' : 'text-indigo-500'}`}>
                     {isPwaInstalled ? (
-                        <> <CheckCircle2 size={12} /> 已安装 </>
+                        <>
+                             <CheckCircle2 size={12} /> 已安装
+                        </>
                     ) : deferredPrompt ? (
-                        <> <Download size={12} /> 点击安装 </>
+                        <>
+                             <Download size={12} /> 点击安装
+                        </>
                     ) : (
                         <span className="text-slate-400">不支持/已安装</span>
                     )}
@@ -279,7 +277,7 @@ export const UserCenterView: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* 管理员账号设置 */}
+        {/* Account Settings */}
         <section className={`${glassCardClass} flex flex-col`}>
            <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -322,7 +320,7 @@ export const UserCenterView: React.FC = () => {
            </div>
         </section>
 
-        {/* 2FA 设置 */}
+        {/* 2FA Settings */}
         <section className={`${glassCardClass} flex flex-col`}>
            <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
               <Smartphone size={18} className="text-slate-400" />
@@ -405,7 +403,7 @@ export const UserCenterView: React.FC = () => {
            )}
         </section>
 
-        {/* 网络代理设置 */}
+        {/* Network Proxy */}
         <section className={`${glassCardClass} lg:col-span-2`}>
           <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
