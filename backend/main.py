@@ -27,6 +27,10 @@ def create_app(config=None):
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+
+    # Allow custom config override early so extensions read it (e.g., TESTING for rate limiter)
+    if config:
+        app.config.update(config)
     
     # CORS configuration
     cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5173,http://localhost:3000').split(',')
@@ -42,13 +46,29 @@ def create_app(config=None):
     
     # JWT Manager
     jwt = JWTManager(app)
+
+    # In-memory JWT deny list (token revocation)
+    app.revoked_jti = set()
+    app.two_fa_verified_jti = set()
+
+    @jwt.token_in_blocklist_loader
+    def is_token_revoked(jwt_header, jwt_payload):
+        return jwt_payload.get('jti') in app.revoked_jti
+
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        return jsonify({
+            'success': False,
+            'error': 'Token has been revoked'
+        }), 401
     
     # Rate Limiter
     limiter = Limiter(
         app=app,
         key_func=get_remote_address,
         default_limits=["200 per day", "50 per hour"],
-        storage_uri="memory://"
+        storage_uri="memory://",
+        enabled=not app.config.get('TESTING', False)
     )
     
     # Apply rate limiting to auth endpoints

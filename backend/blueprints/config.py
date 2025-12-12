@@ -100,3 +100,11 @@ def get_me():
             'twoFactorEnabled': two_factor_enabled
         }
     }), 200
+
+
+@config_bp.route('/user/summary', methods=['GET'])
+def user_summary():
+    """Frontend compatibility alias for auth status."""
+    from blueprints.auth import status as auth_status
+
+    return auth_status()
