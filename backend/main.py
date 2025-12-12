@@ -13,11 +13,13 @@ from blueprints.health import health_bp
 from blueprints.cloud115 import cloud115_bp, init_cloud115_blueprint
 from blueprints.cloud123 import cloud123_bp, init_cloud123_blueprint
 from blueprints.offline import offline_bp, init_offline_blueprint
+from blueprints.bot import bot_bp, init_bot_blueprint
 from models.database import init_db, get_session_factory
 from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
 from services.cloud115_service import Cloud115Service
 from services.cloud123_service import Cloud123Service
+from services.telegram_bot import TelegramBotService
 from services.offline_tasks import OfflineTaskService
 from services.task_poller import create_task_poller
 
@@ -139,6 +141,7 @@ def create_app(config=None):
     init_cloud115_blueprint(secret_store)
     init_cloud123_blueprint(secret_store)
     init_offline_blueprint(offline_task_service)
+    init_bot_blueprint(secret_store, store)
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
@@ -146,6 +149,7 @@ def create_app(config=None):
     app.register_blueprint(cloud115_bp)
     app.register_blueprint(cloud123_bp)
     app.register_blueprint(offline_bp)
+    app.register_blueprint(bot_bp)
     
     # Root endpoint
     @app.route('/')
@@ -159,7 +163,8 @@ def create_app(config=None):
                     'health': '/api/health',
                     'auth': '/api/auth/*',
                     'config': '/api/config',
-                    'me': '/api/me'
+                    'me': '/api/me',
+                    'bot': '/api/bot/*'
                 }
             }
         }), 200
