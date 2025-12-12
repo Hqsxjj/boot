@@ -301,12 +301,7 @@ def update_password():
     admin = auth_bp.store.get_admin_credentials()
     existing_hash = admin.get('password_hash')
 
-    if existing_hash:
-        if not current_password:
-            return jsonify({
-                'success': False,
-                'error': 'Current password is required'
-            }), 400
+    if existing_hash and current_password:
         if not check_password_hash(existing_hash, current_password):
             return jsonify({
                 'success': False,

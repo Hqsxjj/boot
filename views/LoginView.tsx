@@ -20,25 +20,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }
   }, [locked]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (locked) return;
 
-    const result = login(username, password);
-    
+    const result = await login(username, password);
+
     if (result.success) {
       onLoginSuccess();
-    } else {
-      if (result.locked) {
-        setLocked(true);
-        setError('已锁定');
-      } else {
-        setError(`登录失败 (剩余次数: ${5 - getFailedAttempts()})`);
-        setPassword('');
-      }
+      return;
     }
+
+    if (result.locked) {
+      setLocked(true);
+      setError('已锁定');
+      return;
+    }
+
+    if (result.error === 'network') {
+      setError('连接服务器失败');
+      return;
+    }
+
+    setError(`登录失败 (剩余次数: ${5 - getFailedAttempts()})`);
+    setPassword('');
   };
 
   return (
