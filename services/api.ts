@@ -53,7 +53,6 @@ const readLocalConfig = (): AppConfig | null => {
 
 const normalize115LoginMethod = (method: unknown): 'cookie' | 'open_app' => {
   if (method === 'open_app') return 'open_app';
-  // CloudOrganizeView uses 'qrcode' as a UI option, but backend expects 'cookie'
   return 'cookie';
 };
 
@@ -84,7 +83,7 @@ export const api = {
     return res.data;
   },
 
-  // --- 115 网盘相关接口 (真实后端 /api/115/*) ---
+  // --- 115 网盘相关接口 ---
 
   get115QrCode: async (appType: string) => {
     const localConfig = readLocalConfig();
@@ -115,14 +114,13 @@ export const api = {
             success: false,
             data: { status: payload.status, message: payload.error || payload.message },
             error: payload.error,
-          } as ApiResponse<{ status: string; message?: string }>;
+          };
         }
       }
       throw err;
     }
   },
 
-  // Compatibility wrapper for FileSelector (expects { currentCid, files: [...] })
   get115Files: async (cid: string = '0') => {
     const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/115/directories', {
       params: { cid },
@@ -186,7 +184,7 @@ export const api = {
     return res.data;
   },
 
-  // --- 123 云盘相关接口 (真实后端 /api/123/*) ---
+  // --- 123 云盘接口 ---
 
   list123Directories: async (dirId: string = '/') => {
     const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/123/directories', {
@@ -236,7 +234,7 @@ export const api = {
     return res.data;
   },
 
-  // --- Bot 配置接口 (真实后端 /api/bot/*) ---
+  // --- Bot 接口 ---
 
   getBotConfig: async () => {
     const res = await apiClient.get<ApiResponse<any>>('/bot/config');
@@ -259,14 +257,19 @@ export const api = {
   },
 
   testBotMessage: async (targetType: string = 'admin', targetId?: string) => {
-    const res = await apiClient.post<ApiResponse<any>>('/bot/test-message', { target_type: targetType, target_id: targetId });
+    const res = await apiClient.post<ApiResponse<any>>('/bot/test-message', {
+      target_type: targetType,
+      target_id: targetId,
+    });
     return res.data;
   },
 
-  // --- Emby 接口 (真实后端 /api/emby/*) ---
+  // --- Emby 接口 ---
 
   testEmbyConnection: async () => {
-    const res = await apiClient.post<ApiResponse<{ success: boolean; latency: number; msg?: string }>>('/emby/test-connection');
+    const res = await apiClient.post<ApiResponse<{ success: boolean; latency: number; msg?: string }>>(
+      '/emby/test-connection'
+    );
     return res.data;
   },
 
@@ -275,7 +278,7 @@ export const api = {
     return res.data;
   },
 
-  // --- STRM 接口 (真实后端 /api/strm/*) ---
+  // --- STRM 接口 ---
 
   generateStrmJob: async (type: string, config: any) => {
     const res = await apiClient.post<ApiResponse<{ jobId: string; status: string }>>('/strm/generate', {
@@ -290,12 +293,20 @@ export const api = {
     return res.data.data;
   },
 
-  // --- Logs 接口 (真实后端 /api/logs) ---
+  // --- Logs ---
 
   fetchLogs: async (limit: number = 100, since?: number) => {
     const params: any = { limit };
     if (since) params.since = since;
     const res = await apiClient.get<ApiResponse<any[]>>('/logs', { params });
+    return res.data.data;
+  },
+
+  // =======================================================
+  // 🚀 新增接口：获取全部 loginApp（22 个端）
+  // =======================================================
+  get115LoginApps: async () => {
+    const res = await apiClient.get<ApiResponse<{ key: string; appId: number }[]>>('/115/login/apps');
     return res.data.data;
   },
 };
