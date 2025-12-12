@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class OfflineTaskService:
     """Service for managing offline tasks with 115 cloud integration."""
     
-    def __init__(self, session_factory, data_store: DataStore, p115_service: P115Service = None):
+    def __init__(self, session_factory, data_store: DataStore, p115_service: P115Service = None, cloud115_service=None):
         """
         Initialize OfflineTaskService.
         
@@ -21,10 +21,12 @@ class OfflineTaskService:
             session_factory: SQLAlchemy session factory
             data_store: DataStore instance for config
             p115_service: P115Service instance (optional, uses global if None)
+            cloud115_service: Cloud115Service instance (optional, for real 115 API calls)
         """
         self.session_factory = session_factory
         self.data_store = data_store
         self.p115_service = p115_service or get_p115_service()
+        self.cloud115_service = cloud115_service
         self._qps_throttle = 1  # Default QPS from config
         self._update_qps_throttle()
     
@@ -266,9 +268,10 @@ class OfflineTaskService:
         try:
             session: Session = self.session_factory()
             
-            # Get all non-terminal tasks
+            # Get all non-terminal tasks with p115_task_id
             tasks = session.query(OfflineTask).filter(
-                OfflineTask.status.in_([TaskStatus.PENDING, TaskStatus.DOWNLOADING])
+                OfflineTask.status.in_([TaskStatus.PENDING, TaskStatus.DOWNLOADING]),
+                OfflineTask.p115_task_id.isnot(None)
             ).all()
             
             synced_count = 0
@@ -276,20 +279,43 @@ class OfflineTaskService:
             
             for task in tasks:
                 try:
-                    # In a real implementation, we would:
-                    # 1. Get cookies from secret store
-                    # 2. Create 115 client
-                    # 3. Query task status via p115client API
-                    # 4. Update task with latest status/progress
+                    # Skip if cloud115_service is not available
+                    if not self.cloud115_service:
+                        synced_count += 1
+                        continue
                     
-                    # For now, we simulate sync by leaving PENDING tasks alone
-                    # and would update DOWNLOADING tasks with real 115 API calls
-                    synced_count += 1
+                    # Get task status from 115 API
+                    result = self.cloud115_service.get_offline_task_status(task.p115_task_id)
+                    
+                    if result.get('success'):
+                        data = result.get('data', {})
+                        
+                        # Update task with latest info
+                        status_str = data.get('status', 'pending')
+                        if status_str == 'downloading':
+                            task.status = TaskStatus.DOWNLOADING
+                        elif status_str == 'completed':
+                            task.status = TaskStatus.COMPLETED
+                        elif status_str == 'failed':
+                            task.status = TaskStatus.FAILED
+                        elif status_str == 'pending':
+                            task.status = TaskStatus.PENDING
+                        
+                        task.progress = data.get('progress', task.progress)
+                        task.speed = data.get('speed', task.speed)
+                        task.updated_at = datetime.now()
+                        
+                        session.merge(task)
+                        synced_count += 1
+                    else:
+                        logger.warning(f'Failed to get status for task {task.id}: {result.get("error")}')
+                        failed_count += 1
                     
                 except Exception as e:
                     logger.warning(f'Failed to sync task {task.id}: {str(e)}')
                     failed_count += 1
             
+            session.commit()
             session.close()
             
             logger.info(f'Synced {synced_count} tasks, {failed_count} failed')

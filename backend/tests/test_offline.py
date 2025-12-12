@@ -408,19 +408,31 @@ class TestOfflineTaskService(unittest.TestCase):
     
     def test_sync_all(self):
         """Test syncing all tasks."""
-        # Create tasks
-        self.service.create_task(
+        # Create tasks with p115_task_id
+        result1 = self.service.create_task(
             source_url='https://example.com/file1.zip',
             save_cid='123456789',
             requested_by='user1',
             requested_chat='chat1'
         )
-        self.service.create_task(
+        result2 = self.service.create_task(
             source_url='https://example.com/file2.zip',
             save_cid='123456789',
             requested_by='user2',
             requested_chat='chat2'
         )
+        
+        # Set p115_task_id for the tasks so they can be synced
+        task1 = self.service.get_task(result1['data']['id'])
+        task2 = self.service.get_task(result2['data']['id'])
+        
+        session = self.app.session_factory()
+        task1.p115_task_id = 'p115_task_1'
+        task2.p115_task_id = 'p115_task_2'
+        session.merge(task1)
+        session.merge(task2)
+        session.commit()
+        session.close()
         
         result = self.service.sync_all()
         

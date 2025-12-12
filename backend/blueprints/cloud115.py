@@ -3,6 +3,7 @@ from flask_jwt_extended import get_jwt_identity
 from middleware.auth import require_auth
 from p115_bridge import get_p115_service
 from services.secret_store import SecretStore
+from services.cloud115_service import Cloud115Service
 import json
 
 cloud115_bp = Blueprint('cloud115', __name__, url_prefix='/api/115')
@@ -10,13 +11,15 @@ cloud115_bp = Blueprint('cloud115', __name__, url_prefix='/api/115')
 # These will be set by init_cloud115_blueprint
 _secret_store = None
 _p115_service = None
+_cloud115_service = None
 
 
 def init_cloud115_blueprint(secret_store: SecretStore):
     """Initialize cloud115 blueprint with secret store."""
-    global _secret_store, _p115_service
+    global _secret_store, _p115_service, _cloud115_service
     _secret_store = secret_store
     _p115_service = get_p115_service()
+    _cloud115_service = Cloud115Service(secret_store)
     return cloud115_bp
 
 
@@ -228,4 +231,205 @@ def get_session_health():
         return jsonify({
             'success': False,
             'error': f'Failed to check session: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/directories', methods=['GET'])
+@require_auth
+def list_directories():
+    """List directory contents from 115 cloud."""
+    try:
+        cid = request.args.get('cid', '0')
+        
+        result = _cloud115_service.list_directory(cid)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'data': result.get('data', [])
+            }), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to list directories: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/files/rename', methods=['POST'])
+@require_auth
+def rename_file():
+    """Rename a file or folder on 115 cloud."""
+    try:
+        data = request.get_json() or {}
+        
+        file_id = data.get('fileId') or data.get('file_id')
+        new_name = data.get('newName') or data.get('new_name')
+        
+        if not file_id:
+            return jsonify({
+                'success': False,
+                'error': 'fileId is required'
+            }), 400
+        
+        if not new_name:
+            return jsonify({
+                'success': False,
+                'error': 'newName is required'
+            }), 400
+        
+        result = _cloud115_service.rename_file(file_id, new_name)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to rename: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/files/move', methods=['POST'])
+@require_auth
+def move_file():
+    """Move a file or folder to another directory on 115 cloud."""
+    try:
+        data = request.get_json() or {}
+        
+        file_id = data.get('fileId') or data.get('file_id')
+        target_cid = data.get('targetCid') or data.get('target_cid')
+        
+        if not file_id:
+            return jsonify({
+                'success': False,
+                'error': 'fileId is required'
+            }), 400
+        
+        if not target_cid:
+            return jsonify({
+                'success': False,
+                'error': 'targetCid is required'
+            }), 400
+        
+        result = _cloud115_service.move_file(file_id, target_cid)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to move: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/files', methods=['DELETE'])
+@require_auth
+def delete_file():
+    """Delete a file or folder from 115 cloud."""
+    try:
+        data = request.get_json() or {}
+        
+        file_id = data.get('fileId') or data.get('file_id')
+        
+        if not file_id:
+            return jsonify({
+                'success': False,
+                'error': 'fileId is required'
+            }), 400
+        
+        result = _cloud115_service.delete_file(file_id)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to delete: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/files/offline', methods=['POST'])
+@require_auth
+def create_offline_task():
+    """Create an offline download task (alias for /api/115/offline/tasks)."""
+    try:
+        data = request.get_json() or {}
+        username = get_jwt_identity()
+        
+        source_url = data.get('sourceUrl') or data.get('source_url')
+        save_cid = data.get('saveCid') or data.get('save_cid')
+        
+        if not source_url:
+            return jsonify({
+                'success': False,
+                'error': 'sourceUrl is required'
+            }), 400
+        
+        if not save_cid:
+            return jsonify({
+                'success': False,
+                'error': 'saveCid is required'
+            }), 400
+        
+        # Create task via cloud115 service first to get p115 task ID
+        result = _cloud115_service.create_offline_task(source_url, save_cid)
+        
+        if not result.get('success'):
+            return jsonify(result), 400
+        
+        p115_task_id = result['data'].get('p115TaskId')
+        
+        # Import offline task service at runtime to avoid circular dependency
+        from main import get_offline_task_service
+        offline_service = get_offline_task_service()
+        
+        if offline_service:
+            # Store in local database
+            local_result = offline_service.create_task(
+                source_url=source_url,
+                save_cid=save_cid,
+                requested_by=username,
+                requested_chat=''
+            )
+            
+            if local_result.get('success'):
+                # Update with p115 task ID
+                task = offline_service.get_task(local_result['data']['id'])
+                if task:
+                    from models.database import get_session_factory
+                    from main import get_app
+                    app = get_app()
+                    session = app.session_factory()
+                    task.p115_task_id = p115_task_id
+                    session.merge(task)
+                    session.commit()
+                    session.close()
+                
+                return jsonify(local_result), 201
+        
+        # Fallback: return just the 115 task info
+        return jsonify({
+            'success': True,
+            'data': {
+                'p115TaskId': p115_task_id,
+                'sourceUrl': source_url,
+                'saveCid': save_cid
+            }
+        }), 201
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to create offline task: {str(e)}'
         }), 500
