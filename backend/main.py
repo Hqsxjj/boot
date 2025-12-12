@@ -11,11 +11,13 @@ from blueprints.auth import auth_bp, init_auth_blueprint
 from blueprints.config import config_bp, init_config_blueprint
 from blueprints.health import health_bp
 from blueprints.cloud115 import cloud115_bp, init_cloud115_blueprint
+from blueprints.cloud123 import cloud123_bp, init_cloud123_blueprint
 from blueprints.offline import offline_bp, init_offline_blueprint
 from models.database import init_db, get_session_factory
 from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
 from services.cloud115_service import Cloud115Service
+from services.cloud123_service import Cloud123Service
 from services.offline_tasks import OfflineTaskService
 from services.task_poller import create_task_poller
 
@@ -114,12 +116,16 @@ def create_app(config=None):
     # Initialize cloud115 service
     cloud115_service = Cloud115Service(secret_store)
     
+    # Initialize cloud123 service
+    cloud123_service = Cloud123Service(secret_store)
+    
     # Initialize offline task service and poller
     offline_task_service = OfflineTaskService(session_factory, store, None, cloud115_service)
     task_poller = create_task_poller(offline_task_service)
     
     # Store services in app context
     app.cloud115_service = cloud115_service
+    app.cloud123_service = cloud123_service
     app.offline_task_service = offline_task_service
     app.task_poller = task_poller
     
@@ -131,12 +137,14 @@ def create_app(config=None):
     init_auth_blueprint(store)
     init_config_blueprint(store, secret_store)
     init_cloud115_blueprint(secret_store)
+    init_cloud123_blueprint(secret_store)
     init_offline_blueprint(offline_task_service)
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(cloud115_bp)
+    app.register_blueprint(cloud123_bp)
     app.register_blueprint(offline_bp)
     
     # Root endpoint

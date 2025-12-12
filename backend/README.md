@@ -65,11 +65,39 @@ Environment variables:
 - `JWT_SECRET_KEY`: JWT signing key (default: `jwt-secret-key-change-in-production`)
 - `DATA_PATH`: Path to JSON data file (default: `/data/appdata.json`)
 - `DATABASE_URL`: SQLAlchemy database URL (default: `sqlite:////data/secrets.db`)
+- `CONFIG_YAML_PATH`: Path to YAML config file (default: `/data/config.yml`)
 - `SECRETS_ENCRYPTION_KEY`: Encryption key for secret store (default: auto-generated)
 - `CORS_ORIGINS`: Comma-separated list of allowed origins (default: `http://localhost:5173,http://localhost:3000`)
 - `OFFLINE_TASK_POLL_INTERVAL`: Background poller interval in seconds (default: `60`)
 - `PORT`: Server port (default: `5000`)
 - `DEBUG`: Enable debug mode (default: `False`)
+
+### 115 Cloud Setup
+
+115 Cloud credentials are stored encrypted in the database. Configure via:
+1. **QR Code Login**: `POST /api/115/login/qrcode` followed by `GET /api/115/login/status/<sessionId>`
+2. **Cookie Import**: `POST /api/115/login/cookie` with cookies dict
+
+### 123 Cloud Setup
+
+123 Cloud supports two authentication methods:
+
+**OAuth Method** (Recommended):
+1. Obtain `clientId` and `clientSecret` from 123 Cloud developer console
+2. Call `POST /api/123/login/oauth` with credentials
+3. Credentials are encrypted and stored in the database
+
+**Cookie Method**:
+1. Extract session cookies from browser
+2. Call `POST /api/123/login/cookie` with cookies dict
+3. Cookies are encrypted and stored in the database
+
+Credentials can also be managed through the frontend configuration UI (`/api/config` endpoints). The config includes:
+- `cloud123.enabled`: Enable/disable 123 cloud integration
+- `cloud123.clientId`: OAuth client ID (optional, can be set via API)
+- `cloud123.clientSecret`: OAuth client secret (stored encrypted, never exposed in responses)
+- `cloud123.downloadPath`: Default directory ID for downloads (defaults to `/`)
+- `cloud123.qps`: Queries per second rate limit (defaults to 1.0)
 
 ## Running the Server
 
@@ -337,6 +365,150 @@ Check 115 session health and validity.
     "hasValidSession": true,
     "lastCheck": "2024-01-01T12:00:00.000000",
     "message": "Session check complete"
+  }
+}
+```
+
+### 123 Cloud Integration
+
+123 Cloud is an alternative cloud storage provider. Configure it via OAuth credentials or manual cookie import.
+
+#### OAuth Login
+
+**POST** `/api/123/login/oauth`
+
+Store OAuth credentials for 123 cloud (clientId and clientSecret).
+
+```json
+// Request (requires Authorization header)
+{
+  "clientId": "your-client-id",
+  "clientSecret": "your-client-secret"
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "message": "OAuth credentials stored successfully"
+  }
+}
+```
+
+#### Ingest Manual Cookies
+
+**POST** `/api/123/login/cookie`
+
+Manually ingest and validate 123 cookies.
+
+```json
+// Request (requires Authorization header)
+{
+  "cookies": {
+    "sessionId": "...",
+    "token": "...",
+    "userId": "..."
+  }
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "message": "Cookies validated and stored successfully"
+  }
+}
+```
+
+#### Get Session Health
+
+**GET** `/api/123/session`
+
+Check 123 session health and validity.
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": {
+    "hasValidSession": true,
+    "lastCheck": "2024-01-01T12:00:00.000000",
+    "message": "Session check complete"
+  }
+}
+```
+
+#### List Directories
+
+**GET** `/api/123/directories?dirId=/`
+
+List directory contents from 123 cloud.
+
+```json
+// Response (requires Authorization header)
+{
+  "success": true,
+  "data": [
+    {
+      "id": "file-id",
+      "name": "Document.pdf",
+      "children": false,
+      "date": "2024-01-01"
+    },
+    {
+      "id": "dir-id",
+      "name": "Downloads",
+      "children": true,
+      "date": "2024-01-01"
+    }
+  ]
+}
+```
+
+#### File Operations
+
+**POST** `/api/123/files/rename` - Rename a file or folder
+**POST** `/api/123/files/move` - Move a file or folder
+**DELETE** `/api/123/files` - Delete a file or folder
+
+Example rename:
+```json
+// Request
+{
+  "fileId": "file-123",
+  "newName": "NewName.pdf"
+}
+
+// Response
+{
+  "success": true,
+  "data": {
+    "fileId": "file-123",
+    "newName": "NewName.pdf"
+  }
+}
+```
+
+#### Offline Tasks
+
+**POST** `/api/123/offline/tasks` - Create offline download task
+**GET** `/api/123/offline/tasks/<taskId>` - Get task status
+
+Example create task:
+```json
+// Request
+{
+  "sourceUrl": "https://example.com/file.zip",
+  "saveDirId": "/"
+}
+
+// Response (201 Created)
+{
+  "success": true,
+  "data": {
+    "p123TaskId": "task-123",
+    "sourceUrl": "https://example.com/file.zip",
+    "saveDirId": "/"
   }
 }
 ```

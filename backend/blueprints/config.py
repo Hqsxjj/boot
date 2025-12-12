@@ -17,11 +17,17 @@ def _add_session_flags(config: dict, secret_store: SecretStore) -> dict:
     """Add session health flags to config."""
     if not secret_store:
         config['cloud115']['hasValidSession'] = False
+        config['cloud123']['hasValidSession'] = False
         return config
     
     # Check if we have valid 115 cookies
     cookies_json = secret_store.get_secret('cloud115_cookies')
     config['cloud115']['hasValidSession'] = bool(cookies_json)
+    
+    # Check if we have valid 123 token or cookies
+    token_json = secret_store.get_secret('cloud123_token')
+    cookies_123_json = secret_store.get_secret('cloud123_cookies')
+    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json)
     
     return config
 
