@@ -1,42 +1,57 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
-import { loadConfig, saveConfig } from '../services/mockConfig';
+import { api } from '../services/api'; // 引入真实的 API
 import { Save, RefreshCw, KeyRound, User, Smartphone, Wifi, Shield, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
 export const UserCenterView: React.FC = () => {
-  const [config, setConfig] = useState<AppConfig>(loadConfig());
+  // 1. 状态管理：config 初始为 null，等待从后端加载
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [newPassword, setNewPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isPwSaving, setIsPwSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   
-  // 2FA Setup State
+  // 2FA 状态
   const [isSetup2FA, setIsSetup2FA] = useState(false);
   const [tempSecret, setTempSecret] = useState('');
+  const [qrCodeUri, setQrCodeUri] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [setupError, setSetupError] = useState('');
 
-  // PWA State
+  // PWA 状态
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
+  // 2. 初始化：加载真实配置
   useEffect(() => {
-    // Check if installed
+    fetchConfig();
+
+    // PWA 检测逻辑
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsPwaInstalled(true);
     }
-
-    // Capture install prompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
+
+  // 从后端获取数据
+  const fetchConfig = async () => {
+    try {
+      const data = await api.getConfig();
+      setConfig(data as AppConfig);
+    } catch (error) {
+      setToast('连接服务器失败，请检查后端是否启动 (端口8000)');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handlePwaInstall = () => {
     if (deferredPrompt) {
@@ -44,104 +59,132 @@ export const UserCenterView: React.FC = () => {
       deferredPrompt.userChoice.then((choiceResult: any) => {
         if (choiceResult.outcome === 'accepted') {
           console.log('User accepted the PWA prompt');
-        } else {
-          console.log('User dismissed the PWA prompt');
         }
         setDeferredPrompt(null);
       });
     }
   };
 
+  // 更新嵌套对象通用方法
   const updateNested = (section: keyof AppConfig, key: string, value: any) => {
-    setConfig(prev => ({
+    if (!config) return;
+    setConfig(prev => prev ? ({
       ...prev,
       [section]: { ...(prev[section] as any), [key]: value }
-    }));
+    }) : null);
   };
 
-  const handleSave = () => {
+  // 3. 保存配置到后端
+  const handleSave = async () => {
+    if (!config) return;
     setIsSaving(true);
-    setTimeout(() => {
-      saveConfig(config);
-      setIsSaving(false);
-      setToast('配置已更新');
+    try {
+      await api.saveConfig(config);
+      setToast('配置已保存到服务器');
       setTimeout(() => setToast(null), 3000);
-    }, 800);
+    } catch (error) {
+      setToast('保存失败');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handlePasswordSave = () => {
+  // 修改密码
+  const handlePasswordSave = async () => {
     if (!newPassword) return;
     setIsPwSaving(true);
-    setTimeout(() => {
-      setIsPwSaving(false);
+    try {
+      await api.updatePassword(newPassword);
       setNewPassword('');
       setToast('管理员密码已修改');
       setTimeout(() => setToast(null), 3000);
-    }, 1000);
+    } catch (error) {
+      setToast('修改密码失败');
+    } finally {
+      setIsPwSaving(false);
+    }
   };
 
   const fillLocalIp = () => {
       updateNested('proxy', 'host', window.location.hostname);
   };
 
-  const start2FASetup = () => {
-      const randomSecret = 'JBSWY3DPEHPK3PXP' + Math.floor(Math.random() * 10000).toString();
-      setTempSecret(randomSecret);
-      setVerifyCode('');
-      setSetupError('');
-      setIsSetup2FA(true);
+  // 4. 2FA 流程：向后端申请密钥
+  const start2FASetup = async () => {
+      try {
+          const data = await api.setup2FA();
+          setTempSecret(data.secret);
+          setQrCodeUri(data.qrCodeUri); // 保存二维码链接
+          setVerifyCode('');
+          setSetupError('');
+          setIsSetup2FA(true);
+      } catch (e) {
+          setToast("无法初始化 2FA");
+      }
   };
 
   const cancel2FASetup = () => {
       setIsSetup2FA(false);
       setTempSecret('');
+      setQrCodeUri('');
   };
 
-  const confirm2FASetup = () => {
-      if (verifyCode === '123456') {
-          setConfig(prev => ({ ...prev, twoFactorSecret: tempSecret }));
+  // 向后端验证 OTP
+  const confirm2FASetup = async () => {
+      try {
+          await api.verify2FA(verifyCode);
+          setConfig(prev => prev ? ({ ...prev, twoFactorSecret: tempSecret }) : null);
           setIsSetup2FA(false);
-          setToast('2FA 配置已更新');
+          setToast('2FA 已启用');
           setTimeout(() => setToast(null), 3000);
-          saveConfig({ ...config, twoFactorSecret: tempSecret });
       } else {
-          setSetupError('验证码错误 (测试用: 123456)');
+          setSetupError('验证码错误');
       }
   };
 
-  // Service Status Definitions
+  // Loading 界面
+  if (loading || !config) {
+      return (
+          <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
+              <RefreshCw className="animate-spin" /> 正在加载配置...
+          </div>
+      );
+  }
+
+  // --- UI 定义 ---
+  
   const services = [
     {
         name: '115 网盘',
-        isConnected: !!config.cloud115.cookies,
+        isConnected: !!config.cloud115?.cookies, // 使用 ?. 防止空指针
         icon: HardDrive,
         colorClass: 'text-orange-600 dark:text-orange-400',
         bgClass: 'bg-orange-50 dark:bg-orange-900/20'
     },
     {
         name: '123 云盘',
-        isConnected: config.cloud123.enabled && !!config.cloud123.clientId,
+        isConnected: config.cloud123?.enabled && !!config.cloud123?.clientId,
         icon: Cloud,
         colorClass: 'text-blue-600 dark:text-blue-400',
         bgClass: 'bg-blue-50 dark:bg-blue-900/20'
     },
     {
         name: 'OpenList',
-        isConnected: config.openList.enabled && !!config.openList.url,
+        isConnected: config.openList?.enabled && !!config.openList?.url,
         icon: Globe,
         colorClass: 'text-cyan-600 dark:text-cyan-400',
         bgClass: 'bg-cyan-50 dark:bg-cyan-900/20'
     },
     {
         name: 'TMDB',
-        isConnected: !!config.tmdb.apiKey,
+        isConnected: !!config.tmdb?.apiKey,
         icon: Film,
         colorClass: 'text-pink-600 dark:text-pink-400',
         bgClass: 'bg-pink-50 dark:bg-pink-900/20'
     },
     {
         name: 'TG 机器人',
-        isConnected: !!config.telegram.botToken,
+        isConnected: !!config.telegram?.botToken,
         icon: Bot,
         colorClass: 'text-sky-600 dark:text-sky-400',
         bgClass: 'bg-sky-50 dark:bg-sky-900/20'
@@ -165,7 +208,7 @@ export const UserCenterView: React.FC = () => {
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight drop-shadow-sm">用户中心</h2>
       </div>
 
-      {/* Service Status Grid (Updated to 6 columns for large screens) */}
+      {/* 服务状态网格 */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {services.map((service) => (
             <div key={service.name} className={`${glassCardClass} p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300`}>
@@ -176,13 +219,9 @@ export const UserCenterView: React.FC = () => {
                     <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{service.name}</div>
                     <div className={`text-[10px] font-medium mt-1 flex items-center justify-center gap-1.5 ${service.isConnected ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
                         {service.isConnected ? (
-                            <>
-                                <CheckCircle2 size={12} /> 已连接
-                            </>
+                            <> <CheckCircle2 size={12} /> 已连接 </>
                         ) : (
-                            <>
-                                <AlertCircle size={12} /> 未配置
-                            </>
+                            <> <AlertCircle size={12} /> 未配置 </>
                         )}
                     </div>
                 </div>
@@ -192,7 +231,7 @@ export const UserCenterView: React.FC = () => {
             </div>
         ))}
 
-        {/* PWA Module as the 6th Item */}
+        {/* PWA 模块 */}
         <div 
            onClick={!isPwaInstalled && deferredPrompt ? handlePwaInstall : undefined}
            className={`${glassCardClass} p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 ${!isPwaInstalled && deferredPrompt ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/50' : ''}`}
@@ -204,13 +243,9 @@ export const UserCenterView: React.FC = () => {
                 <div className="text-sm font-bold text-slate-700 dark:text-slate-200">PWA 应用</div>
                 <div className={`text-[10px] font-medium mt-1 flex items-center justify-center gap-1.5 ${isPwaInstalled ? 'text-green-600 dark:text-green-400' : 'text-indigo-500'}`}>
                     {isPwaInstalled ? (
-                        <>
-                             <CheckCircle2 size={12} /> 已安装
-                        </>
+                        <> <CheckCircle2 size={12} /> 已安装 </>
                     ) : deferredPrompt ? (
-                        <>
-                             <Download size={12} /> 点击安装
-                        </>
+                        <> <Download size={12} /> 点击安装 </>
                     ) : (
                         <span className="text-slate-400">不支持/已安装</span>
                     )}
@@ -221,7 +256,7 @@ export const UserCenterView: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Account Settings */}
+        {/* 管理员账号设置 */}
         <section className={`${glassCardClass} flex flex-col`}>
            <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -262,9 +297,9 @@ export const UserCenterView: React.FC = () => {
                 </div>
               </div>
            </div>
-        </section>
+        section>
 
-        {/* 2FA Settings */}
+        {/* 2FA 设置 */}
         <section className={`${glassCardClass} flex flex-col`}>
            <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
               <Smartphone size={18} className="text-slate-400" />
@@ -274,12 +309,12 @@ export const UserCenterView: React.FC = () => {
            {!isSetup2FA ? (
                <div className="p-6 flex-1 flex flex-col justify-between">
                    <div className="flex items-center gap-4 mb-6">
-                        <div className={`p-3 rounded-full shadow-inner ${config.twoFactorSecret ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
+                        <div className={`p-3 rounded-full shadow-inner ${config?.twoFactorSecret ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
                             <Shield size={24} />
                         </div>
                         <div>
                             <h4 className="font-bold text-slate-800 dark:text-white text-base">
-                                {config.twoFactorSecret ? '已启用保护' : '未启用保护'}
+                                {config?.twoFactorSecret ? '已启用保护' : '未启用保护'}
                             </h4>
                         </div>
                    </div>
@@ -287,8 +322,8 @@ export const UserCenterView: React.FC = () => {
                   <div className="mb-5">
                       <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">当前密钥 (Secret Key)</label>
                       <SensitiveInput
-                          value={config.twoFactorSecret || ''}
-                          onChange={(e) => {}} // Read-only via Setup
+                          value={config?.twoFactorSecret || ''}
+                          onChange={(e) => {}} 
                           className={inputClass + " font-mono"}
                        />
                   </div>
@@ -297,7 +332,7 @@ export const UserCenterView: React.FC = () => {
                     onClick={start2FASetup}
                     className="w-full py-2.5 bg-white/50 dark:bg-white/5 border-[0.5px] border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold hover:border-brand-500 hover:text-brand-600 transition-colors shadow-sm"
                   >
-                      {config.twoFactorSecret ? '重置 / 配置验证' : '立即设置验证'}
+                      {config?.twoFactorSecret ? '重置 / 配置验证' : '立即设置验证'}
                   </button>
                </div>
            ) : (
@@ -305,8 +340,9 @@ export const UserCenterView: React.FC = () => {
                   <h4 className="font-bold text-slate-800 dark:text-white mb-4 text-sm">设置步骤</h4>
                   
                   <div className="bg-white/50 dark:bg-slate-900/50 p-4 rounded-xl border-[0.5px] border-slate-200 dark:border-slate-700/50 flex flex-col items-center mb-4">
+                      {/* 这里使用后端传回的 URI 或者二维码生成服务 */}
                       <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/115BotAdmin?secret=${tempSecret}&issuer=115Bot`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrCodeUri)}`}
                         alt="2FA QR"
                         className="w-28 h-28 mb-4 rounded-lg mix-blend-multiply dark:mix-blend-normal opacity-90"
                       />
@@ -347,7 +383,7 @@ export const UserCenterView: React.FC = () => {
            )}
         </section>
 
-        {/* Network Proxy */}
+        {/* 网络代理设置 - 已完整恢复 */}
         <section className={`${glassCardClass} lg:col-span-2`}>
           <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -356,7 +392,7 @@ export const UserCenterView: React.FC = () => {
             </div>
             
             <div className="flex items-center gap-4">
-                {config.proxy.enabled && (
+                {config?.proxy?.enabled && (
                     <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100/50 dark:bg-slate-700/30 border border-slate-200/50 dark:border-slate-600/50">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                         <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">128ms</span>
@@ -379,7 +415,7 @@ export const UserCenterView: React.FC = () => {
                  <div className="md:col-span-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">类型 (Type)</label>
                     <select 
-                      value={config.proxy.type}
+                      value={config?.proxy?.type || 'http'}
                       onChange={(e) => updateNested('proxy', 'type', e.target.value)}
                       className={inputClass}
                     >
@@ -395,14 +431,14 @@ export const UserCenterView: React.FC = () => {
                     <div className="flex gap-3">
                        <input
                         type="text"
-                        value={config.proxy.host}
+                        value={config?.proxy?.host || ''}
                         onChange={(e) => updateNested('proxy', 'host', e.target.value)}
                         placeholder="192.168.1.5"
                         className={`${inputClass} flex-1 font-mono`}
                       />
                       <input
                         type="text"
-                        value={config.proxy.port}
+                        value={config?.proxy?.port || ''}
                         onChange={(e) => updateNested('proxy', 'port', e.target.value)}
                         placeholder="7890"
                         className={`${inputClass} w-24 font-mono`}
