@@ -1,72 +1,51 @@
 # ==========================================
-# 第一阶段：构建前端 (Builder)
+# 第一阶段：前端构建 (Builder)
 # ==========================================
 FROM node:18-alpine as frontend-builder
 WORKDIR /app-frontend
 
-# 1. 前端依赖
+# 1. 复制 package.json 并安装依赖
 COPY package.json package-lock.json* ./
+# 使用国内源，防止 build 卡死
+RUN npm config set registry https://registry.npmmirror.com
 RUN npm install --legacy-peer-deps
 
-# 2. 复制根目录所有文件 (包含前端源码)
+# 2. 复制源码并执行构建
 COPY . .
-
-# 3. 构建前端
-RUN npm run build && \
-    echo "=== Frontend build completed ===" && \
-    ls -la dist/ && \
-    cat dist/index.html | head -20
+# 这里会生成 dist 目录
+RUN npm run build
 
 # ==========================================
-# 第二阶段：构建后端 (Runtime)
+# 第二阶段：后端运行 (Runtime)
 # ==========================================
 FROM python:3.12-slim
-
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# 1. 安装 Nginx 和系统依赖
-# [关键修改] 在安装完后，立即删除 Nginx 的默认配置文件
+# 1. 安装系统依赖和 Nginx
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx \
-    procps \
-    gcc \
-    g++ \
-    libc6-dev \
-    libffi-dev \
-    libssl-dev \
-    dos2unix \
+    nginx procps dos2unix \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /etc/nginx/sites-enabled/default
 
-# 2. 从 backend 子目录复制依赖清单
+# 2. 安装 Python 依赖
 COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && pip install gunicorn
 
-# 3. 安装 Python 依赖
-RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
-    pip install gunicorn
-
-# 4. 复制代码 (main.py 等)
+# 3. 复制代码
 COPY backend/ .
 
-# 5. 部署前端静态文件
+# 4. ★关键★：把第一阶段做好的 dist 放入 Nginx 目录
 RUN rm -rf /usr/share/nginx/html/*
 COPY --from=frontend-builder /app-frontend/dist /usr/share/nginx/html
 
-# 6. 复制 Nginx 配置
+# 5. 复制配置文件
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# 7. 启动脚本
 COPY start.sh /start.sh
 RUN dos2unix /start.sh && chmod +x /start.sh
 
-# 8. 创建数据目录
+# 6. 设置目录权限
 RUN mkdir -p /data/strm /data/logs
-
 VOLUME ["/data", "/data/strm"]
 
 EXPOSE 18080
-
 CMD ["/start.sh"]
