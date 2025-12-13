@@ -9,7 +9,7 @@ import json
 import sys
 
 
-def smoke_test(base_url="http://localhost:5000"):
+def smoke_test(base_url="http://localhost:8000"):
     """Run smoke tests against a running Flask server."""
     print(f"Running smoke tests against {base_url}")
     print("=" * 60)
