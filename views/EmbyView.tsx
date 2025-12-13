@@ -382,19 +382,19 @@ export const EmbyView: React.FC = () => {
                                         <table className="w-full text-left text-sm">
                                             <thead className="text-slate-500 dark:text-slate-400 bg-white/20 dark:bg-white/5 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 sticky top-0 backdrop-blur-sm">
                                                 <tr>
-                                                    <th className="p-3 font-medium w-16">海报</th>
-                                                    <th className="p-3 font-medium min-w-[180px]">剧集名称</th>
-                                                    <th className="p-3 font-medium w-20 text-center">季</th>
-                                                    <th className="p-3 font-medium w-20 text-center">总集数</th>
-                                                    <th className="p-3 font-medium w-20 text-center">已有</th>
-                                                    <th className="p-3 font-medium text-red-500 min-w-[120px]">缺失集数</th>
+                                                    <th className="p-4 font-medium w-24">海报</th>
+                                                    <th className="p-4 font-medium min-w-[140px]">剧集名称</th>
+                                                    <th className="p-4 font-medium w-24 text-center">季</th>
+                                                    <th className="p-4 font-medium w-24 text-center">总集数</th>
+                                                    <th className="p-4 font-medium w-24 text-center">已有</th>
+                                                    <th className="p-4 font-medium text-red-500 min-w-[140px]">缺失集数</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                                 {missingData.map((item) => (
                                                     <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
-                                                        <td className="p-3">
-                                                            <div className="w-12 h-[72px] bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 rounded-lg overflow-hidden shadow-md flex-shrink-0">
+                                                        <td className="p-4">
+                                                            <div className="w-16 h-24 bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 rounded-lg overflow-hidden shadow-lg flex-shrink-0">
                                                                 {item.poster ? (
                                                                     <img src={item.poster} alt="poster" className="w-full h-full object-cover" />
                                                                 ) : (
@@ -402,22 +402,22 @@ export const EmbyView: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="p-3">
-                                                            <span className="font-semibold text-slate-800 dark:text-slate-200">{item.name}</span>
+                                                        <td className="p-4">
+                                                            <span className="font-semibold text-slate-800 dark:text-slate-200 text-base">{item.name}</span>
                                                         </td>
-                                                        <td className="p-3 text-center">
+                                                        <td className="p-4 text-center">
                                                             <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-xs font-bold">
                                                                 S{String(item.season).padStart(2, '0')}
                                                             </span>
                                                         </td>
-                                                        <td className="p-3 text-center text-slate-600 dark:text-slate-400 font-medium">{item.totalEp}</td>
-                                                        <td className="p-3 text-center">
+                                                        <td className="p-4 text-center text-slate-600 dark:text-slate-400 font-medium text-base">{item.totalEp}</td>
+                                                        <td className="p-4 text-center">
                                                             <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-bold">
                                                                 {item.localEp}
                                                             </span>
                                                         </td>
-                                                        <td className="p-3">
-                                                            <span className="text-red-500 dark:text-red-400 font-mono font-bold text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                                                        <td className="p-4">
+                                                            <span className="text-red-500 dark:text-red-400 font-mono font-bold text-sm bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded">
                                                                 {item.missing}
                                                             </span>
                                                         </td>
