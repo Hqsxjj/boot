@@ -43,13 +43,13 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     
-    # [微调] CORS configuration - 补充了 18080 端口，增强兼容性
-    default_origins = 'http://localhost:5173,http://localhost:3000,http://localhost:18080,http://127.0.0.1:18080'
-    cors_origins = os.environ.get('CORS_ORIGINS', default_origins).split(',')
+    # [微调] CORS configuration - 允许所有来源 (Regex) 以支持 LAN IP 访问
+    # default_origins = 'http://localhost:5173,http://localhost:3000,http://localhost:18080'
+    # cors_origins = os.environ.get('CORS_ORIGINS', default_origins).split(',')
     
     CORS(app, resources={
         r"/api/*": {
-            "origins": cors_origins,
+            "origins": r"^https?://.*$",  # 允许所有 HTTP/HTTPS 来源
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "expose_headers": ["Content-Type", "Authorization"],

@@ -461,7 +461,7 @@ export const UserCenterView: React.FC = () => {
                       value={config?.proxy?.host || ''}
                       onChange={(e) => updateNested('proxy', 'host', e.target.value)}
                       placeholder="192.168.1.5 或 proxy.example.com"
-                      className={`${inputClass} flex-[3] font-mono`}
+                      className={`${inputClass} flex-1 font-mono`}
                     />
                     <input
                       type="text"
