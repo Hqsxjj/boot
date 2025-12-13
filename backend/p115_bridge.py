@@ -87,41 +87,84 @@ class P115Service:
             
             session_id = str(uuid.uuid4())
             
-            # 确定使用的 app_id
-            if login_method == 'open_app' and app_id:
-                # 第三方应用模式：使用用户提供的 App ID
+            # 区分两种登录逻辑
+            if login_method == 'open_app':
+                # 第三方应用模式：使用 login_qrcode_token_open
+                if not app_id:
+                    return {
+                        'error': 'App ID is required for open_app login method',
+                        'success': False
+                    }
+                
                 actual_app_id = int(app_id) if isinstance(app_id, str) and app_id.isdigit() else app_id
+                
+                # 使用 login_qrcode_token_open 获取第三方应用二维码
+                qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
+                
+                if qr_token_result.get('state') != 1:
+                    return {
+                        'error': f"Failed to get QR token: {qr_token_result.get('message', qr_token_result.get('error', 'Unknown error'))}",
+                        'success': False
+                    }
+                
+                qr_data = qr_token_result.get('data', {})
+                qrcode_url = qr_data.get('qrcode', '')
+                
+                # 如果返回数据包含 uid，也存储它
+                uid = qr_data.get('uid', '')
+                
+                # Cache session info - open_app 模式
+                self._session_cache[session_id] = {
+                    'uid': uid,
+                    'qr_data': qr_data,
+                    'login_method': 'open_app',
+                    'login_app': 'open_app',
+                    'app_id': actual_app_id,
+                    'started_at': datetime.now(),
+                    'status': 'pending'
+                }
+                
+                return {
+                    'sessionId': session_id,
+                    'qrcode': qrcode_url,
+                    'login_method': 'open_app',
+                    'login_app': 'open_app'
+                }
             else:
-                # 普通扫码模式：根据 login_app 获取预设的 app_id
+                # 普通扫码模式：使用 login_qrcode_token
                 actual_app_id = ALL_DEVICE_PROFILES.get(login_app, 8)  # Default to web
-            
-            # Create login instance from cloud115.loginApp
-            if hasattr(p115client, 'cloud115'):
-                login_instance = p115client.cloud115.loginApp(app_id=actual_app_id)
-            else:
-                # Fallback: create basic login instance
-                login_instance = p115client.P115Client(login_method='qrcode')
-            
-            # Get QR code
-            qr_code_data = login_instance.get_qr_code()
-            
-            # Cache session info
-            self._session_cache[session_id] = {
-                'login_instance': login_instance,
-                'login_method': login_method,
-                'login_app': login_app,
-                'app_id': actual_app_id,
-                'third_party_app_id': app_id if login_method == 'open_app' else None,
-                'started_at': datetime.now(),
-                'status': 'pending'
-            }
-            
-            return {
-                'sessionId': session_id,
-                'qrcode': qr_code_data.get('qrcode') if isinstance(qr_code_data, dict) else str(qr_code_data),
-                'login_method': login_method,
-                'login_app': login_app
-            }
+                
+                qr_token_result = p115client.P115Client.login_qrcode_token()
+                
+                if qr_token_result.get('state') != 1:
+                    return {
+                        'error': f"Failed to get QR token: {qr_token_result.get('message', 'Unknown error')}",
+                        'success': False
+                    }
+                
+                qr_data = qr_token_result.get('data', {})
+                uid = qr_data.get('uid', '')
+                
+                # 构建二维码图片 URL
+                qrcode_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
+                
+                # Cache session info - 普通扫码模式
+                self._session_cache[session_id] = {
+                    'uid': uid,
+                    'qr_data': qr_data,
+                    'login_method': login_method,
+                    'login_app': login_app,
+                    'app_id': actual_app_id,
+                    'started_at': datetime.now(),
+                    'status': 'pending'
+                }
+                
+                return {
+                    'sessionId': session_id,
+                    'qrcode': qrcode_url,
+                    'login_method': login_method,
+                    'login_app': login_app
+                }
         except Exception as e:
             return {
                 'error': f'Failed to start QR login: {str(e)}',
@@ -139,6 +182,7 @@ class P115Service:
             Dict with status and cookies if successful
         """
         try:
+            p115client = self._get_p115client_module()
             session_info = self._session_cache.get(session_id)
             
             if not session_info:
@@ -156,56 +200,95 @@ class P115Service:
                     'status': 'expired'
                 }
             
-            login_instance = session_info['login_instance']
+            qr_data = session_info.get('qr_data', {})
+            uid = qr_data.get('uid', '')
+            time_val = qr_data.get('time', 0)
+            sign = qr_data.get('sign', '')
             
-            # Poll for scan status
-            try:
-                # Attempt to get scan result
-                if hasattr(login_instance, 'get_scan_status'):
-                    status = login_instance.get_scan_status()
-                elif hasattr(login_instance, 'check_login'):
-                    status = login_instance.check_login()
-                else:
-                    status = {'status': 'waiting'}
-                
-                if isinstance(status, dict):
-                    if status.get('status') == 'success' or status.get('success'):
-                        # Login successful, get cookies
-                        if hasattr(login_instance, 'get_cookies'):
-                            cookies = login_instance.get_cookies()
-                        elif hasattr(login_instance, 'cookies'):
-                            cookies = login_instance.cookies
-                        else:
-                            cookies = {}
-                        
-                        session_info['status'] = 'success'
-                        session_info['cookies'] = cookies
-                        
-                        return {
-                            'status': 'success',
-                            'cookies': cookies,
-                            'success': True
-                        }
-                    elif status.get('status') in ['waiting', 'pending']:
-                        return {
-                            'status': 'waiting',
-                            'success': True
-                        }
-                    elif status.get('status') == 'cancelled':
-                        session_info['status'] = 'cancelled'
-                        return {
-                            'status': 'cancelled',
-                            'success': False,
-                            'error': 'User cancelled login'
-                        }
-            except Exception:
-                pass
-            
-            # Still waiting
-            return {
-                'status': 'waiting',
-                'success': True
+            # 使用 login_qrcode_scan_status 检查扫码状态
+            # 构建 payload
+            payload = {
+                'uid': uid,
+                'time': time_val,
+                'sign': sign
             }
+            
+            try:
+                status_result = p115client.P115Client.login_qrcode_scan_status(payload)
+                
+                # 状态码含义:
+                # 0: 未扫描
+                # 1: 已扫描，等待确认
+                # 2: 已确认登录
+                # -1/-2: 二维码过期/已取消
+                
+                status_code = status_result.get('data', {}).get('status', 0)
+                
+                if status_code == 0:
+                    return {
+                        'status': 'waiting',
+                        'success': True
+                    }
+                elif status_code == 1:
+                    return {
+                        'status': 'scanned',
+                        'success': True
+                    }
+                elif status_code == 2:
+                    # 用户已确认，获取 cookies
+                    try:
+                        scan_result = p115client.P115Client.login_qrcode_scan(payload)
+                        
+                        if scan_result.get('state') == 1:
+                            cookie_data = scan_result.get('data', {}).get('cookie', {})
+                            
+                            # 解析 cookies - 可能是字符串格式或字典格式
+                            if isinstance(cookie_data, str):
+                                # 解析 cookie 字符串
+                                cookies = {}
+                                for part in cookie_data.split(';'):
+                                    part = part.strip()
+                                    if '=' in part:
+                                        key, value = part.split('=', 1)
+                                        cookies[key.strip()] = value.strip()
+                            elif isinstance(cookie_data, dict):
+                                cookies = cookie_data
+                            else:
+                                cookies = {}
+                            
+                            session_info['status'] = 'success'
+                            session_info['cookies'] = cookies
+                            
+                            return {
+                                'status': 'success',
+                                'cookies': cookies,
+                                'success': True
+                            }
+                        else:
+                            return {
+                                'status': 'error',
+                                'error': scan_result.get('message', 'Login failed'),
+                                'success': False
+                            }
+                    except Exception as e:
+                        return {
+                            'status': 'error',
+                            'error': f'Failed to complete login: {str(e)}',
+                            'success': False
+                        }
+                else:
+                    # 过期或取消
+                    session_info['status'] = 'expired'
+                    return {
+                        'status': 'expired',
+                        'success': False
+                    }
+            except Exception as e:
+                # API 调用失败，可能还在等待
+                return {
+                    'status': 'waiting',
+                    'success': True
+                }
         except Exception as e:
             return {
                 'error': f'Failed to poll status: {str(e)}',
