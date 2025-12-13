@@ -146,8 +146,9 @@ export const EmbyView: React.FC = () => {
     };
 
     const copyWebhook = () => {
-        navigator.clipboard.writeText(`http://${window.location.hostname}:18080/api/webhook/115bot`);
-        setToast('Webhook 地址已复制');
+        const port = window.location.port || '18080';
+        navigator.clipboard.writeText(`http://${window.location.hostname}:${port}/api/emby/webhook`);
+        setToast('Emby Webhook 地址已复制');
         setTimeout(() => setToast(null), 2000);
     };
 
@@ -188,11 +189,11 @@ export const EmbyView: React.FC = () => {
                         <div className="flex items-center gap-3">
                             {/* 连接状态指示器 */}
                             <div className={`flex items-center gap-2 px-3 py-1 rounded-full border-[0.5px] ${connectionStatus.success === true ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800' :
-                                    connectionStatus.success === false ? 'bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-800' :
-                                        'bg-slate-100/50 border-slate-200 dark:bg-slate-800/50 dark:border-slate-700'
+                                connectionStatus.success === false ? 'bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-800' :
+                                    'bg-slate-100/50 border-slate-200 dark:bg-slate-800/50 dark:border-slate-700'
                                 }`}>
                                 <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.success === true ? 'bg-green-500 animate-pulse' :
-                                        connectionStatus.success === false ? 'bg-red-500' : 'bg-slate-400'
+                                    connectionStatus.success === false ? 'bg-red-500' : 'bg-slate-400'
                                     }`}></div>
                                 <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">
                                     {connectionStatus.success === null ? '未连接' :
@@ -272,12 +273,13 @@ export const EmbyView: React.FC = () => {
                     <div className="p-6 space-y-6 transition-all duration-300">
                         <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-xl border-[0.5px] border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm">
                             <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Zap size={12} /> Webhook 回调地址</label>
+                                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Zap size={12} /> Emby Webhook 回调地址</label>
                                 <button onClick={copyWebhook} className="text-xs text-sky-600 hover:text-sky-500 flex items-center gap-1 font-bold"><Copy size={12} /> 复制</button>
                             </div>
                             <code className="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 break-all border-[0.5px] border-slate-200/50 dark:border-slate-800/50 select-all shadow-inner">
-                                http://{window.location.hostname}:18080/api/webhook/115bot
+                                http://{window.location.hostname}:{window.location.port || '18080'}/api/emby/webhook
                             </code>
+                            <p className="text-[10px] text-slate-400 mt-2">将此地址填入 Emby 服务器的 Webhook 设置中，可接收新媒体入库、播放开始/停止等通知</p>
                         </div>
 
                         <div className="space-y-4">
