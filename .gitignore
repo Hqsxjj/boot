@@ -14,3 +14,4 @@ config.json
 htmlcov
 venv/
 env/
+boot-test/
