@@ -383,6 +383,104 @@ class P115Service:
                 'success': False
             }
     
+    def save_share(self, share_code: str, access_code: str = None, 
+                   save_cid: str = '0', cookies: str = None) -> Dict[str, Any]:
+        """
+        转存 115 分享链接到指定目录。
+        
+        Args:
+            share_code: 分享码 (如 sw3xxxx)
+            access_code: 访问码/提取码
+            save_cid: 保存目录 ID，默认根目录
+            cookies: 可选的 cookies 字符串
+        
+        Returns:
+            Dict with success flag and saved file info
+        """
+        try:
+            p115client_mod = self._get_p115client_module()
+            
+            # 获取或创建 client
+            if cookies:
+                client = p115client_mod.P115Client(cookies=cookies)
+            elif self._client:
+                client = self._client
+            else:
+                return {
+                    'success': False,
+                    'error': '未登录 115 账号，请先登录'
+                }
+            
+            # 构建分享链接 URL
+            share_url = f"https://115.com/s/{share_code}"
+            if access_code:
+                share_url += f"?password={access_code}"
+            
+            # 先获取分享信息
+            try:
+                # 使用 share_snap 获取分享快照
+                share_info = client.share_snap({'share_code': share_code, 'receive_code': access_code or ''})
+                
+                if not share_info or share_info.get('state', True) is False:
+                    return {
+                        'success': False,
+                        'error': share_info.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                    }
+                
+                # 获取分享中的文件列表
+                file_list = share_info.get('data', {}).get('list', [])
+                if not file_list:
+                    return {
+                        'success': False,
+                        'error': '分享中没有文件'
+                    }
+                
+                # 获取所有文件 ID
+                file_ids = [str(f.get('fid') or f.get('file_id') or f.get('id')) for f in file_list]
+                
+                # 使用 share_receive 转存文件
+                receive_payload = {
+                    'share_code': share_code,
+                    'receive_code': access_code or '',
+                    'file_id': ','.join(file_ids),
+                    'cid': save_cid
+                }
+                
+                result = client.share_receive(receive_payload)
+                
+                if result and result.get('state', False):
+                    return {
+                        'success': True,
+                        'data': {
+                            'file_id': file_ids[0] if len(file_ids) == 1 else file_ids,
+                            'count': len(file_ids),
+                            'save_cid': save_cid
+                        },
+                        'message': f'成功转存 {len(file_ids)} 个文件'
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': result.get('error', '转存失败')
+                    }
+                    
+            except Exception as api_error:
+                return {
+                    'success': False,
+                    'error': f'调用分享 API 失败: {str(api_error)}'
+                }
+                
+        except ImportError:
+            return {
+                'success': False,
+                'error': 'p115client 未安装'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'转存失败: {str(e)}'
+            }
+    
     def clear_session(self, session_id: str = None):
         """Clear cached session(s)."""
         if session_id:

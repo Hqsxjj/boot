@@ -205,6 +205,84 @@ class Cloud123Service:
                 'error': f'Unexpected error: {str(e)}'
             }
 
+    def save_share(self, share_code: str, access_code: str = None,
+                   save_path: str = '0') -> Dict[str, Any]:
+        """
+        转存 123 云盘分享链接到指定目录。
+        
+        Args:
+            share_code: 分享码 (如 abc123-xyz)
+            access_code: 提取码
+            save_path: 保存目录 ID，默认根目录
+        
+        Returns:
+            Dict with success flag and saved file info
+        """
+        try:
+            # 首先获取分享信息
+            share_info_payload = {
+                'shareKey': share_code,
+                'sharePwd': access_code or ''
+            }
+            
+            share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
+            
+            if not share_result.get('success'):
+                return {
+                    'success': False,
+                    'error': share_result.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                }
+            
+            share_data = share_result.get('data', {})
+            file_list = share_data.get('fileList', []) if isinstance(share_data, dict) else []
+            
+            if not file_list:
+                return {
+                    'success': False,
+                    'error': '分享中没有文件'
+                }
+            
+            # 获取所有文件 ID
+            file_ids = [item.get('fileId') for item in file_list if item.get('fileId')]
+            
+            if not file_ids:
+                return {
+                    'success': False,
+                    'error': '无法获取分享文件列表'
+                }
+            
+            # 转存文件
+            save_payload = {
+                'shareKey': share_code,
+                'sharePwd': access_code or '',
+                'fileIdList': file_ids,
+                'parentFileId': int(save_path) if save_path != '0' else 0
+            }
+            
+            save_result = self._make_api_request('POST', '/api/v1/share/file/save', json_data=save_payload)
+            
+            if save_result.get('success'):
+                return {
+                    'success': True,
+                    'data': {
+                        'file_id': file_ids[0] if len(file_ids) == 1 else file_ids,
+                        'count': len(file_ids),
+                        'save_path': save_path
+                    },
+                    'message': f'成功转存 {len(file_ids)} 个文件'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': save_result.get('error', '转存失败')
+                }
+                
+        except Exception as e:
+            logger.error(f'Failed to save 123 share: {str(e)}')
+            return {
+                'success': False,
+                'error': f'转存失败: {str(e)}'
+            }
     
     def list_directory(self, dir_id: str = '0') -> Dict[str, Any]:
         """

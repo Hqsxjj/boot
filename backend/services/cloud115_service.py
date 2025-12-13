@@ -299,6 +299,47 @@ class Cloud115Service:
                 'error': f'Failed to get download link: {str(e)}'
             }
     
+    def save_share(self, share_code: str, access_code: str = None, 
+                   save_cid: str = '0') -> Dict[str, Any]:
+        """
+        转存 115 分享链接到指定目录。
+        
+        Args:
+            share_code: 分享码 (如 sw3xxxx)
+            access_code: 访问码/提取码
+            save_cid: 保存目录 CID，默认根目录
+        
+        Returns:
+            Dict with success flag and saved file info
+        """
+        try:
+            from p115_bridge import get_p115_service
+            
+            # 获取 cookies
+            cookies_json = self.secret_store.get_secret('cloud115_cookies')
+            if not cookies_json:
+                return {
+                    'success': False,
+                    'error': '未登录 115 账号，请先登录'
+                }
+            
+            p115_service = get_p115_service()
+            result = p115_service.save_share(
+                share_code=share_code,
+                access_code=access_code,
+                save_cid=save_cid,
+                cookies=cookies_json
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f'Failed to save share: {str(e)}')
+            return {
+                'success': False,
+                'error': f'转存失败: {str(e)}'
+            }
+    
     def create_offline_task(self, source_url: str, save_cid: str) -> Dict[str, Any]:
         """
         Create an offline download task on 115 cloud.
