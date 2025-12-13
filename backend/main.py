@@ -201,6 +201,10 @@ def create_app(config=None):
     app.workflow_service = workflow_service
     set_workflow_service(workflow_service)
     
+    # 设置 Emby 的 Telegram 通知服务
+    from blueprints.emby import set_telegram_service
+    set_telegram_service(telegram_service)
+    
     app.register_blueprint(auth_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(health_bp)
