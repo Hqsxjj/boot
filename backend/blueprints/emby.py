@@ -187,10 +187,16 @@ def emby_webhook():
         data = request.get_json() or {}
         event_type = data.get('Event') or data.get('event', '')
         
-        # 获取通知目标
-        config = _store.get_config() if _store else {}
-        telegram_config = config.get('telegram', {})
-        notification_channel = telegram_config.get('notificationChannelId')
+        # 获取通知目标 - 优先从 TelegramBotService 获取
+        notification_channel = None
+        if _telegram_service:
+            notification_channel = _telegram_service.get_notification_channel()
+        
+        # 回退到 config store
+        if not notification_channel and _store:
+            config = _store.get_config()
+            telegram_config = config.get('telegram', {})
+            notification_channel = telegram_config.get('notificationChannelId')
         
         if not notification_channel:
             return jsonify({'ok': True, 'message': 'No notification channel configured'}), 200

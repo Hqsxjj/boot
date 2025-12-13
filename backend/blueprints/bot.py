@@ -93,6 +93,10 @@ def update_bot_config():
                     'error': 'Failed to save bot credentials securely'
                 }), 500
         
+        # Save notification channel to secret store
+        if notification_channel_id:
+            _bot_service.save_notification_channel(notification_channel_id)
+        
         # Update config in YAML store
         try:
             current_config = bot_bp.store.get_config()

@@ -99,6 +99,18 @@ class TelegramBotService:
         """Get stored admin user ID from secret store."""
         return self.secret_store.get_secret('telegram_admin_user_id')
     
+    def get_notification_channel(self) -> Optional[str]:
+        """Get stored notification channel ID from secret store."""
+        return self.secret_store.get_secret('telegram_notification_channel')
+    
+    def save_notification_channel(self, channel_id: str) -> bool:
+        """Save notification channel ID to secret store."""
+        try:
+            return self.secret_store.set_secret('telegram_notification_channel', channel_id)
+        except Exception as e:
+            logger.error(f'Failed to save notification channel: {str(e)}')
+            return False
+    
     def send_test_message(self, target_type: str = 'admin', target_id: str = None) -> Dict[str, Any]:
         """
         Send a test message to verify bot connectivity.
