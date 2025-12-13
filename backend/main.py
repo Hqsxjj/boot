@@ -171,7 +171,7 @@ def create_app(config=None):
     
     # Initialize keyword store for AI recognition caching
     from services.keyword_store import KeywordStore
-    keyword_store = KeywordStore(session_factory)
+    keyword_store = KeywordStore(secrets_session_factory)
     app.keyword_store = keyword_store
     set_keyword_store(keyword_store)
     

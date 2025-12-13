@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  boot:
+    container_name: boot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: boot:latest
+    restart: unless-stopped
+    ports:
+      - "18080:18080"
+    volumes:
+      - ./data:/data
+      - ./strm:/data/strm
+    environment:
+      # PUID/PGID 用于解决 Linux 下的数据权限问题 (可选)
+      - PUID=1000
+      - PGID=1000
+      # 设置加密密钥 (如果不设置会自动生成)
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+    # 资源限制建议 (可选)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
