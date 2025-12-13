@@ -274,13 +274,28 @@ def _handle_playback_start(data: dict, channel_id: str):
     
     # 如果是剧集，显示剧名
     if series_name:
-        display_name = f"{series_name} - {item_name}"
+        season_num = item.get('ParentIndexNumber', '')
+        episode_num = item.get('IndexNumber', '')
+        if season_num and episode_num:
+            display_name = f"{series_name} S{season_num}E{episode_num}\n_{item_name}_"
+        else:
+            display_name = f"{series_name} - {item_name}"
     else:
         display_name = item_name
     
     # 获取设备信息
     device_name = session.get('DeviceName', '未知设备')
     client = session.get('Client', '')
+    client_version = session.get('ApplicationVersion', '')
+    
+    # 构建客户端信息
+    client_info = client
+    if client_version:
+        client_info = f"{client} {client_version}"
+    
+    # 获取位置信息 (从 RemoteEndPoint 解析)
+    remote_ip = session.get('RemoteEndPoint', '')
+    location = data.get('Location') or session.get('Location', '')
     
     # 获取高清图片
     item_id = item.get('Id')
@@ -299,8 +314,10 @@ def _handle_playback_start(data: dict, channel_id: str):
         f"👤 用户: {user}\n"
         f"📱 设备: {device_name}"
     )
-    if client:
-        text += f" ({client})"
+    if client_info:
+        text += f"\n📲 客户端: {client_info}"
+    if location:
+        text += f"\n📍 位置: {location}"
     text += f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     
     if image_url:
