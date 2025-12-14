@@ -24,10 +24,27 @@ const FALLBACK_BACKDROPS = [
   'https://image.tmdb.org/t/p/original/tmU7GeKVybMWFButWEGl2Mdbj47.jpg', // The Godfather (Dark/Classic)
 ];
 
+// Hash Mapping for URL persistence
+const PATH_MAP: Record<ViewState, string> = {
+  [ViewState.USER_CENTER]: 'user-center',
+  [ViewState.BOT_SETTINGS]: 'bot-settings',
+  [ViewState.CLOUD_ORGANIZE]: 'cloud-organize',
+  [ViewState.EMBY_INTEGRATION]: 'emby',
+  [ViewState.STRM_GENERATION]: 'strm',
+  [ViewState.LOGS]: 'logs',
+};
+
+const getInitialView = (): ViewState => {
+  if (typeof window === 'undefined') return ViewState.USER_CENTER;
+  const hash = window.location.hash.replace('#', '');
+  const entry = Object.entries(PATH_MAP).find(([_, path]) => path === hash);
+  return entry ? (entry[0] as ViewState) : ViewState.USER_CENTER;
+};
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
-  const [currentView, setCurrentView] = useState<ViewState>(ViewState.USER_CENTER);
+  const [currentView, setCurrentView] = useState<ViewState>(getInitialView);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -43,6 +60,27 @@ const App: React.FC = () => {
     }
     return false;
   });
+
+  // Sync View -> Hash
+  useEffect(() => {
+    const hash = PATH_MAP[currentView];
+    if (window.location.hash.replace('#', '') !== hash) {
+      window.location.hash = hash;
+    }
+  }, [currentView]);
+
+  // Sync Hash -> View (Back Button)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      const entry = Object.entries(PATH_MAP).find(([_, path]) => path === hash);
+      if (entry) {
+        setCurrentView(entry[0] as ViewState);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   useEffect(() => {
     setIsAuthenticated(checkAuth());
