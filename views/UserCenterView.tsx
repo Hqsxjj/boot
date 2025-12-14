@@ -414,17 +414,38 @@ export const UserCenterView: React.FC = () => {
         <section className={`${glassCardClass} lg:col-span-2`}>
           <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Zap size={18} className="text-slate-400" />
+              <Globe size={18} className="text-slate-400" />
               <h3 className="font-bold text-slate-700 dark:text-slate-200">网络代理</h3>
             </div>
 
             <div className="flex items-center gap-4">
-              {config?.proxy?.enabled && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100/50 dark:bg-slate-700/30 border border-slate-200/50 dark:border-slate-600/50">
+              {/* 启用开关 */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {config?.proxy?.enabled ? '已启用' : '已禁用'}
+                </span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={config?.proxy?.enabled || false}
+                    onChange={(e) => updateNested('proxy', 'enabled', e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-10 h-5 rounded-full transition-colors ${config?.proxy?.enabled ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform mt-0.5 ${config?.proxy?.enabled ? 'translate-x-5.5 ml-0.5' : 'translate-x-0.5'}`}></div>
+                  </div>
+                </div>
+              </label>
+
+              {config?.proxy?.enabled && config?.proxy?.host && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-800/50">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                  <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">128ms</span>
+                  <span className="text-[10px] font-mono font-medium text-green-600 dark:text-green-400">
+                    {config.proxy.type?.toUpperCase()} · {config.proxy.host}:{config.proxy.port || '7890'}
+                  </span>
                 </div>
               )}
+
               <button
                 onClick={handleSave}
                 disabled={isSaving}
@@ -436,47 +457,54 @@ export const UserCenterView: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="space-y-6 transition-all duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">类型 (Type)</label>
+          <div className={`p-6 transition-all duration-300 ${!config?.proxy?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="space-y-5">
+              {/* 第一行：类型 + 主机 + 端口 */}
+              <div className="grid grid-cols-12 gap-4">
+                <div className="col-span-12 sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">类型</label>
                   <select
                     value={config?.proxy?.type || 'http'}
                     onChange={(e) => updateNested('proxy', 'type', e.target.value)}
                     className={inputClass}
                   >
                     <option value="http">HTTP</option>
+                    <option value="https">HTTPS</option>
                     <option value="socks5">SOCKS5</option>
                   </select>
                 </div>
-                <div className="md:col-span-2">
+                <div className="col-span-12 sm:col-span-7">
                   <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">代理地址 (Host:Port)</label>
-                    <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1 font-medium"><Zap size={12} /> 自动填入</button>
+                    <label className="block text-xs font-bold text-slate-500 uppercase">代理服务器地址</label>
+                    <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1 font-medium">
+                      <Zap size={12} /> 填入本机IP
+                    </button>
                   </div>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={config?.proxy?.host || ''}
-                      onChange={(e) => updateNested('proxy', 'host', e.target.value)}
-                      placeholder="192.168.1.5 或 proxy.example.com"
-                      className={`${inputClass} flex-1 font-mono`}
-                    />
-                    <input
-                      type="text"
-                      value={config?.proxy?.port || ''}
-                      onChange={(e) => updateNested('proxy', 'port', e.target.value)}
-                      placeholder="7890"
-                      className={`${inputClass} w-28 font-mono`}
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={config?.proxy?.host || ''}
+                    onChange={(e) => updateNested('proxy', 'host', e.target.value)}
+                    placeholder="192.168.1.5 或 proxy.example.com"
+                    className={`${inputClass} font-mono`}
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-3">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口</label>
+                  <input
+                    type="text"
+                    value={config?.proxy?.port || ''}
+                    onChange={(e) => updateNested('proxy', 'port', e.target.value)}
+                    placeholder="7890"
+                    className={`${inputClass} font-mono`}
+                  />
                 </div>
               </div>
-              <div className="mt-6">
+
+              {/* 第二行：不走代理的地址 */}
+              <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase">不走代理的地址</label>
-                  <span className="text-[10px] text-slate-400">逗号分隔，默认排除 115/123 云盘</span>
+                  <span className="text-[10px] text-slate-400">多个地址用逗号分隔</span>
                 </div>
                 <input
                   type="text"
@@ -485,7 +513,10 @@ export const UserCenterView: React.FC = () => {
                   placeholder="115.com,123pan.com,123pan.cn,localhost"
                   className={`${inputClass} font-mono text-xs`}
                 />
-                <p className="text-[10px] text-slate-400 mt-1.5">提示: 115 网盘和 123 云盘的 API 服务器默认不走代理，避免连接问题</p>
+                <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  115 网盘和 123 云盘 API 默认不走代理，避免连接问题
+                </p>
               </div>
             </div>
           </div>
