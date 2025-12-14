@@ -12,7 +12,7 @@ CLOUD123_API_BASE = "https://open-api.123pan.com"
 
 
 class Cloud123Service:
-    """Service for interacting with 123 cloud via OAuth API."""
+    """Service for interacting with 123 cloud via p123client or REST API."""
     
     def __init__(self, secret_store: SecretStore):
         """
@@ -24,6 +24,47 @@ class Cloud123Service:
         self.secret_store = secret_store
         self._access_token = None
         self._token_expires_at = None
+        self._client = None
+        
+        # 尝试导入 p123client
+        try:
+            from p123client import P123Client
+            self.P123Client = P123Client
+            logger.info('p123client library loaded successfully')
+        except ImportError:
+            self.P123Client = None
+            logger.warning('p123client not installed, using REST API fallback')
+    
+    def _get_p123_client(self):
+        """Get p123client instance with OAuth credentials."""
+        if not self.P123Client:
+            return None
+        
+        if self._client:
+            return self._client
+        
+        # 获取 OAuth 凭证
+        creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
+        if not creds_json:
+            logger.warning('No OAuth credentials found for p123client')
+            return None
+        
+        try:
+            creds = json.loads(creds_json)
+            client_id = creds.get('clientId')
+            client_secret = creds.get('clientSecret')
+            
+            if not client_id or not client_secret:
+                logger.warning('Missing clientId or clientSecret')
+                return None
+            
+            # 使用 client_id 和 client_secret 创建客户端
+            self._client = self.P123Client(client_id=client_id, client_secret=client_secret)
+            logger.info('p123client initialized with OAuth credentials')
+            return self._client
+        except Exception as e:
+            logger.error(f'Failed to initialize p123client: {e}')
+            return None
     
     def _get_access_token(self) -> Optional[str]:
         """
@@ -294,12 +335,54 @@ class Cloud123Service:
         Returns:
             Dict with success flag and list of entries
         """
+        # 123 云盘 API 使用 parentFileId 参数
+        # dir_id 为 0 表示根目录
+        if dir_id == '/' or dir_id == '':
+            dir_id = '0'
+        
+        # 优先尝试使用 p123client
+        p123_client = self._get_p123_client()
+        if p123_client:
+            try:
+                # p123client 使用 open 接口
+                resp = p123_client.open_fs_file_list({
+                    'parentFileId': int(dir_id),
+                    'limit': 100,
+                    'Page': 1,
+                    'orderBy': 'file_name',
+                    'orderDirection': 'asc'
+                })
+                
+                if resp.get('code') == 0:
+                    api_data = resp.get('data', {})
+                    file_list = api_data.get('fileList', []) if isinstance(api_data, dict) else []
+                    
+                    entries = []
+                    for item in file_list:
+                        entry_id = item.get('fileId')
+                        entry_name = item.get('filename') or item.get('fileName')
+                        is_directory = item.get('type') == 1  # 1 = 文件夹, 0 = 文件
+                        update_time = item.get('updateTime', '')
+                        
+                        if entry_id and entry_name:
+                            entries.append({
+                                'id': str(entry_id),
+                                'name': entry_name,
+                                'children': is_directory,
+                                'date': update_time[:10] if update_time else datetime.now().strftime('%Y-%m-%d')
+                            })
+                    
+                    return {
+                        'success': True,
+                        'data': entries
+                    }
+                else:
+                    logger.warning(f"p123client list failed: {resp.get('message')}, falling back to REST API")
+            except Exception as e:
+                logger.warning(f"p123client list error: {e}, falling back to REST API")
+        
+        # 回退到 REST API
         try:
-            # 123 云盘 API 使用 parentFileId 参数
-            # dir_id 为 0 表示根目录
-            if dir_id == '/' or dir_id == '':
-                dir_id = '0'
-            
             params = {
                 'parentFileId': int(dir_id),
                 'limit': 100,
