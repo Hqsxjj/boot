@@ -1,8 +1,11 @@
 import os
 import json
 import uuid
+import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 # 添加到 p115_bridge.py（靠近其它 device profile 定义处）
 ALL_DEVICE_PROFILES_FULL = {
@@ -134,19 +137,35 @@ class P115Service:
                 # 普通扫码模式：使用 login_qrcode_token
                 actual_app_id = ALL_DEVICE_PROFILES.get(login_app, 8)  # Default to web
                 
+                logger.info(f"Starting QR login: login_app={login_app}, login_method={login_method}")
+                
                 qr_token_result = p115client.P115Client.login_qrcode_token()
                 
+                logger.debug(f"QR token result state: {qr_token_result.get('state')}")
+                
                 if qr_token_result.get('state') != 1:
+                    error_msg = qr_token_result.get('message') or qr_token_result.get('error') or 'Unknown error'
+                    logger.error(f"Failed to get QR token: {error_msg}, full result: {qr_token_result}")
                     return {
-                        'error': f"Failed to get QR token: {qr_token_result.get('message', 'Unknown error')}",
+                        'error': f"Failed to get QR token: {error_msg}",
                         'success': False
                     }
                 
                 qr_data = qr_token_result.get('data', {})
                 uid = qr_data.get('uid', '')
                 
-                # 构建二维码图片 URL
+                if not uid:
+                    logger.error(f"No UID in QR token response: {qr_data}")
+                    return {
+                        'error': 'No UID returned from 115 API',
+                        'success': False
+                    }
+                
+                # 注意：新版 p115client 返回的 qrcode 字段是网页链接 (https://115.com/scan/...)
+                # 而不是二维码图片。前端需要图片 URL 来显示，所以使用 qrcodeapi 格式
                 qrcode_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
+                
+                logger.info(f"QR code generated successfully: uid={uid[:8]}...")
                 
                 # Cache session info - 普通扫码模式
                 self._session_cache[session_id] = {
@@ -165,7 +184,14 @@ class P115Service:
                     'login_method': login_method,
                     'login_app': login_app
                 }
+        except ImportError as e:
+            logger.error(f"p115client not installed: {str(e)}")
+            return {
+                'error': 'p115client library not installed',
+                'success': False
+            }
         except Exception as e:
+            logger.exception(f"Failed to start QR login: {str(e)}")
             return {
                 'error': f'Failed to start QR login: {str(e)}',
                 'success': False
