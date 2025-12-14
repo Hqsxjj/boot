@@ -20,7 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 安装 Python 依赖
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
-    pip install gunicorn
+    pip install gunicorn && \
+    echo "Verifying p115client installation..." && \
+    python -c "import p115client; print('p115client version:', p115client.__version__)" || echo "Warning: p115client not installed"
 
 # 复制后端代码
 COPY backend/ .
