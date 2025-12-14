@@ -79,6 +79,37 @@ def _sync_cloud115_cookies_from_config(payload: dict, secret_store: SecretStore 
     secret_store.set_secret('cloud115_session_metadata', json.dumps(metadata))
 
 
+def _sync_cloud123_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步123云盘OAuth凭证到SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+
+    cloud123 = payload.get('cloud123')
+    if not isinstance(cloud123, dict):
+        return
+
+    client_id = cloud123.get('clientId', '').strip()
+    client_secret = cloud123.get('clientSecret', '').strip()
+
+    if not client_id or not client_secret:
+        # 如果凭证被清空，删除存储的token
+        return
+
+    # 存储OAuth凭证
+    credentials = {
+        'clientId': client_id,
+        'clientSecret': client_secret
+    }
+    secret_store.set_secret('cloud123_oauth_credentials', json.dumps(credentials))
+    
+    # 存储元数据
+    metadata = {
+        'login_method': 'oauth',
+        'logged_in_at': __import__('datetime').datetime.now().isoformat()
+    }
+    secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
+
+
 @config_bp.route('/config', methods=['GET'])
 @optional_auth
 def get_config():
@@ -124,6 +155,9 @@ def update_config():
 
         # Sync 115 cookies from the config payload into SecretStore for real /api/115 usage
         _sync_cloud115_cookies_from_config(data, config_bp.secret_store)
+        
+        # Sync 123 cloud OAuth credentials into SecretStore
+        _sync_cloud123_credentials_from_config(data, config_bp.secret_store)
         
         # Return updated config with session flags
         updated_config = config_bp.store.get_config()

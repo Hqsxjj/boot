@@ -176,7 +176,7 @@ export const UserCenterView: React.FC = () => {
     },
     {
       name: '123 云盘',
-      isConnected: config.cloud123?.enabled && !!config.cloud123?.clientId,
+      isConnected: !!(config.cloud123?.clientId && config.cloud123?.clientSecret) || !!config.cloud123?.hasValidSession,
       icon: Cloud,
       colorClass: 'text-blue-600 dark:text-blue-400',
       bgClass: 'bg-blue-50 dark:bg-blue-900/20'

@@ -58,6 +58,7 @@ export interface Cloud123Config {
   downloadPath: string;
   downloadDirName: string;
   qps: number;
+  hasValidSession?: boolean;  // 由后端返回，表示是否有有效的123云盘会话
 }
 
 export interface ProxyConfig {
