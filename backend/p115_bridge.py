@@ -135,17 +135,24 @@ class P115Service:
                 }
             else:
                 # 普通扫码模式：使用 login_qrcode_token
-                actual_app_id = ALL_DEVICE_PROFILES.get(login_app, 8)  # Default to web
+                # p115client.login_qrcode_token 支持 app 参数 (string)
+                # Frontend passes 'web', 'ios', 'android', etc. which p115client recognizes
                 
                 logger.info(f"Starting QR login: login_app={login_app}, login_method={login_method}")
                 
-                qr_token_result = p115client.P115Client.login_qrcode_token()
+                try:
+                    # Pass the app parameter
+                    qr_token_result = p115client.P115Client.login_qrcode_token(app=login_app)
+                except TypeError:
+                    # Fallback if p115client version doesn't support 'app' param
+                    logger.warning("p115client.login_qrcode_token does not support 'app' param, using default")
+                    qr_token_result = p115client.P115Client.login_qrcode_token()
                 
-                logger.debug(f"QR token result state: {qr_token_result.get('state')}")
+                logger.debug(f"QR token result: {qr_token_result}")
                 
                 if qr_token_result.get('state') != 1:
                     error_msg = qr_token_result.get('message') or qr_token_result.get('error') or 'Unknown error'
-                    logger.error(f"Failed to get QR token: {error_msg}, full result: {qr_token_result}")
+                    logger.error(f"Failed to get QR token: {error_msg}")
                     return {
                         'error': f"Failed to get QR token: {error_msg}",
                         'success': False
@@ -161,9 +168,13 @@ class P115Service:
                         'success': False
                     }
                 
-                # 注意：新版 p115client 返回的 qrcode 字段是网页链接 (https://115.com/scan/...)
-                # 而不是二维码图片。前端需要图片 URL 来显示，所以使用 qrcodeapi 格式
-                qrcode_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
+                # 新版 p115client 可能直接返回 image data 或 url
+                # 如有 qrcode 字段且包含 http，则直接使用
+                # 否则构造 qrcodeapi
+                if qr_data.get('qrcode') and str(qr_data.get('qrcode')).startswith('http'):
+                    qrcode_url = qr_data.get('qrcode')
+                else:
+                    qrcode_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
                 
                 logger.info(f"QR code generated successfully: uid={uid[:8]}...")
                 
