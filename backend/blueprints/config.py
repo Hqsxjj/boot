@@ -112,6 +112,35 @@ def _sync_cloud123_credentials_from_config(payload: dict, secret_store: SecretSt
     secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
 
 
+def _sync_ai_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 AI (LLM) 凭证到 SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+
+    organize = payload.get('organize')
+    if not isinstance(organize, dict):
+        return
+        
+    ai = organize.get('ai')
+    if not isinstance(ai, dict):
+        return
+
+    api_key = ai.get('apiKey', '').strip()
+    
+    # 如果 apiKey 存在且不是占位符，则更新
+    # 注意：update_config 会先还原 mask，所以这里拿到的应该是明文
+    if api_key and api_key != MASK_PLACEHOLDER:
+        secret_store.set_secret('llm_api_key', api_key)
+    
+    # 同步其他非敏感字段
+    if 'baseUrl' in ai:
+        secret_store.set_secret('llm_base_url', ai.get('baseUrl', ''))
+    if 'model' in ai:
+        secret_store.set_secret('llm_model', ai.get('model', ''))
+    if 'provider' in ai:
+        secret_store.set_secret('llm_provider', ai.get('provider', ''))
+
+
 # 定义敏感字段路径列表
 SENSITIVE_FIELDS = [
     ['cloud115', 'cookies'],
@@ -121,6 +150,7 @@ SENSITIVE_FIELDS = [
     ['telegram', 'botToken'],
     ['emby', 'apiKey'],
     ['proxy', 'password'],
+    ['organize', 'ai', 'apiKey'],
 ]
 
 MASK_PLACEHOLDER = '__MASKED__'
@@ -204,6 +234,10 @@ def get_config():
                     client_secret = cloud123.get('clientSecret', '').strip() if isinstance(cloud123.get('clientSecret'), str) else ''
                     if client_id and client_secret:
                         _sync_cloud123_credentials_from_config(config, config_bp.secret_store)
+            
+            # 同步 AI 凭证
+            if not config_bp.secret_store.get_secret('llm_api_key'):
+                 _sync_ai_credentials_from_config(config, config_bp.secret_store)
         
         # Add session health flags
         config = _add_session_flags(config, config_bp.secret_store)
@@ -250,6 +284,9 @@ def update_config():
         
         # Sync 123 cloud OAuth credentials into SecretStore
         _sync_cloud123_credentials_from_config(final_config, config_bp.secret_store)
+        
+        # Sync AI credentials
+        _sync_ai_credentials_from_config(final_config, config_bp.secret_store)
         
         # Return updated config with session flags
         updated_config = config_bp.store.get_config()

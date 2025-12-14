@@ -18,11 +18,11 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 18080,
+    port: 5173,  // 开发服务器端口
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:18080',  // 后端统一使用 18080
         changeOrigin: true,
         secure: false,
       }

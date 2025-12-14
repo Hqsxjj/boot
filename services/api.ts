@@ -187,6 +187,19 @@ export const api = {
 
   // --- 123 云盘接口 ---
 
+  /**
+   * 123 云盘密码登录
+   * @param passport 手机号或邮箱
+   * @param password 密码
+   */
+  login123WithPassword: async (passport: string, password: string) => {
+    const res = await apiClient.post<ApiResponse<{ message: string; login_method: string }>>(
+      '/123/login/password',
+      { passport, password }
+    );
+    return res.data;
+  },
+
   list123Directories: async (dirId: string = '/') => {
     const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/123/directories', {
       params: { dirId },

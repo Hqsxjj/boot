@@ -34,6 +34,11 @@ def start_qr_login():
         login_method = data.get('loginMethod', 'qrcode')
         app_id = data.get('appId')  # 第三方 App ID (仅 open_app 模式需要)
         
+        # 调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"start_qr_login called: login_app={login_app}, login_method={login_method}, app_id={app_id}, raw_data={data}")
+        
         # 验证登录方式
         if login_method not in ['qrcode', 'cookie', 'open_app']:
             return jsonify({

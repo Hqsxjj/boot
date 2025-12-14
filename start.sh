@@ -3,7 +3,7 @@
 set -e
 
 echo "================================================"
-echo "🚀 Boot 服务启动中..."
+echo "🚀 Boot 服务启动中 (单体架构)..."
 echo "================================================"
 
 # 0. 确保数据目录存在并设置权限
@@ -65,22 +65,15 @@ EOF
     echo "⚠️  请启动后通过 Web UI (http://localhost:18080) 进行配置"
 fi
 
-# 1. 检查前端文件是否存在
+# 1. 检查前端静态文件
 echo "📦 检查前端静态文件..."
-if [ -f /usr/share/nginx/html/index.html ]; then
-    echo "✅ 前端文件存在"
+if [ -f /app/static/index.html ]; then
+    echo "✅ 前端文件存在: /app/static/index.html"
 else
-    echo "❌ 前端文件缺失！"
-    echo "创建占位页面..."
-    mkdir -p /usr/share/nginx/html
-    echo "<html><body><h1>前端构建失败</h1><p>请检查 Docker 构建日志</p></body></html>" > /usr/share/nginx/html/index.html
+    echo "⚠️  前端文件缺失！将以 API-only 模式运行"
 fi
 
-# 2. 检查 nginx 配置
-echo "🔧 检查 Nginx 配置..."
-nginx -t
-
-# 2.5. 初始化数据库（防止 Gunicorn worker 竞态条件）
+# 2. 初始化数据库
 echo "💾 初始化数据库..."
 cd /app
 python << 'PYEOF' 2>&1 || echo "⚠️  数据库初始化完成或有非致命警告"
@@ -93,36 +86,17 @@ except Exception as e:
     # 不退出，因为表可能已存在
 PYEOF
 
-# 3. 启动 Gunicorn (Python 后端)
-echo "🐍 启动后端服务 (Gunicorn)..."
-cd /app
-gunicorn -w 4 -b 127.0.0.1:8000 "main:create_app()" --daemon \
-    --access-logfile /data/logs/gunicorn_access.log \
-    --error-logfile /data/logs/gunicorn_error.log \
-    --capture-output 2>&1 || {
-    echo "❌ 后端服务启动失败！"
-    echo "--- 错误信息 ---"
-    cat /data/logs/gunicorn_error.log 2>/dev/null || echo "无日志记录"
-    exit 1
-}
-
-# 等待并检查 Gunicorn 是否存活
-sleep 3
-if pgrep gunicorn > /dev/null; then
-    echo "✅ 后端服务启动成功 (PID: $(pgrep gunicorn))"
-else
-    echo "❌ 后端服务启动失败！"
-    echo "--- Gunicorn 错误日志 ---"
-    tail -20 /data/logs/gunicorn_error.log 2>/dev/null || echo "无日志"
-    exit 1
-fi
-
-# 4. 启动 Nginx (前台)
-echo "🌐 启动前端服务 (Nginx)..."
+# 3. 启动 Gunicorn（前台运行，直接绑定 18080）
+echo "🐍 启动 Gunicorn 服务..."
 echo "================================================"
 echo "✅ Boot 服务启动完成"
 echo "📱 Web UI: http://localhost:18080"
+echo "📡 API: http://localhost:18080/api"
 echo "================================================"
-echo "✅ 服务启动完成！访问 http://localhost:18080"
-echo "================================================"
-nginx -g "daemon off;"
+
+cd /app
+exec gunicorn -w 4 -b 0.0.0.0:18080 "main:create_app()" \
+    --access-logfile /data/logs/gunicorn_access.log \
+    --error-logfile /data/logs/gunicorn_error.log \
+    --capture-output \
+    --timeout 300

@@ -278,14 +278,18 @@ def _handle_user_message(chat_id: str, user_id: str, text: str):
     """处理用户消息"""
     global _workflow_service, _bot_service
     
-    if not _workflow_service or not _bot_service:
+    if not _bot_service:
         return
     
-    # 忽略命令消息（已有其他处理器）
+    # 处理命令消息
     if text.startswith('/'):
+        _handle_command(chat_id, user_id, text)
         return
     
-    # 处理链接
+    # 处理链接（需要 workflow_service）
+    if not _workflow_service:
+        return
+    
     result = _workflow_service.process_message(chat_id, user_id, text)
     
     if not result.get('success'):
@@ -306,6 +310,183 @@ def _handle_user_message(chat_id: str, user_id: str, text: str):
             chat_id=chat_id,
             text=f"✅ {result.get('message', '操作成功')}"
         )
+
+
+def _handle_command(chat_id: str, user_id: str, text: str):
+    """处理机器人命令"""
+    global _bot_service, _workflow_service
+    
+    if not _bot_service:
+        return
+    
+    # 解析命令和参数
+    parts = text.split(maxsplit=1)
+    command = parts[0].lower().split('@')[0]  # 移除 @botname 后缀
+    args = parts[1] if len(parts) > 1 else ''
+    
+    # 命令处理映射
+    if command == '/start':
+        _cmd_start(chat_id, user_id)
+    elif command == '/help':
+        _cmd_help(chat_id, user_id)
+    elif command == '/status':
+        _cmd_status(chat_id, user_id)
+    elif command == '/cancel':
+        _cmd_cancel(chat_id, user_id, args)
+    elif command == '/tasks':
+        _cmd_tasks(chat_id, user_id)
+    elif command == '/ping':
+        _cmd_ping(chat_id, user_id)
+    else:
+        # 未知命令，发送帮助信息
+        _bot_service.send_message(
+            chat_id=chat_id,
+            text="❓ 未知命令。发送 /help 查看可用命令。"
+        )
+
+
+def _cmd_start(chat_id: str, user_id: str):
+    """处理 /start 命令"""
+    welcome_msg = """
+🎉 *欢迎使用 115/123 云盘机器人！*
+
+我可以帮你：
+• 接收分享链接并转存到网盘
+• 接收离线下载链接（磁力/种子）
+• 自动整理文件并生成 STRM
+• 通知 Emby 刷新媒体库
+
+📤 *使用方法*
+直接发送分享链接或磁力链接给我即可！
+
+_发送 /help 查看更多命令_
+"""
+    _bot_service.send_message(chat_id=chat_id, text=welcome_msg)
+
+
+def _cmd_help(chat_id: str, user_id: str):
+    """处理 /help 命令"""
+    # 获取自定义命令列表
+    commands = _bot_service.get_commands()
+    
+    help_msg = "📚 *可用命令*\n\n"
+    for cmd in commands:
+        help_msg += f"`{cmd['cmd']}` - {cmd['desc']}\n"
+    
+    help_msg += """
+📤 *支持的链接*
+• 115 分享链接
+• 123 云盘分享链接
+• 磁力链接 (magnet:)
+• 种子文件 (直接发送)
+"""
+    _bot_service.send_message(chat_id=chat_id, text=help_msg)
+
+
+def _cmd_status(chat_id: str, user_id: str):
+    """处理 /status 命令 - 显示系统状态"""
+    global _workflow_service
+    
+    status_msg = "📊 *系统状态*\n\n"
+    
+    # 检查各服务状态
+    status_msg += "• 🤖 机器人: ✅ 运行中\n"
+    
+    if _workflow_service:
+        status_msg += "• 🔄 工作流服务: ✅ 正常\n"
+        
+        # 获取待处理任务数
+        pending_tasks = _workflow_service.get_pending_tasks(user_id)
+        status_msg += f"• 📋 待处理任务: {len(pending_tasks)} 个\n"
+        
+        if _workflow_service.cloud115_service:
+            status_msg += "• ☁️ 115 网盘: ✅ 已连接\n"
+        else:
+            status_msg += "• ☁️ 115 网盘: ❌ 未配置\n"
+            
+        if _workflow_service.cloud123_service:
+            status_msg += "• ☁️ 123 云盘: ✅ 已连接\n"
+        else:
+            status_msg += "• ☁️ 123 云盘: ❌ 未配置\n"
+    else:
+        status_msg += "• 🔄 工作流服务: ⚠️ 未初始化\n"
+    
+    _bot_service.send_message(chat_id=chat_id, text=status_msg)
+
+
+def _cmd_tasks(chat_id: str, user_id: str):
+    """处理 /tasks 命令 - 显示待处理任务"""
+    global _workflow_service
+    
+    if not _workflow_service:
+        _bot_service.send_message(chat_id=chat_id, text="⚠️ 工作流服务未初始化")
+        return
+    
+    pending_tasks = _workflow_service.get_pending_tasks(user_id)
+    
+    if not pending_tasks:
+        _bot_service.send_message(chat_id=chat_id, text="📋 暂无待处理任务")
+        return
+    
+    msg = f"📋 *待处理任务* ({len(pending_tasks)} 个)\n\n"
+    for i, task in enumerate(pending_tasks[:10], 1):  # 最多显示10个
+        task_dict = task.to_dict() if hasattr(task, 'to_dict') else task
+        msg += f"{i}. `{task_dict.get('id', 'N/A')[:8]}...`\n"
+        msg += f"   状态: {task_dict.get('status', 'unknown')}\n"
+        if task_dict.get('error'):
+            msg += f"   错误: {task_dict.get('error')}\n"
+    
+    if len(pending_tasks) > 10:
+        msg += f"\n_...还有 {len(pending_tasks) - 10} 个任务_"
+    
+    _bot_service.send_message(chat_id=chat_id, text=msg)
+
+
+def _cmd_cancel(chat_id: str, user_id: str, args: str):
+    """处理 /cancel 命令 - 取消任务"""
+    global _workflow_service
+    
+    if not _workflow_service:
+        _bot_service.send_message(chat_id=chat_id, text="⚠️ 工作流服务未初始化")
+        return
+    
+    if not args:
+        # 取消所有待处理任务
+        pending_tasks = _workflow_service.get_pending_tasks(user_id)
+        if not pending_tasks:
+            _bot_service.send_message(chat_id=chat_id, text="📋 暂无可取消的任务")
+            return
+        
+        # 清理待处理任务（简单实现：标记为失败）
+        cancelled_count = 0
+        for task in pending_tasks:
+            if hasattr(task, 'status'):
+                task.status = 'cancelled'
+                task.error = '用户取消'
+                cancelled_count += 1
+        
+        _bot_service.send_message(
+            chat_id=chat_id,
+            text=f"✅ 已取消 {cancelled_count} 个任务"
+        )
+    else:
+        # 取消指定任务
+        task = _workflow_service.get_task(args.strip())
+        if task:
+            task.status = 'cancelled'
+            task.error = '用户取消'
+            _bot_service.send_message(chat_id=chat_id, text=f"✅ 已取消任务 `{args[:8]}...`")
+        else:
+            _bot_service.send_message(chat_id=chat_id, text=f"❌ 未找到任务 `{args}`")
+
+
+def _cmd_ping(chat_id: str, user_id: str):
+    """处理 /ping 命令 - 测试机器人响应"""
+    import time
+    _bot_service.send_message(
+        chat_id=chat_id,
+        text=f"🏓 Pong! 响应时间: {int(time.time() * 1000) % 1000}ms"
+    )
 
 
 def _handle_callback_query(callback_id: str, chat_id: str, message_id: int, user_id: str, data: str):

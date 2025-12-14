@@ -20,6 +20,34 @@ def init_cloud123_blueprint(secret_store: SecretStore):
     return cloud123_bp
 
 
+@cloud123_bp.route('/login/password', methods=['POST'])
+@require_auth
+def password_login():
+    """Login to 123 cloud with passport (phone/email) and password."""
+    try:
+        data = request.get_json() or {}
+        
+        passport = data.get('passport')  # 手机号或邮箱
+        password = data.get('password')
+        
+        if not passport or not password:
+            return jsonify({
+                'success': False,
+                'error': '账号和密码都必须填写'
+            }), 400
+        
+        result = _cloud123_service.login_with_password(passport, password)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'登录失败: {str(e)}'
+        }), 500
+
 @cloud123_bp.route('/login/oauth', methods=['POST'])
 @require_auth
 def oauth_login():

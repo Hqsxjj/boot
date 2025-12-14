@@ -1,0 +1,167 @@
+# ==============================================================================
+# 媒体文件识别规则配置
+# 用于文件名解析、重命名、替换等操作
+# ==============================================================================
+
+# -------------------- 自定义识别词 --------------------
+# 支持三种格式：
+#   1. 屏蔽词: 直接删除
+#   2. 替换词: "被替换词 => 替换词"
+#   3. 集偏移: "前定位词 <> 后定位词 >> EP+偏移量"
+#   4. 复合规则: "替换词 => 被替换词 && 前定位词 <> 后定位词 >> 偏移量"
+custom_words:
+  # 屏蔽词示例
+  - "HDCTV"
+  - "www.xxx.com"
+  - "内嵌字幕"
+  
+  # 替换词示例
+  - "S01E => S01.E"
+  - "H.265 => HEVC"
+  
+  # 集偏移示例（适用于番外篇等特殊集）
+  # - "SP <> 集 >> EP+0"
+
+
+# -------------------- 季集识别正则 --------------------
+season_patterns:
+  # S01, S1, Season 1
+  - pattern: "[Ss](\\d{1,2})(?![0-9])"
+    description: "英文季号 S01"
+  - pattern: "[Ss]eason[.\\s_]*(\\d{1,2})"
+    description: "Season 1 格式"
+  - pattern: "第\\s*(\\d{1,2})\\s*季"
+    description: "中文季号 第1季"
+  - pattern: "第\\s*([一二三四五六七八九十]+)\\s*季"
+    description: "中文数字季号 第一季"
+
+episode_patterns:
+  # E01, EP01
+  - pattern: "[Ee][Pp]?(\\d{1,4})(?![0-9])"
+    description: "英文集号 E01"
+  - pattern: "第\\s*(\\d{1,4})\\s*[集话話期]"
+    description: "中文集号 第1集"
+  - pattern: "第\\s*([一二三四五六七八九十百零]+)\\s*[集话話期]"
+    description: "中文数字集号 第一集"
+  - pattern: "[Ee]pisode[.\\s_]*(\\d{1,4})"
+    description: "Episode 1 格式"
+
+# S01E01 格式
+season_episode_pattern: "[Ss](\\d{1,2})[Ee](\\d{1,4})"
+
+# 年份识别
+year_pattern: "[\\[\\(\\s]?((?:19|20)\\d{2})[\\]\\)\\s]?"
+
+
+# -------------------- 资源类型识别 --------------------
+resource_types:
+  WEB-DL:
+    - "web[.\\-_]?dl"
+    - "webrip"
+    - "web"
+  BluRay:
+    - "blu[.\\-_]?ray"
+    - "bdrip"
+    - "bdremux"
+    - "bdmv"
+  HDTV:
+    - "hdtv"
+    - "hdtvrip"
+    - "tvrip"
+  DVDRip:
+    - "dvdrip"
+    - "dvd"
+  Remux:
+    - "remux"
+  CAM:
+    - "cam"
+    - "hdcam"
+    - "ts"
+    - "tc"
+    - "hdrip"
+
+
+# -------------------- 分辨率识别 --------------------
+resolutions:
+  4K:
+    - "2160p"
+    - "4k"
+    - "uhd"
+  1080p:
+    - "1080[pi]"
+    - "fhd"
+  720p:
+    - "720p"
+    - "hd"
+  480p:
+    - "480p"
+    - "sd"
+
+
+# -------------------- 视频编码识别 --------------------
+video_codecs:
+  HEVC:
+    - "hevc"
+    - "h\\.?265"
+    - "x265"
+  AVC:
+    - "avc"
+    - "h\\.?264"
+    - "x264"
+  AV1:
+    - "av1"
+  VP9:
+    - "vp9"
+
+
+# -------------------- 音频编码识别 --------------------
+audio_codecs:
+  DTS-HD MA:
+    - "dts[.\\-_]?hd[.\\-_]?ma"
+    - "dtshd"
+  TrueHD:
+    - "truehd"
+    - "atmos"
+  DTS:
+    - "dts(?![.\\-_]?hd)"
+  AAC:
+    - "aac"
+  FLAC:
+    - "flac"
+  AC3:
+    - "ac3"
+    - "dd5\\.?1"
+    - "dolby"
+
+
+# -------------------- 重命名模板 (Jinja2) --------------------
+rename_templates:
+  movie:
+    # 电影文件名模板
+    filename: "{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}"
+    # 电影目录模板（含二级分类）
+    directory: "电影/{{category}}/{{title}}{% if year %} ({{year}}){% endif %}"
+  
+  tv:
+    # 电视剧文件名模板
+    filename: "{{title}} - {{season}}{{episode}}"
+    # 电视剧目录模板（含二级分类）
+    directory: "电视剧/{{category}}/{{title}}{% if year %} ({{year}}){% endif %}/Season {{season_num}}"
+
+
+# -------------------- 模板变量说明 --------------------
+# title          - 标题（优先使用 TMDB 中文标题）
+# original_title - 原始标题
+# year           - 年份
+# season         - 季字符串 (S01)
+# season_num     - 季数字 (1)
+# episode        - 集字符串 (E01)
+# episode_num    - 集数字 (1)
+# part           - Part/CD 信息
+# category       - 二级分类（见 category_config.yml）
+# resource_type  - 资源类型 (WEB-DL/BluRay等)
+# resolution     - 分辨率 (1080p/4K等)
+# video_codec    - 视频编码 (HEVC/AVC等)
+# audio_codec    - 音频编码 (DTS/AAC等)
+# release_group  - 字幕组
+# tmdb_id        - TMDB ID

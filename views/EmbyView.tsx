@@ -53,7 +53,7 @@ export const EmbyView: React.FC = () => {
             } catch (err) {
                 console.error("加载配置失败:", err);
                 setConfig(DEFAULT_CONFIG);
-                setToast('连接后端失败，已加载默认配置');
+                // 静默处理
                 setTimeout(() => setToast(null), 3000);
             }
         };

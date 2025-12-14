@@ -49,15 +49,20 @@ export interface Cloud115Config {
   downloadDirName: string;
   autoDeleteMsg: boolean;
   qps: number;
+  useChinaRedirect?: boolean;  // 回国登录
 }
 
 export interface Cloud123Config {
   enabled: boolean;
+  loginMethod?: 'password' | 'oauth';  // 登录方式
+  passport?: string;                    // 账号（手机号或邮箱）
+  password?: string;                    // 密码
   clientId: string;
   clientSecret: string;
   downloadPath: string;
   downloadDirName: string;
   qps: number;
+  useChinaRedirect?: boolean;           // 回国登录
   hasValidSession?: boolean;  // 由后端返回，表示是否有有效的123云盘会话
 }
 

@@ -26,9 +26,60 @@ class Cloud115Service:
         except ImportError:
             self.p115client = None
             logger.warning('p115client not installed, 115 operations will be mocked')
-    
+            
+        # Rate limiting
+        self._last_request_time = 0
+        self._qps = 1 # Default QPS
+        self._lock = None
+        
+        try:
+            import threading
+            self._lock = threading.Lock()
+        except ImportError:
+            pass
+
+    def _update_qps(self):
+        """Update QPS from secret store/config."""
+        try:
+            # Try to get from config store if available, or use default
+            # For now we default to 2 requests per second (0.5s interval)
+            # You can make this configurable via secret_store if needed
+            self._qps = 2.0 
+        except:
+            pass
+
+    def _wait_for_rate_limit(self):
+        """Enforce QPS limit."""
+        import time
+        
+        if self._lock:
+            with self._lock:
+                current_time = time.time()
+                # Calculate minimum interval between requests
+                interval = 1.0 / self._qps
+                
+                # If time since last request is less than interval, sleep
+                time_passed = current_time - self._last_request_time
+                if time_passed < interval:
+                    sleep_time = interval - time_passed
+                    time.sleep(sleep_time)
+                
+                self._last_request_time = time.time()
+        else:
+             # Fallback without lock
+            import time
+            current_time = time.time()
+            interval = 1.0 / self._qps
+            time_passed = current_time - self._last_request_time
+            if time_passed < interval:
+                time.sleep(interval - time_passed)
+            self._last_request_time = time.time()
+
     def _get_authenticated_client(self):
         """Get or create an authenticated p115client instance."""
+        # Enforce rate limit before getting client/making requests
+        self._wait_for_rate_limit()
+        
         if not self.p115client:
             raise ImportError('p115client not installed')
         
@@ -48,6 +99,64 @@ class Cloud115Service:
             return client
         else:
             raise ImportError('p115client.P115Client not available')
+    
+    def create_directory(self, parent_cid: str, name: str) -> Dict[str, Any]:
+        """
+        Create a directory on 115 cloud.
+        
+        Args:
+            parent_cid: Parent directory CID
+            name: Directory name
+        
+        Returns:
+            Dict with success flag and new directory info
+        """
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'fs') and hasattr(client.fs, 'mkdir'):
+                # client.fs.mkdir returns the new cid or raises error
+                cid = client.fs.mkdir(parent_cid, name)
+                if isinstance(cid, dict):
+                     # handle case where it returns dict
+                     cid = cid.get('id') or cid.get('cid')
+                
+                return {
+                    'success': True,
+                    'data': {
+                        'id': str(cid),
+                        'name': name,
+                        'parent_cid': parent_cid
+                    }
+                }
+            elif hasattr(client, 'mkdir'):
+                cid = client.mkdir(parent_cid, name)
+                return {
+                    'success': True,
+                    'data': {
+                        'id': str(cid),
+                        'name': name,
+                        'parent_cid': parent_cid
+                    }
+                }
+            else:
+                 return {
+                    'success': False,
+                    'error': 'Create directory operation not supported'
+                }
+        
+        except (ImportError, ValueError) as e:
+            logger.warning(f'Failed to create directory: {str(e)}')
+            return {
+                'success': False,
+                'error': str(e)
+            }
+        except Exception as e:
+            logger.error(f'Failed to create directory {name} in {parent_cid}: {str(e)}')
+            return {
+                'success': False,
+                'error': f'Failed to create directory: {str(e)}'
+            }
     
     def list_directory(self, cid: str = '0') -> Dict[str, Any]:
         """

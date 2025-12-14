@@ -64,7 +64,7 @@ export const UserCenterView: React.FC = () => {
     } catch (error) {
       console.warn("后端连接失败，加载默认界面");
       setConfig(DEFAULT_CONFIG as AppConfig);
-      setToast('连接服务器失败，已显示默认界面');
+      // 静默处理，不显示错误提示
     } finally {
       setLoading(false);
     }

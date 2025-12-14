@@ -34,19 +34,70 @@ class Cloud123Service:
         except ImportError:
             self.P123Client = None
             logger.warning('p123client not installed, using REST API fallback')
+            
+        # Rate limiting
+        self._last_request_time = 0
+        self._qps = 1 # Default QPS
+        self._lock = None
+        
+        try:
+            import threading
+            self._lock = threading.Lock()
+        except ImportError:
+            pass
+
+    def _wait_for_rate_limit(self):
+        """Enforce QPS limit."""
+        import time
+        
+        # Enforce rate of 1 req/sec by default
+        interval = 1.0 / self._qps
+        
+        if self._lock:
+            with self._lock:
+                current_time = time.time()
+                time_passed = current_time - self._last_request_time
+                if time_passed < interval:
+                    sleep_time = interval - time_passed
+                    time.sleep(sleep_time)
+                self._last_request_time = time.time()
+        else:
+            current_time = time.time()
+            time_passed = current_time - self._last_request_time
+            if time_passed < interval:
+                time.sleep(interval - time_passed)
+            self._last_request_time = time.time()
     
     def _get_p123_client(self):
-        """Get p123client instance with OAuth credentials."""
+        """Get p123client instance with password or OAuth credentials."""
+        # Enforce rate limit
+        self._wait_for_rate_limit()
+        
         if not self.P123Client:
             return None
         
         if self._client:
             return self._client
         
-        # 获取 OAuth 凭证
+        # 优先尝试密码登录凭证
+        password_creds_json = self.secret_store.get_secret('cloud123_password_credentials')
+        if password_creds_json:
+            try:
+                creds = json.loads(password_creds_json)
+                passport = creds.get('passport')  # 手机号或邮箱
+                password = creds.get('password')
+                
+                if passport and password:
+                    self._client = self.P123Client(passport=passport, password=password)
+                    logger.info('p123client initialized with password credentials')
+                    return self._client
+            except Exception as e:
+                logger.warning(f'Failed to initialize p123client with password: {e}')
+        
+        # 回退到 OAuth 凭证
         creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
         if not creds_json:
-            logger.warning('No OAuth credentials found for p123client')
+            logger.warning('No credentials found for p123client')
             return None
         
         try:
@@ -65,6 +116,65 @@ class Cloud123Service:
         except Exception as e:
             logger.error(f'Failed to initialize p123client: {e}')
             return None
+    
+    def login_with_password(self, passport: str, password: str) -> Dict[str, Any]:
+        """
+        使用账号密码登录123云盘。
+        
+        Args:
+            passport: 手机号或邮箱
+            password: 密码
+        
+        Returns:
+            Dict with success flag
+        """
+        if not self.P123Client:
+            return {
+                'success': False,
+                'error': 'p123client library not installed'
+            }
+        
+        try:
+            # 尝试创建客户端验证凭证
+            client = self.P123Client(passport=passport, password=password)
+            
+            # 验证登录是否成功：尝试获取用户信息或调用一个简单的API
+            # p123client 初始化成功即表示登录成功
+            logger.info(f'p123client password login successful for passport: {passport[:3]}***')
+            
+            # 保存凭证到 SecretStore
+            creds = {
+                'passport': passport,
+                'password': password,
+                'login_method': 'password',
+                'logged_in_at': datetime.now().isoformat()
+            }
+            self.secret_store.set_secret('cloud123_password_credentials', json.dumps(creds))
+            
+            # 更新缓存的客户端
+            self._client = client
+            
+            # 保存会话元数据
+            metadata = {
+                'login_method': 'password',
+                'passport': passport[:3] + '***',
+                'logged_in_at': datetime.now().isoformat()
+            }
+            self.secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
+            
+            return {
+                'success': True,
+                'data': {
+                    'message': '登录成功',
+                    'login_method': 'password'
+                }
+            }
+        except Exception as e:
+            logger.error(f'Password login failed: {e}')
+            return {
+                'success': False,
+                'error': f'登录失败: {str(e)}'
+            }
     
     def _get_access_token(self) -> Optional[str]:
         """
@@ -195,6 +305,9 @@ class Cloud123Service:
         Returns:
             API response data or error dict
         """
+        # Enforce rate limit
+        self._wait_for_rate_limit()
+        
         access_token = self._get_access_token()
         if not access_token:
             return {
@@ -323,6 +436,74 @@ class Cloud123Service:
             return {
                 'success': False,
                 'error': f'转存失败: {str(e)}'
+            }
+    
+    def create_directory(self, parent_id: str, name: str) -> Dict[str, Any]:
+        """
+        Create a directory on 123 cloud.
+        
+        Args:
+            parent_id: Parent directory ID
+            name: Directory name
+        
+        Returns:
+            Dict with success flag and new directory info
+        """
+        # 123 云盘 API 使用 parentFileId 参数
+        # parent_id 为 0 表示根目录
+        if parent_id == '/' or parent_id == '':
+            parent_id = '0'
+            
+        # 1. 尝试使用 p123client
+        p123_client = self._get_p123_client()
+        if p123_client:
+            try:
+                # p123client mkdir
+                resp = p123_client.mkdir({
+                    'parentFileId': int(parent_id),
+                    'filename': name
+                })
+                
+                if resp.get('code') == 0:
+                    data = resp.get('data', {})
+                    return {
+                        'success': True,
+                        'data': {
+                            'id': str(data.get('fileId')),
+                            'name': name,
+                            'parent_id': parent_id
+                        }
+                    }
+                else:
+                    logger.warning(f"p123client mkdir failed: {resp.get('message')}, falling back to REST API")
+            except Exception as e:
+                logger.warning(f"p123client mkdir error: {e}, falling back to REST API")
+        
+        # 2. 回退到 REST API
+        try:
+            payload = {
+                'parentFileId': int(parent_id),
+                'filename': name
+            }
+            
+            result = self._make_api_request('POST', '/api/v1/file/mkdir', json_data=payload)
+            
+            if result.get('success'):
+                data = result.get('data', {})
+                return {
+                    'success': True,
+                    'data': {
+                        'id': str(data.get('fileId')),
+                        'name': name,
+                        'parent_id': parent_id
+                    }
+                }
+            return result
+        except Exception as e:
+            logger.error(f'Failed to create directory {name} in {parent_id}: {str(e)}')
+            return {
+                'success': False,
+                'error': f'Failed to create directory: {str(e)}'
             }
     
     def list_directory(self, dir_id: str = '0') -> Dict[str, Any]:

@@ -1,10 +1,28 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppConfig } from '../types';
+import { AppConfig, StrmConfig } from '../types';
 import { api } from '../services/api';
 import { Save, RefreshCw, HardDrive, Globe, Cloud, Zap, Server, Network, Lock, Play } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
+
+const DEFAULT_STRM_CONFIG: StrmConfig = {
+  enabled: false,
+  outputDir: '/strm',
+  sourceCid115: '0',
+  urlPrefix115: '',
+  sourceDir123: '/',
+  urlPrefix123: '',
+  sourcePathOpenList: '/',
+  urlPrefixOpenList: '',
+  webdav: {
+    enabled: false,
+    port: '18080',
+    username: 'admin',
+    password: '',
+    readOnly: true
+  }
+};
 
 export const StrmView: React.FC = () => {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -27,8 +45,8 @@ export const StrmView: React.FC = () => {
       const data = await api.getConfig();
       setConfig(data);
     } catch (e) {
-      setToast('加载配置失败');
-      setConfig(null);
+      // 使用默认配置
+      setConfig({ strm: DEFAULT_STRM_CONFIG } as AppConfig);
     } finally {
       setIsLoading(false);
     }

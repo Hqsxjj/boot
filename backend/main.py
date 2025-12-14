@@ -1,10 +1,12 @@
 import os
 from datetime import timedelta
-from flask import Flask, jsonify
-from flask_cors import CORS
+from flask import Flask, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
+# 静态文件目录配置
+STATIC_FOLDER = os.environ.get('STATIC_FOLDER', '/app/static')
 
 # 确保这些模块路径在你的项目中存在
 from persistence.store import DataStore
@@ -32,7 +34,10 @@ from utils.logger import get_app_logger, get_api_logger
 
 def create_app(config=None):
     """Application factory for Flask app."""
-    app = Flask(__name__)
+    # 检查静态文件目录是否存在
+    static_folder = STATIC_FOLDER if os.path.isdir(STATIC_FOLDER) else None
+    
+    app = Flask(__name__, static_folder=static_folder, static_url_path='')
     
     # Configuration
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -43,19 +48,7 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     
-    # [微调] CORS configuration - 允许所有来源 (Regex) 以支持 LAN IP 访问
-    # default_origins = 'http://localhost:5173,http://localhost:3000,http://localhost:18080'
-    # cors_origins = os.environ.get('CORS_ORIGINS', default_origins).split(',')
-    
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": r"^https?://.*$",  # 允许所有 HTTP/HTTPS 来源
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "expose_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True
-        }
-    })
+    # 单体架构：无需 CORS 配置（前后端同源）
     
     # JWT Manager
     jwt = JWTManager(app)
@@ -222,14 +215,56 @@ def create_app(config=None):
     wallpaper_bp.store = store
     app.register_blueprint(wallpaper_bp)
     
-    # Root endpoint
-    @app.route('/')
-    def index():
+    # Initialize Organize Blueprint (TMDB 重命名整理)
+    from blueprints.organize import organize_bp, init_organize_blueprint
+    from services.tmdb_service import TmdbService
+    tmdb_service = TmdbService(secret_store, store)
+    init_organize_blueprint(store, tmdb_service, cloud115_service, cloud123_service)
+    app.register_blueprint(organize_bp)
+
+    
+    # 前端静态文件服务（SPA fallback）
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        # API 路由由 Blueprint 处理，这里只处理前端请求
+        if path.startswith('api/'):
+            # 返回 404，让 Flask 的 errorhandler 处理
+            return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
+        
+        # STRM 文件浏览由专门路由处理
+        if path.startswith('strm/'):
+            strm_path = path[5:]  # 移除 'strm/' 前缀
+            strm_dir = '/data/strm'
+            file_path = os.path.join(strm_dir, strm_path)
+            if os.path.isfile(file_path):
+                return send_from_directory(strm_dir, strm_path)
+            elif os.path.isdir(file_path):
+                # 目录列表
+                import json
+                files = os.listdir(file_path)
+                return jsonify({'files': files})
+            else:
+                return jsonify({'error': 'Not found'}), 404
+        
+        # 静态文件服务
+        if app.static_folder:
+            file_path = os.path.join(app.static_folder, path)
+            if path and os.path.isfile(file_path):
+                return send_from_directory(app.static_folder, path)
+            else:
+                # SPA fallback: 所有非文件请求返回 index.html
+                index_path = os.path.join(app.static_folder, 'index.html')
+                if os.path.isfile(index_path):
+                    return send_from_directory(app.static_folder, 'index.html')
+        
+        # 如果没有静态文件目录，返回 API 信息（开发模式）
         return jsonify({
             'success': True,
             'data': {
-                'service': '115-telegram-bot-admin',
+                'service': 'boot-media-manager',
                 'version': '1.0.0',
+                'mode': 'api-only',
                 'endpoints': {
                     'health': '/api/health',
                     'auth': '/api/auth/*',

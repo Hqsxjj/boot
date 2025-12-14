@@ -22,7 +22,7 @@ export const BotSettingsView: React.FC = () => {
       const config = await api.getBotConfig();
       setBotConfig(config || {});
     } catch (e) {
-      setToast('加载机器人配置失败');
+      // 静默处理
       // Set empty config to allow editing
       setBotConfig({
         botToken: '',

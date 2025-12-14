@@ -82,7 +82,7 @@ export const CloudOrganizeView: React.FC = () => {
       } catch (e) {
          console.warn("加载配置失败，使用默认配置");
          setConfig(DEFAULT_CONFIG as AppConfig);
-         setToast('连接服务器失败，已显示默认界面');
+         // 静默处理，不显示错误提示
       } finally {
          setLoading(false);
       }
@@ -572,42 +572,107 @@ export const CloudOrganizeView: React.FC = () => {
 
                   {activeTab === '123' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
-                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 mb-2 flex items-start gap-3 backdrop-blur-sm">
-                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                           <div className="text-sm text-blue-800 dark:text-blue-200">
-                              <strong>登录说明：</strong> 123 云盘目前仅支持通过 <strong>Client ID</strong> 和 <strong>Client Secret</strong> (OAuth) 方式登录。暂不支持扫码登录。
-                              <br />请前往 123 云盘开放平台获取凭证。
-                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                           <div>
-                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">客户端 ID (Client ID)</label>
-                              <SensitiveInput
-                                 value={config.cloud123.clientId}
-                                 onChange={(e) => updateNested('cloud123', 'clientId', e.target.value)}
-                                 className={inputClass}
-                              />
-                           </div>
-                           <div>
-                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">客户端密钥 (Client Secret)</label>
-                              <SensitiveInput
-                                 value={config.cloud123.clientSecret}
-                                 onChange={(e) => updateNested('cloud123', 'clientSecret', e.target.value)}
-                                 className={inputClass}
-                              />
-                           </div>
-                        </div>
-                        <div className="flex items-center gap-4 mt-4">
+                        {/* 登录方式切换 */}
+                        <div className="flex gap-2 mb-4">
                            <button
-                              onClick={handleSave}
-                              disabled={isSaving || !config.cloud123.clientId || !config.cloud123.clientSecret}
-                              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              onClick={() => updateNested('cloud123', 'loginMethod', 'password')}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${config.cloud123.loginMethod === 'password' ? 'bg-blue-600 text-white shadow-blue-200' : 'border-slate-200 text-slate-500'}`}
                            >
-                              {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                              登录 / 保存凭据
+                              密码登录
+                           </button>
+                           <button
+                              onClick={() => updateNested('cloud123', 'loginMethod', 'oauth')}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${config.cloud123.loginMethod !== 'password' ? 'bg-blue-600 text-white shadow-blue-200' : 'border-slate-200 text-slate-500'}`}
+                           >
+                              开放平台凭据
                            </button>
                         </div>
+
+                        {/* 密码登录表单 */}
+                        {config.cloud123.loginMethod === 'password' && (
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-white/30 dark:bg-slate-800/30 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                              <div>
+                                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">手机号</label>
+                                 <input
+                                    type="text"
+                                    value={config.cloud123.passport || ''}
+                                    onChange={(e) => updateNested('cloud123', 'passport', e.target.value)}
+                                    placeholder="请输入手机号或邮箱"
+                                    className={inputClass}
+                                 />
+                              </div>
+                              <div>
+                                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">密码</label>
+                                 <SensitiveInput
+                                    value={config.cloud123.password || ''}
+                                    onChange={(e) => updateNested('cloud123', 'password', e.target.value)}
+                                    placeholder="请输入密码"
+                                    className={inputClass}
+                                 />
+                              </div>
+                              <div className="col-span-2">
+                                 <button
+                                    onClick={async () => {
+                                       try {
+                                          setIsSaving(true);
+                                          const result = await api.login123WithPassword(
+                                             config.cloud123.passport || '',
+                                             config.cloud123.password || ''
+                                          );
+                                          if (result.success) {
+                                             setToast('123云盘登录成功！');
+                                          } else {
+                                             setToast(result.error || '登录失败');
+                                          }
+                                       } catch (err: any) {
+                                          setToast(err.response?.data?.error || '登录失败');
+                                       } finally {
+                                          setIsSaving(false);
+                                       }
+                                    }}
+                                    disabled={isSaving || !config.cloud123.passport || !config.cloud123.password}
+                                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                    {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    密码登录
+                                 </button>
+                              </div>
+                           </div>
+                        )}
+
+                        {/* OAuth 登录表单 */}
+                        {config.cloud123.loginMethod !== 'password' && (
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">客户端 ID (Client ID)</label>
+                                 <SensitiveInput
+                                    value={config.cloud123.clientId}
+                                    onChange={(e) => updateNested('cloud123', 'clientId', e.target.value)}
+                                    className={inputClass}
+                                 />
+                              </div>
+                              <div>
+                                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">客户端密钥 (Client Secret)</label>
+                                 <SensitiveInput
+                                    value={config.cloud123.clientSecret}
+                                    onChange={(e) => updateNested('cloud123', 'clientSecret', e.target.value)}
+                                    className={inputClass}
+                                 />
+                              </div>
+                           </div>
+                        )}
+                        {config.cloud123.loginMethod !== 'password' && (
+                           <div className="flex items-center gap-4 mt-4">
+                              <button
+                                 onClick={handleSave}
+                                 disabled={isSaving || !config.cloud123.clientId || !config.cloud123.clientSecret}
+                                 className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                 {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                 登录 / 保存凭据
+                              </button>
+                           </div>
+                        )}
 
                         <div className="flex gap-8 pt-2">
                            <div className="flex-1">
@@ -808,6 +873,16 @@ export const CloudOrganizeView: React.FC = () => {
                                  value={config.tmdb.apiKey}
                                  onChange={(e) => updateNested('tmdb', 'apiKey', e.target.value)}
                                  className={inputClass}
+                              />
+                           </div>
+
+                           <div className="flex items-center justify-between">
+                              <label className="text-sm font-bold text-slate-600 dark:text-slate-400">强制赋予 TMDB ID (文件夹名附加 {`{tmdb-id}`})</label>
+                              <input
+                                 type="checkbox"
+                                 checked={config.organize.rename.addTmdbIdToFolder}
+                                 onChange={(e) => updateRenameRule('addTmdbIdToFolder', e.target.checked)}
+                                 className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                               />
                            </div>
 

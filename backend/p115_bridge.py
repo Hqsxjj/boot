@@ -2,6 +2,8 @@ import os
 import json
 import uuid
 import logging
+import base64
+import requests
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
@@ -70,6 +72,87 @@ class P115Service:
             raise ImportError('p115client not installed')
         return self.p115client
     
+    def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
+        """
+        下载二维码图片并转换为 base64 data URI。
+        如果下载失败，则使用本地 qrcode 库生成。
+        
+        Args:
+            qrcode_url: 二维码图片URL
+            uid: 用于本地生成二维码的UID
+        
+        Returns:
+            base64 data URI 格式的图片数据
+        """
+        logger.info(f"Attempting to fetch QR code from: {qrcode_url}")
+        
+        # 方案1: 尝试从115 API下载
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://115.com/',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+            }
+            
+            response = requests.get(qrcode_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # 检查响应内容是否是有效的图片
+            content_type = response.headers.get('Content-Type', '')
+            if 'image' in content_type and len(response.content) > 100:
+                img_base64 = base64.b64encode(response.content).decode('utf-8')
+                data_uri = f"data:{content_type};base64,{img_base64}"
+                logger.info(f"QR code fetched successfully from 115 API, size: {len(response.content)} bytes")
+                return data_uri
+            else:
+                logger.warning(f"Invalid image response from 115 API: content_type={content_type}, size={len(response.content)}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to fetch QR code from 115 API: {str(e)}")
+        
+        # 方案2: 使用本地 qrcode 库生成
+        if uid:
+            try:
+                import qrcode
+                from io import BytesIO
+                
+                # 115扫码登录的URL格式
+                qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+                
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(qr_content)
+                qr.make(fit=True)
+                
+                img = qr.make_image(fill_color="black", back_color="white")
+                buffer = BytesIO()
+                img.save(buffer, format='PNG')
+                buffer.seek(0)
+                
+                img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+                data_uri = f"data:image/png;base64,{img_base64}"
+                
+                logger.info(f"QR code generated locally using qrcode library for uid: {uid[:8]}...")
+                return data_uri
+                
+            except ImportError:
+                logger.error("qrcode library not installed, falling back to third-party service")
+            except Exception as e:
+                logger.error(f"Failed to generate QR code locally: {str(e)}")
+        
+        # 方案3: 使用第三方二维码生成服务
+        if uid:
+            fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+            logger.info(f"Using third-party QR service: {fallback_url}")
+            return fallback_url
+        
+        # 最后返回原始URL
+        return qrcode_url
+    
     def start_qr_login(self, 
                       login_app: str = 'web',
                       login_method: str = 'qrcode',
@@ -100,9 +183,15 @@ class P115Service:
                     }
                 
                 actual_app_id = int(app_id) if isinstance(app_id, str) and app_id.isdigit() else app_id
+                logger.info(f"open_app mode: app_id={app_id}, actual_app_id={actual_app_id}, type={type(actual_app_id)}")
                 
                 # 使用 login_qrcode_token_open 获取第三方应用二维码
-                qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
+                try:
+                    qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
+                    logger.info(f"open_app qr_token_result: state={qr_token_result.get('state')}, code={qr_token_result.get('code')}")
+                except Exception as e:
+                    logger.error(f"login_qrcode_token_open exception: {str(e)}")
+                    raise
                 
                 if qr_token_result.get('state') != 1:
                     return {
@@ -127,9 +216,12 @@ class P115Service:
                     'status': 'pending'
                 }
                 
+                # 代理下载二维码并转 base64（传递uid用于本地生成备选）
+                qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_url, uid) if qrcode_url else ''
+                
                 return {
                     'sessionId': session_id,
-                    'qrcode': qrcode_url,
+                    'qrcode': qrcode_base64,
                     'login_method': 'open_app',
                     'login_app': 'open_app'
                 }
@@ -184,14 +276,17 @@ class P115Service:
                     'qr_data': qr_data,
                     'login_method': login_method,
                     'login_app': login_app,
-                    'app_id': actual_app_id,
+                    'app_id': app_id,  # 可能为 None，普通模式不需要
                     'started_at': datetime.now(),
                     'status': 'pending'
                 }
                 
+                # 代理下载二维码并转 base64（传递uid用于本地生成备选）
+                qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_url, uid)
+                
                 return {
                     'sessionId': session_id,
-                    'qrcode': qrcode_url,
+                    'qrcode': qrcode_base64,
                     'login_method': login_method,
                     'login_app': login_app
                 }

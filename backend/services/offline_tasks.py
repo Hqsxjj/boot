@@ -28,8 +28,22 @@ class OfflineTaskService:
         self.p115_service = p115_service or get_p115_service()
         self.cloud115_service = cloud115_service
         self._qps_throttle = 1  # Default QPS from config
+        self._listeners = []  # List of callback functions
         self._update_qps_throttle()
     
+    def add_listener(self, callback):
+        """Add a listener for task events."""
+        if callback not in self._listeners:
+            self._listeners.append(callback)
+
+    def _notify_listeners(self, task_id: str, status: TaskStatus):
+        """Notify listeners of task status change."""
+        for callback in self._listeners:
+            try:
+                callback(task_id, status)
+            except Exception as e:
+                logger.error(f"Error in task listener: {e}")
+
     def _update_qps_throttle(self):
         """Update QPS throttle from config."""
         try:
@@ -307,6 +321,10 @@ class OfflineTaskService:
                         
                         session.merge(task)
                         synced_count += 1
+                        
+                        # Notify listeners if status changed to COMPLETED
+                        if task.status == TaskStatus.COMPLETED and status_str == 'completed':
+                             self._notify_listeners(task.p115_task_id, TaskStatus.COMPLETED)
                     else:
                         logger.warning(f'Failed to get status for task {task.id}: {result.get("error")}')
                         failed_count += 1
