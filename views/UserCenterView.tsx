@@ -255,31 +255,7 @@ export const UserCenterView: React.FC = () => {
           </div>
         ))}
 
-        {/* PWA Module */}
-        <div
-          onClick={!isPwaInstalled && deferredPrompt ? handlePwaInstall : undefined}
-          className={`${glassCardClass} p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 ${!isPwaInstalled && deferredPrompt ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/50' : ''}`}
-        >
-          <div className={`p-3 rounded-xl mb-1 shadow-inner border-[0.5px] border-black/5 ${isPwaInstalled ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-            {isPwaInstalled ? <Smartphone size={24} strokeWidth={1.5} /> : <MonitorDown size={24} strokeWidth={1.5} />}
-          </div>
-          <div className="text-center">
-            <div className="text-sm font-bold text-slate-700 dark:text-slate-200">PWA 应用</div>
-            <div className={`text-[10px] font-medium mt-1 flex items-center justify-center gap-1.5 ${isPwaInstalled ? 'text-green-600 dark:text-green-400' : 'text-indigo-500'}`}>
-              {isPwaInstalled ? (
-                <>
-                  <CheckCircle2 size={12} /> 已安装
-                </>
-              ) : deferredPrompt ? (
-                <>
-                  <Download size={12} /> 点击安装
-                </>
-              ) : (
-                <span className="text-slate-400">不支持/已安装</span>
-              )}
-            </div>
-          </div>
-        </div>
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -522,6 +498,49 @@ export const UserCenterView: React.FC = () => {
           </div>
         </section>
       </div>
+
+      {/* PWA Module - Bottom */}
+      {(deferredPrompt || isPwaInstalled) && (
+        <section className={`${glassCardClass} flex flex-col md:flex-row items-center justify-between p-6 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-500`}>
+          <div className="flex items-center gap-4">
+            <div className={`p-4 rounded-2xl shadow-inner border-[0.5px] border-black/5 ${isPwaInstalled ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+              {isPwaInstalled ? <Smartphone size={32} strokeWidth={1.5} /> : <MonitorDown size={32} strokeWidth={1.5} />}
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                PWA 渐进式应用
+                {isPwaInstalled && <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold border border-green-200">已安装</span>}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                {isPwaInstalled
+                  ? '应用已安装到您的设备，支持离线访问和更原生的体验'
+                  : '安装应用到您的设备，获得如原生应用般的流畅体验'}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            {!isPwaInstalled && deferredPrompt ? (
+              <button
+                onClick={handlePwaInstall}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Download size={18} />
+                立即安装
+              </button>
+            ) : isPwaInstalled ? (
+              <button disabled className="px-6 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl font-bold border-[0.5px] border-slate-200 dark:border-slate-700 cursor-default flex items-center gap-2">
+                <CheckCircle2 size={18} />
+                运行正常
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border-[0.5px] border-slate-200 dark:border-slate-700">
+                当前浏览器不支持或已禁用
+              </span>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
