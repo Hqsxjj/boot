@@ -308,4 +308,10 @@ export const api = {
     const res = await apiClient.get<ApiResponse<{ key: string; appId: number }[]>>('/115/login/apps');
     return res.data.data;
   },
+
+  // --- Wallpaper ---
+  getTrendingWallpaper: async () => {
+    const res = await apiClient.get<ApiResponse<{ url: string; source: string }>>('/wallpaper/trending');
+    return res.data;
+  },
 };

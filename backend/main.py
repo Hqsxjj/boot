@@ -217,6 +217,11 @@ def create_app(config=None):
     app.register_blueprint(logs_bp)
     app.register_blueprint(keywords_bp)
     
+    # Initialize Wallpaper Blueprint
+    from blueprints.wallpaper import wallpaper_bp
+    wallpaper_bp.store = store
+    app.register_blueprint(wallpaper_bp)
+    
     # Root endpoint
     @app.route('/')
     def index():
