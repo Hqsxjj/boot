@@ -161,9 +161,13 @@ class StrmService:
                 
             items = res.get('data', [])
             for item in items:
-                name = item.get('n') or item.get('name')
-                item_id = item.get('id') or item.get('fid') or item.get('cid')
-                is_dir = item.get('is_directory') or (item.get('ico') == 'folder') or ('fid' not in item)
+                # list_directory 返回的格式：{'id': str, 'name': str, 'children': bool, 'date': str}
+                name = item.get('name')
+                item_id = item.get('id')
+                is_dir = item.get('children', False)  # children=True 表示是目录
+                
+                if not name or not item_id:
+                    continue
                 
                 new_rel_path = os.path.join(rel_path, name)
                 
@@ -171,11 +175,6 @@ class StrmService:
                     queue.append((item_id, new_rel_path))
                 else:
                     # File: generate STRM
-                    # 115 content path: mount_path/rel_path
-                    # Replace backslashes with forward slashes for cross-platform compatibility if needed, 
-                    # but usually local paths use system separator. 
-                    # Let's use forward slash for consistency in STRM usually, but Windows might need backslash.
-                    # Best to follow input mount_path style.
                     full_content_path = os.path.join(mount_path, new_rel_path).replace('\\', '/')
                     
                     if self._write_strm_file(output_dir, new_rel_path, full_content_path):
@@ -206,21 +205,15 @@ class StrmService:
                 
             items = res.get('data', [])
             for item in items:
-                name = item.get('filename')
-                item_id = item.get('fileId')
-                item_type = item.get('type') # 0: folder, 1: file usually
+                # list_directory 返回的格式：{'id': str, 'name': str, 'children': bool, 'date': str}
+                name = item.get('name')
+                item_id = item.get('id')
+                is_dir = item.get('children', False)  # children=True 表示是目录
+                
+                if not name or not item_id:
+                    continue
                 
                 new_rel_path = os.path.join(rel_path, name)
-                
-                # Check if folder (type=1 for folder in 123 sometimes? No, usually 0 is folder? 
-                # Let's check api field: 'type': 1 (folder), 'type': 0 (file)?
-                # Or check isFolder field if exists)
-                # Looking at cloud123_service: we need to verify directory listing format.
-                # Assuming generic structure or checking service output.
-                # Usually type 1 is folder in many APIs, but let's assume 'type' field indicates it.
-                # Actually commonly: type=1 is directory, type=0 is file for 123pan.
-                
-                is_dir = (item_type == 1)
                 
                 if is_dir:
                     queue.append((item_id, new_rel_path))

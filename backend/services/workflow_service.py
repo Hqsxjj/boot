@@ -303,13 +303,13 @@ class WorkflowService:
                 return {'success': False, 'error': task.error}
             
             save_dir = self._get_save_dir('123')
-            result = self.cloud123_service.add_offline_task(
-                url=task.parsed_link.url,
-                save_path=save_dir
+            result = self.cloud123_service.create_offline_task(
+                source_url=task.parsed_link.url,
+                save_dir_id=save_dir
             )
             
             if result.get('success'):
-                task.offline_task_id = result.get('task_id')
+                task.offline_task_id = result.get('data', {}).get('p123TaskId')
                 return {
                     'success': True,
                     'task_id': task.id,
