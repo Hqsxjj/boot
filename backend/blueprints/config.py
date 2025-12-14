@@ -3,6 +3,7 @@ from middleware.auth import optional_auth
 from persistence.store import DataStore
 from services.secret_store import SecretStore
 import json
+import copy
 
 config_bp = Blueprint('config', __name__, url_prefix='/api')
 
@@ -111,10 +112,79 @@ def _sync_cloud123_credentials_from_config(payload: dict, secret_store: SecretSt
     secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
 
 
+# 定义敏感字段路径列表
+SENSITIVE_FIELDS = [
+    ['cloud115', 'cookies'],
+    ['cloud123', 'clientSecret'],
+    ['openList', 'password'],
+    ['tmdb', 'apiKey'],
+    ['telegram', 'botToken'],
+    ['emby', 'apiKey'],
+    ['proxy', 'password'],
+]
+
+MASK_PLACEHOLDER = '__MASKED__'
+
+def _mask_sensitive_data(config: dict) -> dict:
+    """Mask sensitive data in config dict."""
+    masked = copy.deepcopy(config)
+    
+    for path in SENSITIVE_FIELDS:
+        target = masked
+        for key in path[:-1]:
+            if isinstance(target, dict):
+                target = target.get(key)
+            else:
+                target = None
+                break
+        
+        if isinstance(target, dict) and path[-1] in target:
+            val = target[path[-1]]
+            if val and isinstance(val, str) and val.strip():
+                target[path[-1]] = MASK_PLACEHOLDER
+                
+    return masked
+
+def _unmask_sensitive_data(new_config: dict, old_config: dict) -> dict:
+    """Restore masked data from old config."""
+    restored = copy.deepcopy(new_config)
+    
+    for path in SENSITIVE_FIELDS:
+        # 获取新配置中的值
+        new_target = restored
+        for key in path[:-1]:
+            if isinstance(new_target, dict):
+                new_target = new_target.get(key)
+            else:
+                new_target = None
+                break
+        
+        # 获取旧配置中的值
+        old_target = old_config
+        for key in path[:-1]:
+            if isinstance(old_target, dict):
+                old_target = old_target.get(key)
+            else:
+                old_target = None
+                break
+                
+        # 如果新值是占位符，且旧值存在，则恢复旧值
+        if (isinstance(new_target, dict) and path[-1] in new_target and 
+            new_target[path[-1]] == MASK_PLACEHOLDER):
+            
+            if (isinstance(old_target, dict) and path[-1] in old_target):
+                new_target[path[-1]] = old_target[path[-1]]
+            else:
+                # 如果旧值不存在（奇怪的情况），则设为空或者保持原样
+                new_target[path[-1]] = ''
+                
+    return restored
+
+
 @config_bp.route('/config', methods=['GET'])
 @optional_auth
 def get_config():
-    """Get full application configuration without masking."""
+    """Get application configuration with optional masking."""
     try:
         config = config_bp.store.get_config()
 
@@ -137,6 +207,10 @@ def get_config():
         
         # Add session health flags
         config = _add_session_flags(config, config_bp.secret_store)
+        
+        # Mask sensitive data if 2FA is enabled (detected by presence of secret)
+        if config.get('twoFactorSecret'):
+            config = _mask_sensitive_data(config)
         
         return jsonify({
             'success': True,
@@ -162,18 +236,28 @@ def update_config():
         }), 400
     
     try:
+        # 获取当前配置用于恢复被 mask 的数据
+        current_config = config_bp.store.get_config()
+        
+        # 如果新配置中有 masked 数据，尝试还原
+        final_config = _unmask_sensitive_data(data, current_config)
+        
         # Update config in store (no masking, full round-trip)
-        config_bp.store.update_config(data)
+        config_bp.store.update_config(final_config)
 
         # Sync 115 cookies from the config payload into SecretStore for real /api/115 usage
-        _sync_cloud115_cookies_from_config(data, config_bp.secret_store)
+        _sync_cloud115_cookies_from_config(final_config, config_bp.secret_store)
         
         # Sync 123 cloud OAuth credentials into SecretStore
-        _sync_cloud123_credentials_from_config(data, config_bp.secret_store)
+        _sync_cloud123_credentials_from_config(final_config, config_bp.secret_store)
         
         # Return updated config with session flags
         updated_config = config_bp.store.get_config()
         updated_config = _add_session_flags(updated_config, config_bp.secret_store)
+        
+        # Mask responsive data if needed
+        if updated_config.get('twoFactorSecret'):
+            updated_config = _mask_sensitive_data(updated_config)
         
         return jsonify({
             'success': True,

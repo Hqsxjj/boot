@@ -9,10 +9,10 @@ interface SensitiveInputProps {
   multiline?: boolean;
 }
 
-export const SensitiveInput: React.FC<SensitiveInputProps> = ({ 
-  value, 
-  onChange, 
-  placeholder, 
+export const SensitiveInput: React.FC<SensitiveInputProps> = ({
+  value,
+  onChange,
+  placeholder,
   className = "",
   multiline = false
 }) => {
@@ -30,34 +30,35 @@ export const SensitiveInput: React.FC<SensitiveInputProps> = ({
       {multiline ? (
         // 多行文本框 (Textarea) - 适用于 Cookie
         <div className="relative">
-            <textarea
-                value={value}
-                onChange={onChange}
-                placeholder={placeholder}
-                rows={4}
-                className={`${baseInputClass} ${!isRevealed ? 'text-slate-400 tracking-widest blur-[2px] select-none cursor-default' : 'font-mono text-xs'}`}
-                readOnly={!isRevealed} // 隐藏时禁止编辑防止误触
-            />
-            {/* 遮罩层，当未揭示且有内容时显示 */}
-            {!isRevealed && value && (
-                <div 
-                    onClick={handleToggle}
-                    className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer hover:bg-slate-50/10 transition-colors rounded-lg"
-                >
-                    <div className="bg-slate-100/90 dark:bg-slate-800/90 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-600 backdrop-blur-sm shadow-sm flex items-center gap-2 text-xs font-bold text-slate-500 tracking-wider">
-                        <Lock size={12} /> 内容已隐藏 (点击查看)
-                    </div>
-                </div>
-            )}
+          <textarea
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            rows={4}
+            className={`${baseInputClass} ${!isRevealed ? 'text-slate-400 tracking-widest blur-[2px] select-none cursor-default' : 'font-mono text-xs'}`}
+            readOnly={!isRevealed} // 隐藏时禁止编辑防止误触
+          />
+          {/* 遮罩层，当未揭示且有内容时显示 */}
+          {!isRevealed && value && (
+            <div
+              onClick={handleToggle}
+              className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer hover:bg-slate-50/10 transition-colors rounded-lg"
+            >
+              <div className="bg-slate-100/90 dark:bg-slate-800/90 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-600 backdrop-blur-sm shadow-sm flex items-center gap-2 text-xs font-bold text-slate-500 tracking-wider">
+                <Lock size={12} /> 内容已隐藏 (点击查看)
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         // 单行输入框 (Input) - 适用于 Password / Key
         <input
-          type={isRevealed ? "text" : "password"}
-          value={value}
+          type={isRevealed && value !== '__MASKED__' ? "text" : "password"}
+          value={isRevealed && value === '__MASKED__' ? '(内容已隐藏，输入新值以修改)' : value}
           onChange={onChange}
           placeholder={placeholder}
-          className={`${baseInputClass} ${!isRevealed && value ? 'tracking-widest' : ''}`}
+          className={`${baseInputClass} ${!isRevealed && value ? 'tracking-widest' : ''} ${value === '__MASKED__' && isRevealed ? 'text-slate-400 italic text-xs' : ''}`}
+          readOnly={isRevealed && value === '__MASKED__'}
         />
       )}
 
