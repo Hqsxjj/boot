@@ -25,10 +25,11 @@ def _add_session_flags(config: dict, secret_store: SecretStore) -> dict:
     cookies_json = secret_store.get_secret('cloud115_cookies')
     config['cloud115']['hasValidSession'] = bool(cookies_json)
     
-    # Check if we have valid 123 token or cookies
+    # Check if we have valid 123 token, cookies, or OAuth credentials
     token_json = secret_store.get_secret('cloud123_token')
     cookies_123_json = secret_store.get_secret('cloud123_cookies')
-    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json)
+    oauth_credentials = secret_store.get_secret('cloud123_oauth_credentials')
+    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials)
     
     return config
 
@@ -118,10 +119,21 @@ def get_config():
         config = config_bp.store.get_config()
 
         # Bootstrap SecretStore from persisted config for frontend compatibility
-        if config_bp.secret_store and not config_bp.secret_store.get_secret('cloud115_cookies'):
-            cloud115 = config.get('cloud115') if isinstance(config, dict) else None
-            if isinstance(cloud115, dict) and isinstance(cloud115.get('cookies'), str) and cloud115.get('cookies').strip():
-                _sync_cloud115_cookies_from_config(config, config_bp.secret_store)
+        if config_bp.secret_store:
+            # 同步115 cookies
+            if not config_bp.secret_store.get_secret('cloud115_cookies'):
+                cloud115 = config.get('cloud115') if isinstance(config, dict) else None
+                if isinstance(cloud115, dict) and isinstance(cloud115.get('cookies'), str) and cloud115.get('cookies').strip():
+                    _sync_cloud115_cookies_from_config(config, config_bp.secret_store)
+            
+            # 同步123云盘凭证
+            if not config_bp.secret_store.get_secret('cloud123_oauth_credentials'):
+                cloud123 = config.get('cloud123') if isinstance(config, dict) else None
+                if isinstance(cloud123, dict):
+                    client_id = cloud123.get('clientId', '').strip() if isinstance(cloud123.get('clientId'), str) else ''
+                    client_secret = cloud123.get('clientSecret', '').strip() if isinstance(cloud123.get('clientSecret'), str) else ''
+                    if client_id and client_secret:
+                        _sync_cloud123_credentials_from_config(config, config_bp.secret_store)
         
         # Add session health flags
         config = _add_session_flags(config, config_bp.secret_store)

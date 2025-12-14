@@ -313,10 +313,19 @@ export const CloudOrganizeView: React.FC = () => {
                console.error('QR Poll failed', err);
             }
          }, 2000);
-      } catch (e) {
-         console.error(e);
+      } catch (e: any) {
+         console.error('QR Code generation failed:', e);
          setQrState('error');
-         setToast('无法获取二维码 (后端未连接)');
+         // 根据错误类型显示不同的消息
+         if (e.code === 'ERR_NETWORK' || e.message?.includes('Network Error')) {
+            setToast('无法连接后端服务器，请检查网络或服务状态');
+         } else if (e.response?.status === 401) {
+            setToast('登录已过期，请重新登录');
+         } else if (e.response?.data?.error) {
+            setToast(`二维码生成失败: ${e.response.data.error}`);
+         } else {
+            setToast(`二维码生成失败: ${e.message || '未知错误'}`);
+         }
          stopQrCheck();
       }
    };
