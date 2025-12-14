@@ -436,42 +436,56 @@ export const UserCenterView: React.FC = () => {
           <div className={`p-6 transition-all duration-300 ${!config?.proxy?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="space-y-5">
               {/* 第一行：类型 + 主机 + 端口 */}
-              <div className="grid grid-cols-12 gap-4">
-                <div className="col-span-12 sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">类型</label>
-                  <select
-                    value={config?.proxy?.type || 'http'}
-                    onChange={(e) => updateNested('proxy', 'type', e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="http">HTTP</option>
-                    <option value="https">HTTPS</option>
-                    <option value="socks5">SOCKS5</option>
-                  </select>
+              {/* Row 1: Type & Port */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">代理类型 (Protocol)</label>
+                  <div className="relative">
+                    <select
+                      value={config?.proxy?.type || 'http'}
+                      onChange={(e) => updateNested('proxy', 'type', e.target.value)}
+                      className={`${inputClass} appearance-none cursor-pointer`}
+                    >
+                      <option value="http">HTTP</option>
+                      <option value="https">HTTPS</option>
+                      <option value="socks5">SOCKS5</option>
+                    </select>
+                    <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
+                      <Globe size={14} />
+                    </div>
+                  </div>
                 </div>
-                <div className="col-span-12 sm:col-span-7">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">代理服务器地址</label>
-                    <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1 font-medium">
-                      <Zap size={12} /> 填入本机IP
-                    </button>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口 (Port)</label>
+                  <input
+                    type="text"
+                    value={config?.proxy?.port || ''}
+                    onChange={(e) => updateNested('proxy', 'port', e.target.value)}
+                    placeholder="例如: 7890"
+                    className={`${inputClass} font-mono`}
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Host (Full Width) */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址 (Server Host)</label>
+                  <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1.5 font-bold px-2 py-1 rounded hover:bg-brand-50 transition-colors">
+                    <Zap size={12} />
+                    填入本机 IP
+                  </button>
+                </div>
+                <div className="relative group">
+                  <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors">
+                    <HardDrive size={16} />
                   </div>
                   <input
                     type="text"
                     value={config?.proxy?.host || ''}
                     onChange={(e) => updateNested('proxy', 'host', e.target.value)}
-                    placeholder="192.168.1.5 或 proxy.example.com"
-                    className={`${inputClass} font-mono`}
-                  />
-                </div>
-                <div className="col-span-12 sm:col-span-3">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口</label>
-                  <input
-                    type="text"
-                    value={config?.proxy?.port || ''}
-                    onChange={(e) => updateNested('proxy', 'port', e.target.value)}
-                    placeholder="7890"
-                    className={`${inputClass} font-mono`}
+                    placeholder="请输入代理服务器 IP 或域名，例如: 192.168.1.5"
+                    className={`${inputClass} pl-10 font-mono text-base`}
                   />
                 </div>
               </div>
