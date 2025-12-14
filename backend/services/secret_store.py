@@ -1,8 +1,11 @@
 import os
+import logging
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 from models.secret import Secret
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class SecretStore:
@@ -12,6 +15,7 @@ class SecretStore:
         """Initialize SecretStore with session factory."""
         self.session_factory = session_factory
         self._cipher = self._get_cipher()
+        logger.info('SecretStore initialized')
     
     def _get_cipher(self) -> Fernet:
         """Get or create encryption cipher."""
@@ -49,14 +53,18 @@ class SecretStore:
             
             if existing:
                 existing.encrypted_value = encrypted_value
+                logger.debug(f'Updated secret: {key}')
             else:
                 secret = Secret(key=key, encrypted_value=encrypted_value)
                 session.add(secret)
+                logger.debug(f'Created secret: {key}')
             
             session.commit()
             session.close()
+            logger.info(f'Secret saved successfully: {key}')
             return True
         except Exception as e:
+            logger.error(f'Failed to save secret {key}: {e}')
             return False
     
     def get_secret(self, key: str) -> Optional[str]:
@@ -67,11 +75,14 @@ class SecretStore:
             session.close()
             
             if not secret:
+                logger.debug(f'Secret not found: {key}')
                 return None
             
             decrypted_value = self._cipher.decrypt(secret.encrypted_value.encode()).decode()
+            logger.debug(f'Secret retrieved: {key}')
             return decrypted_value
         except Exception as e:
+            logger.error(f'Failed to get secret {key}: {e}')
             return None
     
     def delete_secret(self, key: str) -> bool:
