@@ -572,6 +572,14 @@ export const CloudOrganizeView: React.FC = () => {
 
                   {activeTab === '123' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
+                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 mb-2 flex items-start gap-3 backdrop-blur-sm">
+                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                           <div className="text-sm text-blue-800 dark:text-blue-200">
+                              <strong>登录说明：</strong> 123 云盘目前仅支持通过 <strong>Client ID</strong> 和 <strong>Client Secret</strong> (OAuth) 方式登录。暂不支持扫码登录。
+                              <br />请前往 123 云盘开放平台获取凭证。
+                           </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                            <div>
                               <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">客户端 ID (Client ID)</label>

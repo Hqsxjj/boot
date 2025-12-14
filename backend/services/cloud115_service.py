@@ -78,13 +78,20 @@ class Cloud115Service:
             # Transform entries to match frontend format
             result = []
             for entry in entries:
-                # Extract fields with various possible attribute names
-                entry_id = getattr(entry, 'id', None) or getattr(entry, 'fid', None) or getattr(entry, 'cid', None)
-                entry_name = getattr(entry, 'name', None) or getattr(entry, 'n', None)
-                is_directory = getattr(entry, 'is_directory', None) or getattr(entry, 'ico', None) == 'folder'
+                # Extract fields with various possible attribute names (Support both dict and object)
+                if isinstance(entry, dict):
+                    entry_id = entry.get('id') or entry.get('fid') or entry.get('cid') or entry.get('file_id')
+                    entry_name = entry.get('name') or entry.get('n')
+                    # Check for directory: p115 usually uses 'ico'='folder' or explicit is_directory
+                    is_directory = entry.get('is_directory') or entry.get('ico') == 'folder' or entry.get('file_type') == 0
+                    timestamp = entry.get('timestamp') or entry.get('t') or entry.get('time')
+                else:
+                    entry_id = getattr(entry, 'id', None) or getattr(entry, 'fid', None) or getattr(entry, 'cid', None)
+                    entry_name = getattr(entry, 'name', None) or getattr(entry, 'n', None)
+                    is_directory = getattr(entry, 'is_directory', None) or getattr(entry, 'ico', None) == 'folder'
+                    timestamp = getattr(entry, 'timestamp', None) or getattr(entry, 't', None)
                 
                 # Get timestamp
-                timestamp = getattr(entry, 'timestamp', None) or getattr(entry, 't', None)
                 if timestamp:
                     try:
                         if isinstance(timestamp, (int, float)):
