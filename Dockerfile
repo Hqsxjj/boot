@@ -13,11 +13,10 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
-# 安装必要依赖（包含 git 用于从 GitHub 安装包）
+# 安装必要依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     dos2unix \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
@@ -25,10 +24,8 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
     pip install gunicorn
 
-# 安装 p115client 和 p123client 及其依赖（从 GitHub 安装最新版本）
-RUN pip install --no-cache-dir httpx aiofiles httpx_request && \
-    pip install --no-cache-dir git+https://github.com/ChenyangGao/p115client@main && \
-    pip install --no-cache-dir git+https://github.com/ChenyangGao/p123client@main && \
+# 安装 p115client 和 p123client（从 PyPI）
+RUN pip install --no-cache-dir p115client p123client && \
     python -c "import p115client; print('✅ p115client version:', p115client.__version__)" && \
     python -c "import p123client; print('✅ p123client installed')"
 
