@@ -24,9 +24,12 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
     pip install gunicorn
 
-# 安装 p115client 和 p123client（从 PyPI）
-RUN pip install --no-cache-dir p115client p123client && \
-    python -c "import p115client; print('✅ p115client version:', p115client.__version__)" && \
+# 安装 p115client（从 PyPI，带详细日志）
+RUN pip install --no-cache-dir --verbose p115client && \
+    python -c "import p115client; print('✅ p115client version:', p115client.__version__)"
+
+# 安装 p123client（从 PyPI，带详细日志）
+RUN pip install --no-cache-dir --verbose p123client && \
     python -c "import p123client; print('✅ p123client installed')"
 
 # 复制后端代码
