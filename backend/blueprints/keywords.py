@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 
 
-keywords_bp = Blueprint('keywords', __name__)
+keywords_bp = Blueprint('keywords', __name__, url_prefix='/api')
 
 # 服务实例会在 main.py 中注入
 keyword_store = None
