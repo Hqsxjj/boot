@@ -9,15 +9,15 @@ COPY . .
 RUN npm run build
 
 # 阶段2: Python 运行环境（单体架构，无 Nginx）
-FROM python:3.11-slim
+# 注意：p115client 和 p123client 要求 Python 3.12+
+FROM python:3.12-slim
 WORKDIR /app
 
-# 安装必要依赖（包含编译工具，用于安装某些 Python 包）
+# 安装必要依赖（包含 git 用于从 GitHub 安装包）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     dos2unix \
-    gcc \
-    python3-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
