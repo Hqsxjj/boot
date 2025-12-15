@@ -25,13 +25,12 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
     pip install gunicorn
 
-# 尝试安装 p115client 和 p123client（可选，部分平台可能不支持）
-RUN pip install --no-cache-dir p115client p123client || \
-    echo "⚠️ Warning: p115client/p123client installation failed. 115/123 cloud features may be limited."
-
-# 验证安装状态（仅打印日志，不中断构建）
-RUN python -c "import p115client; print('✅ p115client version:', p115client.__version__)" || echo "❌ p115client not available"
-RUN python -c "import p123client; print('✅ p123client installed')" || echo "❌ p123client not available"
+# 安装 p115client 和 p123client 及其依赖（从 GitHub 安装最新版本）
+RUN pip install --no-cache-dir httpx aiofiles httpx_request && \
+    pip install --no-cache-dir git+https://github.com/ChenyangGao/p115client@main && \
+    pip install --no-cache-dir git+https://github.com/ChenyangGao/p123client@main && \
+    python -c "import p115client; print('✅ p115client version:', p115client.__version__)" && \
+    python -c "import p123client; print('✅ p123client installed')"
 
 # 复制后端代码
 COPY backend/ .
