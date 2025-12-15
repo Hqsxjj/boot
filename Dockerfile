@@ -21,11 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 安装 Python 依赖
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
-    pip install gunicorn && \
-    echo "Verifying p115client installation..." && \
-    python -c "import p115client; print('p115client version:', p115client.__version__)" || echo "Warning: p115client not installed" && \
-    echo "Verifying p123client installation..." && \
-    python -c "import p123client; print('p123client installed')" || echo "Warning: p123client not installed"
+    pip install gunicorn
+
+# 确保 p115client 和 p123client 正确安装（必须成功）
+RUN pip install --no-cache-dir --upgrade p115client p123client && \
+    python -c "import p115client; print('p115client version:', p115client.__version__)" && \
+    python -c "import p123client; print('p123client installed')"
 
 # 复制后端代码
 COPY backend/ .
