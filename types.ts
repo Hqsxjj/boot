@@ -50,6 +50,7 @@ export interface Cloud115Config {
   autoDeleteMsg: boolean;
   qps: number;
   useChinaRedirect?: boolean;  // 回国登录
+  hasValidSession?: boolean;   // 由后端返回，表示是否有有效的115会话
 }
 
 export interface Cloud123Config {

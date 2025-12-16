@@ -169,7 +169,7 @@ export const UserCenterView: React.FC = () => {
   const services = [
     {
       name: '115 网盘',
-      isConnected: !!config.cloud115?.cookies,
+      isConnected: !!config.cloud115?.hasValidSession || !!config.cloud115?.cookies,
       icon: HardDrive,
       colorClass: 'text-orange-600 dark:text-orange-400',
       bgClass: 'bg-orange-50 dark:bg-orange-900/20'

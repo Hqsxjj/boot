@@ -45,8 +45,8 @@ class Cloud115Service:
             # For now we default to 2 requests per second (0.5s interval)
             # You can make this configurable via secret_store if needed
             self._qps = 2.0 
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f'Failed to update QPS from config: {e}')
 
     def _wait_for_rate_limit(self):
         """Enforce QPS limit."""
@@ -207,7 +207,7 @@ class Cloud115Service:
                             date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
                         else:
                             date_str = str(timestamp)[:10]
-                    except:
+                    except Exception:
                         date_str = datetime.now().strftime('%Y-%m-%d')
                 else:
                     date_str = datetime.now().strftime('%Y-%m-%d')

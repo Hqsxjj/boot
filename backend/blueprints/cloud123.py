@@ -64,7 +64,35 @@ def oauth_login():
                 'error': 'clientId and clientSecret are required'
             }), 400
         
-        # Store credentials encrypted
+        # 验证 OAuth 凭证：尝试获取 access token
+        import requests as http_requests
+        try:
+            url = "https://open-api.123pan.com/api/v1/access_token"
+            payload = {
+                "clientID": client_id,
+                "clientSecret": client_secret
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "Platform": "open_platform"
+            }
+            
+            response = http_requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            if result.get('code') != 0:
+                return jsonify({
+                    'success': False,
+                    'error': f"OAuth 凭证验证失败: {result.get('message', '未知错误')}"
+                }), 400
+        except http_requests.RequestException as e:
+            return jsonify({
+                'success': False,
+                'error': f'OAuth 凭证验证失败: {str(e)}'
+            }), 400
+        
+        # Store credentials encrypted (only after validation succeeds)
         credentials = {
             'clientId': client_id,
             'clientSecret': client_secret
@@ -81,7 +109,7 @@ def oauth_login():
         return jsonify({
             'success': True,
             'data': {
-                'message': 'OAuth credentials stored successfully'
+                'message': 'OAuth credentials validated and stored successfully'
             }
         }), 200
     except Exception as e:

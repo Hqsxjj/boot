@@ -138,8 +138,25 @@ class Cloud123Service:
             # 尝试创建客户端验证凭证
             client = self.P123Client(passport=passport, password=password)
             
-            # 验证登录是否成功：尝试获取用户信息或调用一个简单的API
-            # p123client 初始化成功即表示登录成功
+            # 验证登录是否成功：调用一个简单的API来验证凭证有效性
+            try:
+                # 尝试获取用户信息或列出根目录来验证凭证
+                if hasattr(client, 'open_fs_file_list'):
+                    resp = client.open_fs_file_list({'parentFileId': 0, 'limit': 1, 'Page': 1})
+                    if resp.get('code') != 0:
+                        return {
+                            'success': False,
+                            'error': f"凭证验证失败: {resp.get('message', '未知错误')}"
+                        }
+                elif hasattr(client, 'user_info'):
+                    client.user_info()  # 尝试获取用户信息
+            except Exception as verify_error:
+                logger.warning(f'Credential verification API call failed: {verify_error}')
+                return {
+                    'success': False,
+                    'error': f'账号或密码错误: {str(verify_error)}'
+                }
+            
             logger.info(f'p123client password login successful for passport: {passport[:3]}***')
             
             # 保存凭证到 SecretStore

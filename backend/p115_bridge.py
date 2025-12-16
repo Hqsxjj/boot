@@ -183,6 +183,12 @@ class P115Service:
                     }
                 
                 actual_app_id = int(app_id) if isinstance(app_id, str) and app_id.isdigit() else app_id
+                if isinstance(actual_app_id, str):
+                    # app_id 应该是数字，如果仍是字符串则无效
+                    return {
+                        'error': f'Invalid app_id: {app_id}. Must be a numeric ID.',
+                        'success': False
+                    }
                 logger.info(f"open_app mode: app_id={app_id}, actual_app_id={actual_app_id}, type={type(actual_app_id)}")
                 
                 # 使用 login_qrcode_token_open 获取第三方应用二维码
@@ -416,10 +422,12 @@ class P115Service:
                         'success': False
                     }
             except Exception as e:
-                # API 调用失败，可能还在等待
+                # API 调用失败，记录错误并返回错误状态而非假装等待
+                logger.warning(f'QR scan status API call failed: {str(e)}')
                 return {
-                    'status': 'waiting',
-                    'success': True
+                    'status': 'error',
+                    'error': f'扫码状态查询失败: {str(e)}',
+                    'success': False
                 }
         except Exception as e:
             return {
@@ -456,7 +464,16 @@ class P115Service:
             elif hasattr(client, 'user_id'):
                 return client.user_id is not None
             else:
-                return True  # Assume valid if we can create client
+                # 无法验证时尝试调用一个简单的 API 来确认
+                try:
+                    if hasattr(client, 'fs') and hasattr(client.fs, 'listdir'):
+                        client.fs.listdir('0')  # 尝试列出根目录
+                        return True
+                except Exception:
+                    pass
+                # 无法验证，返回 False 而非盲目假设有效
+                logger.warning('Unable to validate cookies: no validation method available')
+                return False
         except Exception:
             return False
     
