@@ -18,10 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
-    pip install gunicorn
-
-RUN pip install --no-cache-dir p115client p123client
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 COPY backend/ .
 COPY --from=frontend-builder /app-frontend/dist /app/static
