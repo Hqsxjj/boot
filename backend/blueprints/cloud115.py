@@ -106,16 +106,23 @@ def poll_login_status(session_id: str):
                     'error': 'No cookies received from login'
                 }), 400
             
-            # Store cookies encrypted - use QR-specific key for independent storage
+            # Store cookies encrypted - use method-specific key for independent storage
             cookies_json = json.dumps(cookies)
-            _secret_store.set_secret('cloud115_qr_cookies', cookies_json)
+            login_method = _p115_service._session_cache.get(session_id, {}).get('login_method')
+            
+            if login_method == 'open_app':
+                _secret_store.set_secret('cloud115_openapp_cookies', cookies_json)
+            else:
+                _secret_store.set_secret('cloud115_qr_cookies', cookies_json)
+            
             # Also update legacy key for backwards compatibility
             _secret_store.set_secret('cloud115_cookies', cookies_json)
             
             # Also store session metadata
             metadata = {
-                'login_method': _p115_service._session_cache.get(session_id, {}).get('login_method'),
+                'login_method': login_method,
                 'login_app': _p115_service._session_cache.get(session_id, {}).get('login_app'),
+                'app_id': _p115_service._session_cache.get(session_id, {}).get('app_id'),
                 'logged_in_at': __import__('datetime').datetime.now().isoformat()
             }
             _secret_store.set_secret('cloud115_session_metadata', json.dumps(metadata))

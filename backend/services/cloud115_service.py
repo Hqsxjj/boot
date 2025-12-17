@@ -87,9 +87,10 @@ class Cloud115Service:
         
         # 尝试多个凭证来源，按优先级顺序
         credential_sources = [
-            ('cloud115_qr_cookies', 'QR扫码'),      # 优先: 扫码登录的 cookies
-            ('cloud115_manual_cookies', '手动导入'), # 其次: 手动导入的 cookies
-            ('cloud115_cookies', '通用'),            # 兼容: 旧版单一 cookies
+            ('cloud115_qr_cookies', 'QR扫码'),           # 优先: 扫码登录的 cookies
+            ('cloud115_openapp_cookies', '第三方AppID'), # 其次: 第三方 AppID 登录
+            ('cloud115_manual_cookies', '手动导入'),      # 再次: 手动导入的 cookies
+            ('cloud115_cookies', '通用'),                 # 兼容: 旧版单一 cookies
         ]
         
         for secret_key, source_name in credential_sources:
