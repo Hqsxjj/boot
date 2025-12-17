@@ -4,6 +4,7 @@ import requests
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from services.secret_store import SecretStore
+from utils.logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,11 @@ class Cloud123Service:
         Returns:
             Dict with success flag
         """
+        task_log = TaskLogger('123云盘')
+        task_log.start(f'密码登录: {passport[:3]}***')
+        
         if not self.P123Client:
+            task_log.failure('p123client library not installed')
             return {
                 'success': False,
                 'error': 'p123client library not installed'
@@ -182,6 +187,7 @@ class Cloud123Service:
             }
             self.secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
             
+            task_log.success('登录成功')
             return {
                 'success': True,
                 'data': {
@@ -190,7 +196,7 @@ class Cloud123Service:
                 }
             }
         except Exception as e:
-            logger.error(f'Password login failed: {e}')
+            task_log.failure(str(e))
             return {
                 'success': False,
                 'error': f'登录失败: {str(e)}'
@@ -536,6 +542,9 @@ class Cloud123Service:
         Returns:
             Dict with success flag and list of entries
         """
+        task_log = TaskLogger('123云盘')
+        task_log.start(f'浏览目录: DirID={dir_id}')
+        
         # 123 云盘 API 使用 parentFileId 参数
         # dir_id 为 0 表示根目录
         if dir_id == '/' or dir_id == '':

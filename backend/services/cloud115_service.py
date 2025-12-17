@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from services.secret_store import SecretStore
+from utils.logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,8 @@ class Cloud115Service:
         Returns:
             Dict with success flag and new directory info
         """
+        task_log = TaskLogger('115网盘')
+        task_log.start(f'创建目录: {name}')
         try:
             client = self._get_authenticated_client()
             
@@ -163,7 +166,7 @@ class Cloud115Service:
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to create directory {name} in {parent_cid}: {str(e)}')
+            task_log.failure(str(e))
             return {
                 'success': False,
                 'error': f'Failed to create directory: {str(e)}'
@@ -179,6 +182,8 @@ class Cloud115Service:
         Returns:
             Dict with success flag and list of entries
         """
+        task_log = TaskLogger('115网盘')
+        task_log.start(f'浏览目录: CID={cid}')
         try:
             client = self._get_authenticated_client()
             
