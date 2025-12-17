@@ -18,16 +18,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
+
+# Upgrade pip and install build tools for ARM64 compatibility
+RUN pip install --upgrade pip setuptools wheel
+
+# Install main requirements (excluding p115client/p123client for separate handling)
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
     pip install gunicorn
 
 # Install httpx with http2 support (required for 123 cloud)
 RUN pip install --no-cache-dir "httpx[http2]"
 
-# Install p115client and p123client with verbose output for debugging
-RUN pip install --no-cache-dir --prefer-binary p115client p123client || \
-    (echo "WARNING: p115client or p123client install failed, trying with --no-deps" && \
-    pip install --no-cache-dir --no-deps p115client p123client)
+# Verify and reinstall p115client/p123client if needed
+RUN python -c "import p115client; print('p115client OK')" || \
+    (echo "Installing p115client..." && pip install --no-cache-dir --upgrade p115client)
+
+RUN python -c "import p123client; print('p123client OK')" || \
+    (echo "Installing p123client..." && pip install --no-cache-dir --upgrade p123client)
+
+# Final verification - fail build if packages missing
+RUN python -c "import p115client; import p123client; import httpx; print('All dependencies OK')"
 
 COPY backend/ .
 COPY --from=frontend-builder /app-frontend/dist /app/static
