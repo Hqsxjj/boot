@@ -93,6 +93,8 @@ class Cloud123Service:
                     return self._client
             except Exception as e:
                 logger.warning(f'Failed to initialize p123client with password: {e}')
+                import traceback
+                logger.warning(f'Traceback: {traceback.format_exc()}')
         
         # 回退到 OAuth 凭证
         creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')

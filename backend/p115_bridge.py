@@ -10,43 +10,45 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 # 添加到 p115_bridge.py（靠近其它 device profile 定义处）
+# 这些是 p115client APP_TO_SSOENT 支持的真实 app 类型
 ALL_DEVICE_PROFILES_FULL = {
-    "web": 8,
-    "pcweb": 7,
-    "android": 13,
-    "android_tv": 14,
-    "ios": 9,
-    "ipad": 10,
-    "applet": 22,
-    "mini": 18,
-    "qandroid": 17,
-    "desktop": 11,
-    "windows": 19,
-    "mac": 20,
-    "linux": 21,
-    "harmony": 23,
-    "xiaomi": 24,
-    "huawei": 25,
-    "oppo": 26,
-    "vivo": 27,
-    "samsung": 28,
-    "browser": 29,
-    "client": 30,
-    "open_app": 31
+    "web": "A1",
+    "desktop": "A1",
+    "ios": "D1",
+    "bios": "D2",
+    "115ios": "D3",
+    "android": "F1",
+    "bandroid": "F2",
+    "115android": "F3",
+    "ipad": "H1",
+    "bipad": "H2",
+    "115ipad": "H3",
+    "tv": "I1",
+    "apple_tv": "I2",
+    "qandroid": "M1",
+    "qios": "N1",
+    "qipad": "O1",
+    "windows": "P1",
+    "mac": "P2",
+    "linux": "P3",
+    "wechatmini": "R1",
+    "alipaymini": "R2",
+    "harmony": "S1",
 }
 
-# 22 device profiles for cloud115.loginApp (simplified mapping)
+# 简化的常用 login app 列表
 ALL_DEVICE_PROFILES = {
-    'web': 8,
-    'ios': 9,
-    'android': 13,
-    'tv': 14,
-    'qandroid': 17,
-    'mini': 18,
-    'windows': 19,
-    'mac': 20,
-    'linux': 21,
-    'applet': 22,
+    'web': 'A1',
+    'ios': 'D1',
+    'android': 'F1',
+    'ipad': 'H1',
+    'tv': 'I1',
+    'qandroid': 'M1',
+    'windows': 'P1',
+    'mac': 'P2',
+    'linux': 'P3',
+    'wechatmini': 'R1',
+    'harmony': 'S1',
 }
 
 
