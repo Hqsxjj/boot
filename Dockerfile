@@ -26,8 +26,8 @@ RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
     pip install gunicorn
 
-# Install httpx with http2 support (required for 123 cloud)
-RUN pip install --no-cache-dir "httpx[http2]"
+# Install httpx with http2 support AND h2 explicitly (required for 123 cloud)
+RUN pip install --no-cache-dir "httpx[http2]" h2
 
 # Verify and reinstall p115client/p123client if needed
 RUN python -c "import p115client; print('p115client OK')" || \
@@ -36,8 +36,8 @@ RUN python -c "import p115client; print('p115client OK')" || \
 RUN python -c "import p123client; print('p123client OK')" || \
     (echo "Installing p123client..." && pip install --no-cache-dir --upgrade p123client)
 
-# Final verification - fail build if packages missing
-RUN python -c "import p115client; import p123client; import httpx; print('All dependencies OK')"
+# Final verification - fail build if packages missing (including h2 for HTTP/2)
+RUN python -c "import p115client; import p123client; import httpx; import h2; print('All dependencies OK')"
 
 COPY backend/ .
 COPY --from=frontend-builder /app-frontend/dist /app/static
