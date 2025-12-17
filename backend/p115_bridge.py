@@ -9,17 +9,17 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# 115 登录端配置 - 精简为 8 个常用端，包含中文名称
+# 115 登录端配置 - 精简为 8 个移动端/平板端，包含中文名称
 # key: API app 代码, ssoent: SSO入口, name: 显示名称
 LOGIN_APPS = {
-    'web': {'ssoent': 'A1', 'name': '网页端'},
     'android': {'ssoent': 'F1', 'name': '安卓'},
     'ios': {'ssoent': 'D1', 'name': 'iOS'},
-    'windows': {'ssoent': 'P1', 'name': 'Windows客户端'},
-    'mac': {'ssoent': 'P2', 'name': 'Mac客户端'},
-    'linux': {'ssoent': 'P3', 'name': 'Linux客户端'},
+    'ipad': {'ssoent': 'H1', 'name': 'iPad'},
+    '115android': {'ssoent': 'F3', 'name': '115安卓'},
+    '115ios': {'ssoent': 'D3', 'name': '115 iOS'},
     'tv': {'ssoent': 'I1', 'name': '电视端'},
     'qandroid': {'ssoent': 'M1', 'name': '轻量版安卓'},
+    'harmony': {'ssoent': 'S1', 'name': '鸿蒙'},
 }
 
 # 兼容旧代码的简化映射
