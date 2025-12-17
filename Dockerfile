@@ -41,7 +41,8 @@ RUN echo "=== Verifying p123client ===" && python -c "import p123client; print('
 RUN echo "=== Final Package Check ===" && pip list | grep -E "(p115|p123|httpx|h2)" || true
 RUN python -c "import httpx; print('httpx OK')"
 RUN python -c "import h2; print('h2 OK')"
-RUN python -c "import p115client; print('p115client OK')"
+# Show actual p115client import error with full traceback
+RUN python -c "import traceback; exec('try:\\n    import p115client\\n    print(\"p115client OK\")\\nexcept Exception as e:\\n    print(\"p115client IMPORT ERROR:\")\\n    traceback.print_exc()\\n    raise')"
 RUN python -c "import p123client; print('p123client OK')"
 RUN echo "=== All dependencies verified ==="
 
