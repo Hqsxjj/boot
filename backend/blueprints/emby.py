@@ -61,7 +61,7 @@ def scan_missing_episodes():
         result = _emby_service.scan_missing_episodes()
         
         # 如果 Emby 未配置或连接失败，返回模拟数据用于演示
-        if not result.get('success') or not result.get('data'):
+        if not result.get('success'):
             mock_data = [
                 {
                     'id': 'mock1',

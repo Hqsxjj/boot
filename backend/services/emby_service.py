@@ -2,6 +2,7 @@ import requests
 import time
 from persistence.store import DataStore
 from typing import Dict, Any, List
+from utils.logger import TaskLogger
 
 
 class EmbyService:
@@ -92,11 +93,15 @@ class EmbyService:
             }
         ]
         """
+        task_log = TaskLogger('Emby')
+        task_log.start('扫描缺集')
+
         config = self._get_config()
         server_url = config.get('serverUrl', '').rstrip('/')
         api_key = config.get('apiKey', '').strip()
         
         if not server_url or not api_key:
+            task_log.failure('Emby未配置')
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
         
         # 获取 TMDB 配置
@@ -218,19 +223,24 @@ class EmbyService:
                             'season': season_number,
                             'totalEp': total_ep_count,
                             'localEp': local_ep_count,
-                            'missing': ', '.join(map(str, missing_episodes)),
+                            'missing': ', '.join(f'E{ep:02d}' for ep in missing_episodes),
                             'poster': poster_path
                         })
             
+            
+            task_log.success(f'发现 {len(missing_data)} 个缺集系列')
             return {
                 'success': True,
                 'data': missing_data
             }
         except requests.Timeout:
+            task_log.failure('Emby连接超时')
             return {'success': False, 'data': [], 'error': 'Emby连接超时'}
         except requests.ConnectionError:
+            task_log.failure('Emby连接失败')
             return {'success': False, 'data': [], 'error': 'Emby连接失败'}
         except Exception as e:
+            task_log.failure(str(e))
             return {'success': False, 'data': [], 'error': str(e)}
     
     def refresh_library(self, library_id: str = None) -> Dict[str, Any]:
