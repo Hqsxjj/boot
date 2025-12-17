@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from models.offline_task import OfflineTask, TaskStatus
 from p115_bridge import get_p115_service, P115Service
 from persistence.store import DataStore
+from utils.logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,16 @@ class OfflineTaskService:
         Returns:
             Dict with success flag and task data or error
         """
+        task_log = TaskLogger('离线下载')
+        task_log.start(f'创建任务: {source_url[:50]}...')
+        
         try:
             # Validate inputs
             if not source_url:
+                task_log.failure('source_url is required')
                 return {'success': False, 'error': 'source_url is required'}
             if not save_cid:
+                task_log.failure('save_cid is required')
                 return {'success': False, 'error': 'save_cid is required'}
             
             # Create task record
@@ -97,14 +103,14 @@ class OfflineTaskService:
             task_dict = task.to_dict()
             session.close()
             
-            logger.info(f'Created offline task {task_id} for URL {source_url}')
+            task_log.success(f'任务ID: {task_id}')
             
             return {
                 'success': True,
                 'data': task_dict
             }
         except Exception as e:
-            logger.error(f'Failed to create offline task: {str(e)}')
+            task_log.failure(str(e))
             return {
                 'success': False,
                 'error': f'Failed to create task: {str(e)}'

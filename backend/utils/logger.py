@@ -275,3 +275,64 @@ def log_api_request(method: str, path: str, status: int, duration_ms: int = None
 # 默认日志器实例
 app_logger = get_app_logger()
 
+
+# === 任务日志装饰器 ===
+
+def log_task(task_type: str, description: str = None):
+    """
+    装饰器：自动记录任务开始和结束
+    
+    用法:
+        @log_task('离线下载', '创建下载任务')
+        def create_offline_task(url, save_path):
+            ...
+    """
+    import functools
+    
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            task_logger = TaskLogger(task_type)
+            task_logger.start(description or func.__name__)
+            
+            try:
+                result = func(*args, **kwargs)
+                
+                # 判断结果是否成功
+                if isinstance(result, dict):
+                    if result.get('success') == False:
+                        task_logger.failure(result.get('error', '未知错误'))
+                    else:
+                        task_logger.success(str(result.get('data', ''))[:100])
+                else:
+                    task_logger.success()
+                
+                return result
+            except Exception as e:
+                task_logger.failure(str(e))
+                raise
+        
+        return wrapper
+    return decorator
+
+
+from contextlib import contextmanager
+
+@contextmanager
+def task_context(task_type: str, description: str = None):
+    """
+    上下文管理器：记录任务开始和结束
+    
+    用法:
+        with task_context('115网盘', '列出目录'):
+            result = cloud115_service.list_directory(cid)
+    """
+    task_logger = TaskLogger(task_type)
+    task_logger.start(description)
+    
+    try:
+        yield task_logger
+        task_logger.success()
+    except Exception as e:
+        task_logger.failure(str(e))
+        raise
