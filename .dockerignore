@@ -1,15 +1,42 @@
+# Node
 node_modules
 dist
+
+# Git
 .git
 .github
-.env
+
+# Python
 __pycache__
 *.pyc
 *.pyo
+.venv
 venv
+*.egg-info
+
+# IDE
 .vscode
 .idea
+
+# Logs and temp
 *.log
 .DS_Store
-secrets.db
-appdata.db
+
+# Data files (mounted at runtime)
+data
+*.db
+appdata.json
+
+# Archive and tests
+archive
+backend/tests
+tests
+
+# Environment
+.env
+.env.*
+
+# Documentation and misc
+README.md
+*.md
+!requirements.txt
