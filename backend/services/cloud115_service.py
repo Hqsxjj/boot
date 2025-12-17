@@ -76,29 +76,39 @@ class Cloud115Service:
             self._last_request_time = time.time()
 
     def _get_authenticated_client(self):
-        """Get or create an authenticated p115client instance."""
+        """Get or create an authenticated p115client instance with fallback between credentials."""
         # Enforce rate limit before getting client/making requests
         self._wait_for_rate_limit()
         
         if not self.p115client:
             raise ImportError('p115client not installed')
         
-        # Get cookies from secret store
-        cookies_json = self.secret_store.get_secret('cloud115_cookies')
-        if not cookies_json:
-            raise ValueError('No 115 cookies found in secret store')
+        errors = []
         
-        try:
-            cookies = json.loads(cookies_json)
-        except json.JSONDecodeError:
-            raise ValueError('Invalid cookies format in secret store')
+        # 尝试多个凭证来源，按优先级顺序
+        credential_sources = [
+            ('cloud115_qr_cookies', 'QR扫码'),      # 优先: 扫码登录的 cookies
+            ('cloud115_manual_cookies', '手动导入'), # 其次: 手动导入的 cookies
+            ('cloud115_cookies', '通用'),            # 兼容: 旧版单一 cookies
+        ]
         
-        # Create client
-        if hasattr(self.p115client, 'P115Client'):
-            client = self.p115client.P115Client(cookies=cookies)
-            return client
+        for secret_key, source_name in credential_sources:
+            cookies_json = self.secret_store.get_secret(secret_key)
+            if cookies_json:
+                try:
+                    cookies = json.loads(cookies_json)
+                    if hasattr(self.p115client, 'P115Client'):
+                        client = self.p115client.P115Client(cookies=cookies)
+                        logger.info(f'p115client initialized with {source_name} credentials')
+                        return client
+                except Exception as e:
+                    errors.append(f'{source_name}: {e}')
+                    logger.warning(f'Failed to initialize p115client with {source_name}: {e}')
+        
+        if errors:
+            raise ValueError(f'All 115 login methods failed: {errors}')
         else:
-            raise ImportError('p115client.P115Client not available')
+            raise ValueError('No 115 cookies found in secret store')
     
     def create_directory(self, parent_cid: str, name: str) -> Dict[str, Any]:
         """

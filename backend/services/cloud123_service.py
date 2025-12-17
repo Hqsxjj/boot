@@ -69,7 +69,7 @@ class Cloud123Service:
             self._last_request_time = time.time()
     
     def _get_p123_client(self):
-        """Get p123client instance with password or OAuth credentials."""
+        """Get p123client instance with fallback between password and OAuth credentials."""
         # Enforce rate limit
         self._wait_for_rate_limit()
         
@@ -79,12 +79,14 @@ class Cloud123Service:
         if self._client:
             return self._client
         
-        # 优先尝试密码登录凭证
+        errors = []
+        
+        # 尝试方式1: 密码登录凭证
         password_creds_json = self.secret_store.get_secret('cloud123_password_credentials')
         if password_creds_json:
             try:
                 creds = json.loads(password_creds_json)
-                passport = creds.get('passport')  # 手机号或邮箱
+                passport = creds.get('passport')
                 password = creds.get('password')
                 
                 if passport and password:
@@ -92,32 +94,31 @@ class Cloud123Service:
                     logger.info('p123client initialized with password credentials')
                     return self._client
             except Exception as e:
+                errors.append(f'password: {e}')
                 logger.warning(f'Failed to initialize p123client with password: {e}')
-                import traceback
-                logger.warning(f'Traceback: {traceback.format_exc()}')
         
-        # 回退到 OAuth 凭证
-        creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
-        if not creds_json:
+        # 尝试方式2: OAuth 凭证 (fallback)
+        oauth_creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
+        if oauth_creds_json:
+            try:
+                creds = json.loads(oauth_creds_json)
+                client_id = creds.get('clientId')
+                client_secret = creds.get('clientSecret')
+                
+                if client_id and client_secret:
+                    self._client = self.P123Client(client_id=client_id, client_secret=client_secret)
+                    logger.info('p123client initialized with OAuth credentials (fallback)')
+                    return self._client
+            except Exception as e:
+                errors.append(f'oauth: {e}')
+                logger.warning(f'Failed to initialize p123client with OAuth: {e}')
+        
+        if errors:
+            logger.error(f'All 123 cloud login methods failed: {errors}')
+        else:
             logger.warning('No credentials found for p123client')
-            return None
         
-        try:
-            creds = json.loads(creds_json)
-            client_id = creds.get('clientId')
-            client_secret = creds.get('clientSecret')
-            
-            if not client_id or not client_secret:
-                logger.warning('Missing clientId or clientSecret')
-                return None
-            
-            # 使用 client_id 和 client_secret 创建客户端
-            self._client = self.P123Client(client_id=client_id, client_secret=client_secret)
-            logger.info('p123client initialized with OAuth credentials')
-            return self._client
-        except Exception as e:
-            logger.error(f'Failed to initialize p123client: {e}')
-            return None
+        return None
     
     def login_with_password(self, passport: str, password: str) -> Dict[str, Any]:
         """

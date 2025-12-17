@@ -106,8 +106,10 @@ def poll_login_status(session_id: str):
                     'error': 'No cookies received from login'
                 }), 400
             
-            # Store cookies encrypted
+            # Store cookies encrypted - use QR-specific key for independent storage
             cookies_json = json.dumps(cookies)
+            _secret_store.set_secret('cloud115_qr_cookies', cookies_json)
+            # Also update legacy key for backwards compatibility
             _secret_store.set_secret('cloud115_cookies', cookies_json)
             
             # Also store session metadata
@@ -178,8 +180,10 @@ def ingest_cookies():
                 'error': 'Invalid or expired cookies'
             }), 401
         
-        # Store cookies encrypted
+        # Store cookies encrypted - use manual-specific key for independent storage
         cookies_json = json.dumps(cookies)
+        _secret_store.set_secret('cloud115_manual_cookies', cookies_json)
+        # Also update legacy key for backwards compatibility
         _secret_store.set_secret('cloud115_cookies', cookies_json)
         
         # Store metadata
