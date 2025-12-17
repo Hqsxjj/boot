@@ -469,11 +469,14 @@ def create_offline_task():
 @cloud115_bp.route('/login/apps', methods=['GET'])
 @require_auth
 def list_login_apps():
-    """Return all supported loginApp device profiles."""
+    """Return all supported loginApp device profiles with Chinese names."""
     try:
-        from p115_bridge import ALL_DEVICE_PROFILES_FULL
+        from p115_bridge import LOGIN_APPS
 
-        apps = [{"key": k, "appId": v} for k, v in ALL_DEVICE_PROFILES_FULL.items()]
+        apps = [
+            {"key": k, "ssoent": v['ssoent'], "name": v['name']} 
+            for k, v in LOGIN_APPS.items()
+        ]
 
         return jsonify({
             "success": True,

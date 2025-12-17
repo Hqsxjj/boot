@@ -9,47 +9,22 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# 添加到 p115_bridge.py（靠近其它 device profile 定义处）
-# 这些是 p115client APP_TO_SSOENT 支持的真实 app 类型
-ALL_DEVICE_PROFILES_FULL = {
-    "web": "A1",
-    "desktop": "A1",
-    "ios": "D1",
-    "bios": "D2",
-    "115ios": "D3",
-    "android": "F1",
-    "bandroid": "F2",
-    "115android": "F3",
-    "ipad": "H1",
-    "bipad": "H2",
-    "115ipad": "H3",
-    "tv": "I1",
-    "apple_tv": "I2",
-    "qandroid": "M1",
-    "qios": "N1",
-    "qipad": "O1",
-    "windows": "P1",
-    "mac": "P2",
-    "linux": "P3",
-    "wechatmini": "R1",
-    "alipaymini": "R2",
-    "harmony": "S1",
+# 115 登录端配置 - 精简为 8 个常用端，包含中文名称
+# key: API app 代码, ssoent: SSO入口, name: 显示名称
+LOGIN_APPS = {
+    'web': {'ssoent': 'A1', 'name': '网页端'},
+    'android': {'ssoent': 'F1', 'name': '安卓'},
+    'ios': {'ssoent': 'D1', 'name': 'iOS'},
+    'windows': {'ssoent': 'P1', 'name': 'Windows客户端'},
+    'mac': {'ssoent': 'P2', 'name': 'Mac客户端'},
+    'linux': {'ssoent': 'P3', 'name': 'Linux客户端'},
+    'tv': {'ssoent': 'I1', 'name': '电视端'},
+    'qandroid': {'ssoent': 'M1', 'name': '轻量版安卓'},
 }
 
-# 简化的常用 login app 列表
-ALL_DEVICE_PROFILES = {
-    'web': 'A1',
-    'ios': 'D1',
-    'android': 'F1',
-    'ipad': 'H1',
-    'tv': 'I1',
-    'qandroid': 'M1',
-    'windows': 'P1',
-    'mac': 'P2',
-    'linux': 'P3',
-    'wechatmini': 'R1',
-    'harmony': 'S1',
-}
+# 兼容旧代码的简化映射
+ALL_DEVICE_PROFILES_FULL = {k: v['ssoent'] for k, v in LOGIN_APPS.items()}
+ALL_DEVICE_PROFILES = ALL_DEVICE_PROFILES_FULL.copy()
 
 
 class P115Service:
