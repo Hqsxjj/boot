@@ -38,7 +38,7 @@ const RENAME_TAGS = [
 
 // 默认配置
 const DEFAULT_CONFIG: Partial<AppConfig> = {
-   cloud115: { loginMethod: 'cookie', loginApp: 'web', cookies: '', userAgent: '', downloadPath: '', downloadDirName: '未连接', autoDeleteMsg: false, qps: 1.0 },
+   cloud115: { loginMethod: 'cookie', loginApp: 'android', cookies: '', userAgent: '', downloadPath: '', downloadDirName: '未连接', autoDeleteMsg: false, qps: 1.0 },
    cloud123: { enabled: false, clientId: '', clientSecret: '', downloadPath: '', downloadDirName: '未连接', qps: 1.0 },
    openList: { enabled: false, url: '', mountPath: '', username: '', password: '' },
    tmdb: { apiKey: '', language: 'zh-CN', includeAdult: false },
@@ -469,32 +469,18 @@ export const CloudOrganizeView: React.FC = () => {
                                        <Smartphone size={14} /> 模拟登录终端 (App Type)
                                     </label>
                                     <select
-                                       value={config.cloud115.loginApp || 'web'}
+                                       value={config.cloud115.loginApp || 'android'}
                                        onChange={(e) => updateNested('cloud115', 'loginApp', e.target.value)}
                                        className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-brand-500 outline-none backdrop-blur-sm"
                                     >
-                                       <option value="web">web</option>
-                                       <option value="pcweb">pcweb</option>
-                                       <option value="android">android</option>
-                                       <option value="android_tv">android_tv</option>
-                                       <option value="ios">ios</option>
-                                       <option value="ipad">ipad</option>
-                                       <option value="applet">applet</option>
-                                       <option value="mini">mini</option>
-                                       <option value="qandroid">qandroid</option>
-                                       <option value="desktop">desktop</option>
-                                       <option value="windows">windows</option>
-                                       <option value="mac">mac</option>
-                                       <option value="linux">linux</option>
-                                       <option value="harmony">harmony</option>
-                                       <option value="xiaomi">xiaomi</option>
-                                       <option value="huawei">huawei</option>
-                                       <option value="oppo">oppo</option>
-                                       <option value="vivo">vivo</option>
-                                       <option value="samsung">samsung</option>
-                                       <option value="browser">browser</option>
-                                       <option value="client">client</option>
-                                       <option value="open_app">open_app</option>
+                                       <option value="android">安卓</option>
+                                       <option value="ios">iOS</option>
+                                       <option value="ipad">iPad</option>
+                                       <option value="115android">115安卓</option>
+                                       <option value="115ios">115 iOS</option>
+                                       <option value="tv">电视端</option>
+                                       <option value="qandroid">轻量版安卓</option>
+                                       <option value="harmony">鸿蒙</option>
                                     </select>
                                  </div>
                               )}
