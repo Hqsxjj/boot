@@ -2,7 +2,11 @@ import json
 import os
 from typing import Dict, Any, Optional
 from threading import Lock
+from werkzeug.security import generate_password_hash
 from .config_store import ConfigStore
+
+# Default admin password hash for 'password'
+DEFAULT_PASSWORD_HASH = generate_password_hash('password')
 
 
 class DataStore:
@@ -29,7 +33,7 @@ class DataStore:
             default_data = {
                 'admin': {
                     'username': 'admin',
-                    'password_hash': None,
+                    'password_hash': DEFAULT_PASSWORD_HASH,
                     'two_factor_secret': None,
                     'two_factor_enabled': False
                 },
@@ -151,7 +155,7 @@ class DataStore:
                 return {
                     'admin': {
                         'username': 'admin',
-                        'password_hash': None,
+                        'password_hash': DEFAULT_PASSWORD_HASH,
                         'two_factor_secret': None,
                         'two_factor_enabled': False
                     },
@@ -169,7 +173,7 @@ class DataStore:
         data = self._read_data()
         return data.get('admin', {
             'username': 'admin',
-            'password_hash': None,
+            'password_hash': DEFAULT_PASSWORD_HASH,
             'two_factor_secret': None,
             'two_factor_enabled': False
         })

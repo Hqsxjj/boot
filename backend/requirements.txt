@@ -15,6 +15,7 @@ pyotp==2.9.0
 PyYAML==6.0.3
 pydantic==2.12.5
 python-dotenv
+httpx[http2]
 qrcode
 pillow
 beautifulsoup4

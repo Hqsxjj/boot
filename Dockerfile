@@ -18,7 +18,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt && \
+    pip install gunicorn
+
+# Install httpx with http2 support (required for 123 cloud)
+RUN pip install --no-cache-dir "httpx[http2]"
+
+# Install p115client and p123client with verbose output for debugging
+RUN pip install --no-cache-dir --prefer-binary p115client p123client || \
+    (echo "WARNING: p115client or p123client install failed, trying with --no-deps" && \
+    pip install --no-cache-dir --no-deps p115client p123client)
 
 COPY backend/ .
 COPY --from=frontend-builder /app-frontend/dist /app/static
