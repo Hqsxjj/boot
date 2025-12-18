@@ -204,7 +204,7 @@ export const UserCenterView: React.FC = () => {
     },
     {
       name: 'Emby',
-      isConnected: config.emby?.enabled && !!config.emby?.serverUrl && !!config.emby?.apiKey,
+      isConnected: !!config.emby?.serverUrl && !!config.emby?.apiKey,
       icon: Tv,
       colorClass: 'text-emerald-600 dark:text-emerald-400',
       bgClass: 'bg-emerald-50 dark:bg-emerald-900/20'
