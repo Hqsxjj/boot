@@ -63,7 +63,7 @@ def parse_filename():
         if not filename:
             return jsonify({
                 'success': False,
-                'error': 'filename is required'
+                'error': '文件名不能为空'
             }), 400
         
         parser = get_media_parser()
@@ -75,7 +75,7 @@ def parse_filename():
         }), 200
         
     except Exception as e:
-        logger.error(f"Parse filename failed: {e}")
+        logger.error(f"解析文件名失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -113,7 +113,7 @@ def search_tmdb():
         if not title:
             return jsonify({
                 'success': False,
-                'error': 'title is required'
+                'error': '标题不能为空'
             }), 400
         
         config = _store.get_config() if _store else {}
@@ -122,7 +122,7 @@ def search_tmdb():
         return jsonify(result), 200 if result.get('success') else 400
         
     except Exception as e:
-        logger.error(f"Search TMDB failed: {e}")
+        logger.error(f"TMDB 搜索失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -149,13 +149,13 @@ def get_tmdb_details(media_type: str, tmdb_id: int):
         else:
             return jsonify({
                 'success': False,
-                'error': f'Invalid media type: {media_type}'
+                'error': f'无效的媒体类型: {media_type}'
             }), 400
         
         return jsonify(result), 200 if result.get('success') else 400
         
     except Exception as e:
-        logger.error(f"Get TMDB details failed: {e}")
+        logger.error(f"获取 TMDB 详情失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -298,7 +298,7 @@ def execute_organize():
         return jsonify(result), 200 if result.get('success') else 400
         
     except Exception as e:
-        logger.error(f"Execute organize failed: {e}")
+        logger.error(f"执行整理失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

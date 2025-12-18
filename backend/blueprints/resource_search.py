@@ -42,7 +42,7 @@ def _get_tmdb_service():
         _tmdb_service = TmdbService(config_store=_store)
         return _tmdb_service
     except Exception as e:
-        logger.warning(f"Failed to create TmdbService: {e}")
+        logger.warning(f"创建 TmdbService 失败: {e}")
         return None
 
 
@@ -69,7 +69,7 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
     model = ai_config.get('model', 'gpt-4')
     
     if not api_key:
-        logger.warning("AI API key not configured")
+        logger.warning("未配置 AI API Key")
         return []
     
     # Construct the search prompt
@@ -150,12 +150,12 @@ def _get_trending_from_tmdb() -> list:
     # 检查缓存 (30分钟有效)
     if _trending_cache and _trending_cache_time:
         if datetime.now() - _trending_cache_time < timedelta(minutes=30):
-            logger.info("Returning cached trending resources")
+            logger.info("返回缓存的热门资源")
             return _trending_cache
     
     tmdb = _get_tmdb_service()
     if not tmdb:
-        logger.warning("TMDB service not available")
+        logger.warning("TMDB 服务不可用")
         return _get_fallback_trending()
     
     # 获取配置
@@ -167,11 +167,11 @@ def _get_trending_from_tmdb() -> list:
     if result.get('success') and result.get('data'):
         _trending_cache = result['data']
         _trending_cache_time = datetime.now()
-        logger.info(f"Fetched {len(result['data'])} trending resources from TMDB")
+        logger.info(f"从 TMDB 获取了 {len(result['data'])} 个热门资源")
         return result['data']
     else:
-        error = result.get('error', 'Unknown error')
-        logger.warning(f"TMDB trending failed: {error}, using fallback")
+        error = result.get('error', '未知错误')
+        logger.warning(f"TMDB 热门资源获取失败: {error}，使用备用列表")
         return _get_fallback_trending()
 
 
@@ -268,7 +268,7 @@ def search_resources():
         
         if not ai_config:
             # Fall back to mock search results if AI not configured
-            logger.info("AI not configured, using mock search results")
+            logger.info("AI 未配置，使用模拟搜索结果")
             mock_results = [
                 {
                     "title": query,
@@ -298,7 +298,7 @@ def search_resources():
         })
         
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        logger.error(f"AI 搜索失败: {e}")
         return jsonify({
             'success': False,
             'error': f'搜索失败: {str(e)}'

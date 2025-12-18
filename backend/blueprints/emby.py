@@ -27,7 +27,7 @@ def test_emby_connection():
         if not _emby_service:
             return jsonify({
                 'success': False,
-                'error': 'Emby service not initialized'
+                'error': 'Emby 服务未初始化'
             }), 500
         
         result = _emby_service.test_connection()
@@ -43,7 +43,7 @@ def test_emby_connection():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to test connection: {str(e)}'
+            'error': f'连接测试失败: {str(e)}'
         }), 500
 
 
@@ -75,12 +75,12 @@ def scan_missing_episodes():
             }), 200
         
         result = _emby_service.scan_missing_episodes()
-        logger.info(f"Scan missing episodes result: success={result.get('success')}, count={len(result.get('data', []))}")
+        logger.info(f"扫描缺集结果: 成功={result.get('success')}, 数量={len(result.get('data', []))}")
         
         # 如果扫描失败，返回错误信息
         if not result.get('success'):
             error_msg = result.get('error', '扫描失败')
-            logger.warning(f"Scan missing episodes failed: {error_msg}")
+            logger.warning(f"扫描缺集失败: {error_msg}")
             
             # 检查是否是配置问题
             if 'Emby未配置' in error_msg:
@@ -109,7 +109,7 @@ def scan_missing_episodes():
         
     except Exception as e:
         import traceback
-        logging.getLogger(__name__).error(f"Scan missing episodes exception: {traceback.format_exc()}")
+        logging.getLogger(__name__).error(f"扫描缺集异常: {traceback.format_exc()}")
         return jsonify({
             'success': False,
             'error': f'扫描缺集失败: {str(e)}'
@@ -295,10 +295,10 @@ def emby_webhook():
             notification_channel = telegram_config.get('notificationChannelId')
         
         if not notification_channel:
-            return jsonify({'ok': True, 'message': 'No notification channel configured'}), 200
+            return jsonify({'ok': True, 'message': '未配置通知频道'}), 200
         
         if not _telegram_service:
-            return jsonify({'ok': True, 'message': 'Telegram service not available'}), 200
+            return jsonify({'ok': True, 'message': 'Telegram 服务不可用'}), 200
         
         # 处理新媒体入库通知
         if 'library.new' in event_type.lower() or event_type == 'item.add':
@@ -312,11 +312,11 @@ def emby_webhook():
         elif 'playback.stop' in event_type.lower() or event_type == 'playback.stop':
             return _handle_playback_stop(data, notification_channel)
         
-        return jsonify({'ok': True, 'message': f'Event {event_type} not handled'}), 200
+        return jsonify({'ok': True, 'message': f'事件 {event_type} 未处理'}), 200
         
     except Exception as e:
         import logging
-        logging.error(f"Emby webhook error: {e}")
+        logging.error(f"Emby webhook 错误: {e}")
         return jsonify({'ok': True}), 200
 
 
@@ -351,7 +351,7 @@ def _handle_library_new(data: dict, channel_id: str):
             else:
                 _telegram_service.send_message(channel_id, text)
             
-            return jsonify({'ok': True, 'message': 'Library notification sent'}), 200
+            return jsonify({'ok': True, 'message': '媒体入库通知已发送'}), 200
     
     # 简单通知
     type_map = {'Movie': '电影', 'Series': '剧集', 'Episode': '单集', 'Season': '季'}
@@ -359,7 +359,7 @@ def _handle_library_new(data: dict, channel_id: str):
     simple_text = f"📥 *新媒体入库*\n\n🎬 *{item_name}*\n📺 类型: {type_text}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     _telegram_service.send_message(channel_id, simple_text)
     
-    return jsonify({'ok': True, 'message': 'Simple notification sent'}), 200
+    return jsonify({'ok': True, 'message': '简单通知已发送'}), 200
 
 
 def _handle_playback_start(data: dict, channel_id: str):
@@ -431,7 +431,7 @@ def _handle_playback_start(data: dict, channel_id: str):
     else:
         _telegram_service.send_message(channel_id, text)
     
-    return jsonify({'ok': True, 'message': 'Playback start notification sent'}), 200
+    return jsonify({'ok': True, 'message': '播放开始通知已发送'}), 200
 
 
 def _handle_playback_stop(data: dict, channel_id: str):
@@ -472,7 +472,7 @@ def _handle_playback_stop(data: dict, channel_id: str):
     
     _telegram_service.send_message(channel_id, text)
     
-    return jsonify({'ok': True, 'message': 'Playback stop notification sent'}), 200
+    return jsonify({'ok': True, 'message': '播放停止通知已发送'}), 200
 
 
 @emby_bp.route('/test-notification', methods=['POST'])
@@ -548,7 +548,7 @@ def test_emby_notification():
         return jsonify({
             'success': True,
             'data': {
-                'message': 'Simple test notification sent',
+                'message': '简单测试通知已发送',
                 'result': result
             }
         }), 200

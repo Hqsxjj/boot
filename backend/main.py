@@ -66,7 +66,7 @@ def create_app(config=None):
     def revoked_token_callback(jwt_header, jwt_payload):
         return jsonify({
             'success': False,
-            'error': 'Token has been revoked'
+            'error': '令牌已被撤销'
         }), 401
     
     # Rate Limiter
@@ -85,21 +85,21 @@ def create_app(config=None):
     def expired_token_callback(jwt_header, jwt_payload):
         return jsonify({
             'success': False,
-            'error': 'Token has expired'
+            'error': '令牌已过期'
         }), 401
     
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
         return jsonify({
             'success': False,
-            'error': 'Invalid token'
+            'error': '无效令牌'
         }), 401
     
     @jwt.unauthorized_loader
     def missing_token_callback(error):
         return jsonify({
             'success': False,
-            'error': 'Missing authorization token'
+            'error': '缺少认证令牌'
         }), 401
     
     # Initialize data store
@@ -108,7 +108,7 @@ def create_app(config=None):
     
     # Initialize logger
     logger = get_app_logger()
-    logger.info('Starting application initialization...')
+    logger.info('正在启动应用初始化...')
     
     # Initialize dual databases (secrets.db + appdata.db)
     secrets_engine, appdata_engine = init_all_databases()
@@ -116,7 +116,7 @@ def create_app(config=None):
     appdata_session_factory = get_session_factory(appdata_engine)
     secret_store = SecretStore(secrets_session_factory)
     
-    logger.info('Database initialized: secrets.db (encrypted), appdata.db (general data)')
+    logger.info('数据库初始化完成: secrets.db (加密), appdata.db (常规数据)')
     
     # Store in app context
     app.secret_store = secret_store
@@ -146,57 +146,31 @@ def create_app(config=None):
     app.offline_task_service = offline_task_service
     app.task_poller = task_poller
     
-    logger.info('Services initialized successfully')
+    logger.info('服务初始化成功')
     
     # Start task poller
     if not app.config.get('TESTING'):
         task_poller.start()
     
-    # Initialize blueprints
-    init_auth_blueprint(store)
+    # Blueprints
+    init_auth_blueprint(secret_store, secrets_session_factory)
     init_config_blueprint(store, secret_store)
-    init_cloud115_blueprint(secret_store)
-    init_cloud123_blueprint(secret_store)
-    init_offline_blueprint(offline_task_service)
-    init_bot_blueprint(secret_store, store)
-    init_emby_blueprint(store)
-    init_strm_blueprint(store)
+    init_cloud115_blueprint(store, secret_store)
+    init_cloud123_blueprint(store, secret_store)
+    init_offline_blueprint(offline_task_service, store)
     init_logs_blueprint()
+    
+    from blueprints.keywords import init_keywords_blueprint
+    init_keywords_blueprint(store)
+
+    telegram_bot_service = init_bot_blueprint(store, secret_store)
     init_resource_search_blueprint(store)
     
-    # Initialize keyword store for AI recognition caching
-    from services.keyword_store import KeywordStore
-    keyword_store = KeywordStore(secrets_session_factory)
-    app.keyword_store = keyword_store
-    set_keyword_store(keyword_store)
+    init_strm_blueprint(store, cloud115_service, cloud123_service)
     
-    # Initialize Workflow Service for Bot automation
-    from services.link_parser import LinkParser
-    from services.workflow_service import WorkflowService
-    from services.emby_service import EmbyService
-    from services.strm_service import StrmService
-    from blueprints.bot import set_workflow_service
-    
-    link_parser = LinkParser()
-    telegram_service = TelegramBotService(secret_store)
-    emby_service = EmbyService(store)
-    strm_service = StrmService(store)
-    
-    workflow_service = WorkflowService(
-        link_parser=link_parser,
-        cloud115_service=cloud115_service,
-        cloud123_service=cloud123_service,
-        offline_service=offline_task_service,
-        strm_service=strm_service,
-        emby_service=emby_service,
-        telegram_service=telegram_service,
-        config_store=store
-    )
-    
-    app.workflow_service = workflow_service
-    set_workflow_service(workflow_service)
-    
-    # 设置 Emby 的 Telegram 通知服务
+    # 注入 TelegramBotService 到 EmbyService (用于 Webhook 通知)
+    telegram_service = TelegramBotService(secret_store, store)
+    init_emby_blueprint(store)
     from blueprints.emby import set_telegram_service
     set_telegram_service(telegram_service)
     
@@ -233,7 +207,7 @@ def create_app(config=None):
         # API 路由由 Blueprint 处理，这里只处理前端请求
         if path.startswith('api/'):
             # 返回 404，让 Flask 的 errorhandler 处理
-            return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
+            return jsonify({'success': False, 'error': '未找到接口'}), 404
         
         # STRM 文件浏览由专门路由处理
         if path.startswith('strm/'):
@@ -245,10 +219,14 @@ def create_app(config=None):
             elif os.path.isdir(file_path):
                 # 目录列表
                 import json
-                files = os.listdir(file_path)
-                return jsonify({'files': files})
+                try:
+                    files = os.listdir(file_path)
+                    return jsonify({'files': files})
+                except Exception as e:
+                    logger.error(f"列出目录失败: {e}")
+                    return jsonify({'success': False, 'error': str(e)}), 500
             else:
-                return jsonify({'error': 'Not found'}), 404
+                return jsonify({'error': '未找到'}), 404
         
         # 静态文件服务
         if app.static_folder:
@@ -261,62 +239,28 @@ def create_app(config=None):
                 if os.path.isfile(index_path):
                     return send_from_directory(app.static_folder, 'index.html')
         
-        # 如果没有静态文件目录，返回 API 信息（开发模式）
-        return jsonify({
-            'success': True,
-            'data': {
-                'service': 'boot-media-manager',
-                'version': '1.0.0',
-                'mode': 'api-only',
-                'endpoints': {
-                    'health': '/api/health',
-                    'auth': '/api/auth/*',
-                    'config': '/api/config',
-                    'me': '/api/me',
-                    'bot': '/api/bot/*'
-                }
-            }
-        }), 200
-    
-    # Global error handlers
+        return "Frontend not built or static folder not found", 404
+
     @app.errorhandler(404)
     def not_found(error):
         return jsonify({
             'success': False,
-            'error': 'Endpoint not found'
+            'error': '未找到该页面'
         }), 404
-    
+
     @app.errorhandler(500)
     def internal_error(error):
         return jsonify({
             'success': False,
-            'error': 'Internal server error'
+            'error': '内部服务器错误'
         }), 500
     
     if config:
         app.config.update(config)
-    
+        
     return app
-
-
-def get_offline_task_service():
-    try:
-        from flask import current_app
-        return getattr(current_app, 'offline_task_service', None)
-    except:
-        return None
-
-
-def get_app():
-    try:
-        from flask import current_app
-        return current_app
-    except:
-        return None
 
 
 if __name__ == '__main__':
     app = create_app()
-    # [关键修改] 默认端口改为 8000，以匹配 Nginx 配置
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('DEBUG', 'False').lower() == 'true')
+    app.run(host='0.0.0.0', port=18080, debug=True)

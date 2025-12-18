@@ -30,16 +30,14 @@ def create_task():
         requested_by = data.get('requestedBy') or data.get('requested_by') or username
         requested_chat = data.get('requestedChat') or data.get('requested_chat') or ''
         
-        if not source_url:
             return jsonify({
                 'success': False,
-                'error': 'sourceUrl is required'
+                'error': 'sourceUrl 不能为空'
             }), 400
         
-        if not save_cid:
             return jsonify({
                 'success': False,
-                'error': 'saveCid is required'
+                'error': 'saveCid 不能为空'
             }), 400
         
         # Create task
@@ -58,7 +56,7 @@ def create_task():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to create task: {str(e)}'
+            'error': f'创建任务失败: {str(e)}'
         }), 500
 
 
@@ -77,10 +75,9 @@ def list_tasks():
         # Refresh from 115 if requested
         if refresh:
             sync_result = _offline_task_service.sync_all()
-            if not sync_result.get('success'):
                 return jsonify({
                     'success': False,
-                    'error': f'Failed to refresh from 115: {sync_result.get("error")}'
+                    'error': f'刷新 115 任务失败: {sync_result.get("error")}'
                 }), 500
         
         # List tasks
@@ -99,12 +96,12 @@ def list_tasks():
     except ValueError as e:
         return jsonify({
             'success': False,
-            'error': f'Invalid parameter: {str(e)}'
+            'error': f'参数无效: {str(e)}'
         }), 400
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to list tasks: {str(e)}'
+            'error': f'获取任务列表失败: {str(e)}'
         }), 500
 
 
@@ -115,10 +112,9 @@ def get_task(task_id: str):
     try:
         task = _offline_task_service.get_task(task_id)
         
-        if not task:
             return jsonify({
                 'success': False,
-                'error': 'Task not found'
+                'error': '未找到任务'
             }), 404
         
         return jsonify({
@@ -129,7 +125,7 @@ def get_task(task_id: str):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to get task: {str(e)}'
+            'error': f'获取任务详情失败: {str(e)}'
         }), 500
 
 
@@ -148,7 +144,7 @@ def delete_task(task_id: str):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to delete task: {str(e)}'
+            'error': f'删除任务失败: {str(e)}'
         }), 500
 
 
@@ -167,7 +163,7 @@ def cancel_task(task_id: str):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to cancel task: {str(e)}'
+            'error': f'取消任务失败: {str(e)}'
         }), 500
 
 
@@ -186,5 +182,5 @@ def retry_task(task_id: str):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to retry task: {str(e)}'
+            'error': f'重试任务失败: {str(e)}'
         }), 500

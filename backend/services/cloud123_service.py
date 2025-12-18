@@ -31,10 +31,10 @@ class Cloud123Service:
         try:
             from p123client import P123Client
             self.P123Client = P123Client
-            logger.info('p123client library loaded successfully')
+            logger.info('p123client 库加载成功')
         except ImportError:
             self.P123Client = None
-            logger.warning('p123client not installed, using REST API fallback')
+            logger.warning('未安装 p123client，将使用 REST API 回退方案')
             
         # Rate limiting
         self._last_request_time = 0
@@ -92,11 +92,11 @@ class Cloud123Service:
                 
                 if passport and password:
                     self._client = self.P123Client(passport=passport, password=password)
-                    logger.info('p123client initialized with password credentials')
+                    logger.info('p123client 已使用密码凭证初始化')
                     return self._client
             except Exception as e:
                 errors.append(f'password: {e}')
-                logger.warning(f'Failed to initialize p123client with password: {e}')
+                logger.warning(f'使用密码初始化 p123client 失败: {e}')
         
         # 尝试方式2: OAuth 凭证 (fallback)
         oauth_creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
@@ -108,16 +108,16 @@ class Cloud123Service:
                 
                 if client_id and client_secret:
                     self._client = self.P123Client(client_id=client_id, client_secret=client_secret)
-                    logger.info('p123client initialized with OAuth credentials (fallback)')
+                    logger.info('p123client 已使用 OAuth 凭证（回退）初始化')
                     return self._client
             except Exception as e:
                 errors.append(f'oauth: {e}')
-                logger.warning(f'Failed to initialize p123client with OAuth: {e}')
+                logger.warning(f'使用 OAuth 初始化 p123client 失败: {e}')
         
         if errors:
-            logger.error(f'All 123 cloud login methods failed: {errors}')
+            logger.error(f'所有 123 云盘登录方式均失败: {errors}')
         else:
-            logger.warning('No credentials found for p123client')
+            logger.warning('未找到 p123client 的凭证')
         
         return None
     
@@ -136,10 +136,10 @@ class Cloud123Service:
         task_log.start(f'密码登录: {passport[:3]}***')
         
         if not self.P123Client:
-            task_log.failure('p123client library not installed')
+            task_log.failure('未安装 p123client 库')
             return {
                 'success': False,
-                'error': 'p123client library not installed'
+                'error': '未安装 p123client 库'
             }
         
         try:
@@ -159,13 +159,13 @@ class Cloud123Service:
                 elif hasattr(client, 'user_info'):
                     client.user_info()  # 尝试获取用户信息
             except Exception as verify_error:
-                logger.warning(f'Credential verification API call failed: {verify_error}')
+                logger.warning(f'验证凭证 API 调用失败: {verify_error}')
                 return {
                     'success': False,
                     'error': f'账号或密码错误: {str(verify_error)}'
                 }
             
-            logger.info(f'p123client password login successful for passport: {passport[:3]}***')
+            logger.info(f'账号 {passport[:3]}*** 的 p123client 密码登录成功')
             
             # 保存凭证到 SecretStore
             creds = {
@@ -227,12 +227,12 @@ class Cloud123Service:
                         self._token_expires_at = expires_at
                         return self._access_token
             except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(f'Invalid token data: {e}')
+                logger.warning(f'无效的 token 数据: {e}')
         
         # 需要刷新 token - 获取 OAuth 凭据
         creds_json = self.secret_store.get_secret('cloud123_oauth_credentials')
         if not creds_json:
-            logger.warning('No OAuth credentials found')
+            logger.warning('未找到 OAuth 凭证')
             return None
         
         try:
@@ -241,7 +241,7 @@ class Cloud123Service:
             client_secret = creds.get('clientSecret')
             
             if not client_id or not client_secret:
-                logger.warning('Missing clientId or clientSecret')
+                logger.warning('缺少 clientId 或 clientSecret')
                 return None
             
             # 调用 123 云盘 API 获取 access_token
@@ -307,14 +307,14 @@ class Cloud123Service:
                     }
                     self.secret_store.set_secret('cloud123_token', json.dumps(token_data))
                     
-                    logger.info('Successfully obtained 123 cloud access token')
+                    logger.info('成功获取 123 云盘 access token')
                     return access_token
             else:
-                logger.error(f"Failed to get access token: {data.get('message', 'Unknown error')}")
+                logger.error(f"获取 access token 失败: {data.get('message', '未知错误')}")
         except requests.RequestException as e:
-            logger.error(f'Failed to request access token: {e}')
+            logger.error(f'请求 access token 失败: {e}')
         except Exception as e:
-            logger.error(f'Unexpected error getting access token: {e}')
+            logger.error(f'获取 access token 时发生异常: {e}')
         
         return None
     
@@ -338,7 +338,7 @@ class Cloud123Service:
         if not access_token:
             return {
                 'success': False,
-                'error': 'No valid access token. Please configure OAuth credentials.'
+                'error': '没有有效的 access token。请先配置 OAuth 凭证。'
             }
         
         try:
@@ -356,7 +356,7 @@ class Cloud123Service:
             elif method.upper() == 'DELETE':
                 response = requests.delete(url, json=json_data, headers=headers, timeout=30)
             else:
-                return {'success': False, 'error': f'Unsupported HTTP method: {method}'}
+                return {'success': False, 'error': f'不支持的 HTTP 方法: {method}'}
             
             response.raise_for_status()
             data = response.json()
@@ -369,20 +369,20 @@ class Cloud123Service:
             else:
                 return {
                     'success': False,
-                    'error': data.get('message', 'Unknown API error'),
+                    'error': data.get('message', '未知 API 错误'),
                     'code': data.get('code')
                 }
         except requests.RequestException as e:
-            logger.error(f'API request failed: {e}')
+            logger.error(f'API 请求失败: {e}')
             return {
                 'success': False,
-                'error': f'API request failed: {str(e)}'
+                'error': f'API 请求失败: {str(e)}'
             }
         except Exception as e:
-            logger.error(f'Unexpected error: {e}')
+            logger.error(f'发生异常错误: {e}')
             return {
                 'success': False,
-                'error': f'Unexpected error: {str(e)}'
+                'error': f'发生异常错误: {str(e)}'
             }
 
     def save_share(self, share_code: str, access_code: str = None,
@@ -458,7 +458,7 @@ class Cloud123Service:
                 }
                 
         except Exception as e:
-            logger.error(f'Failed to save 123 share: {str(e)}')
+            logger.error(f'转存 123 分享失败: {str(e)}')
             return {
                 'success': False,
                 'error': f'转存失败: {str(e)}'
@@ -501,9 +501,9 @@ class Cloud123Service:
                         }
                     }
                 else:
-                    logger.warning(f"p123client mkdir failed: {resp.get('message')}, falling back to REST API")
+                    logger.warning(f"p123client mkdir 失败: {resp.get('message')}, 正在回退到 REST API")
             except Exception as e:
-                logger.warning(f"p123client mkdir error: {e}, falling back to REST API")
+                logger.warning(f"p123client mkdir 错误: {e}, 正在回退到 REST API")
         
         # 2. 回退到 REST API
         try:
@@ -526,10 +526,10 @@ class Cloud123Service:
                 }
             return result
         except Exception as e:
-            logger.error(f'Failed to create directory {name} in {parent_id}: {str(e)}')
+            logger.error(f'在 {parent_id} 中创建目录 {name} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to create directory: {str(e)}'
+                'error': f'创建目录失败: {str(e)}'
             }
     
     def list_directory(self, dir_id: str = '0') -> Dict[str, Any]:
@@ -587,9 +587,9 @@ class Cloud123Service:
                         'data': entries
                     }
                 else:
-                    logger.warning(f"p123client list failed: {resp.get('message')}, falling back to REST API")
+                    logger.warning(f"p123client list 失败: {resp.get('message')}, 正在回退到 REST API")
             except Exception as e:
-                logger.warning(f"p123client list error: {e}, falling back to REST API")
+                logger.warning(f"p123client list 错误: {e}, 正在回退到 REST API")
         
         # 回退到 REST API
         try:
@@ -630,10 +630,10 @@ class Cloud123Service:
                 'data': entries
             }
         except Exception as e:
-            logger.error(f'Failed to list directory {dir_id}: {str(e)}')
+            logger.error(f'列出目录 {dir_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to list directory: {str(e)}'
+                'error': f'列出目录失败: {str(e)}'
             }
     
     def rename_file(self, file_id: str, new_name: str) -> Dict[str, Any]:
@@ -666,10 +666,10 @@ class Cloud123Service:
                 }
             return result
         except Exception as e:
-            logger.error(f'Failed to rename file {file_id}: {str(e)}')
+            logger.error(f'重命名文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to rename: {str(e)}'
+                'error': f'重命名失败: {str(e)}'
             }
     
     def move_file(self, file_id: str, target_dir_id: str) -> Dict[str, Any]:
@@ -702,10 +702,10 @@ class Cloud123Service:
                 }
             return result
         except Exception as e:
-            logger.error(f'Failed to move file {file_id}: {str(e)}')
+            logger.error(f'移动文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to move: {str(e)}'
+                'error': f'移动失败: {str(e)}'
             }
     
     def delete_file(self, file_id: str) -> Dict[str, Any]:
@@ -735,10 +735,10 @@ class Cloud123Service:
                 }
             return result
         except Exception as e:
-            logger.error(f'Failed to delete file {file_id}: {str(e)}')
+            logger.error(f'删除文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to delete: {str(e)}'
+                'error': f'删除失败: {str(e)}'
             }
     
     def get_download_link(self, file_id: str) -> Dict[str, Any]:
@@ -771,10 +771,10 @@ class Cloud123Service:
                 }
             return result
         except Exception as e:
-            logger.error(f'Failed to get download link for {file_id}: {str(e)}')
+            logger.error(f'获取文件 {file_id} 的下载链接失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to get download link: {str(e)}'
+                'error': f'获取下载链接失败: {str(e)}'
             }
     
     def create_offline_task(self, source_url: str, save_dir_id: str) -> Dict[str, Any]:

@@ -282,13 +282,14 @@ export const api = {
 
   testEmbyConnection: async () => {
     const res = await apiClient.post<ApiResponse<{ success: boolean; latency: number; msg?: string }>>(
-      '/emby/test-connection'
+      '/emby/test-connection',
+      {}
     );
     return res.data;
   },
 
   scanEmbyMissing: async () => {
-    const res = await apiClient.post<ApiResponse<any[]>>('/emby/scan-missing');
+    const res = await apiClient.post<ApiResponse<any[]>>('/emby/scan-missing', {});
     return res.data;
   },
 

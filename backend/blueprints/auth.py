@@ -62,7 +62,7 @@ def login():
     if _is_locked(client_key):
         return jsonify({
             'success': False,
-            'error': 'Account locked',
+            'error': '账户已被锁定',
             'data': _build_auth_state(False, False, client_key)
         }), 423
 
@@ -71,7 +71,7 @@ def login():
     if not data or 'username' not in data or 'password' not in data:
         return jsonify({
             'success': False,
-            'error': 'Username and password are required'
+            'error': '用户名和密码不能为空'
         }), 400
 
     username = data['username']
@@ -103,7 +103,7 @@ def login():
         _increment_attempts(client_key)
         return jsonify({
             'success': False,
-            'error': 'Invalid credentials'
+            'error': '用户名或密码错误'
         }), 401
 
     # Successful login resets failed attempts
@@ -134,7 +134,7 @@ def verify_otp():
     if not data or 'code' not in data:
         return jsonify({
             'success': False,
-            'error': 'OTP code is required'
+            'error': '验证码不能为空'
         }), 400
     
     code = data['code']
@@ -145,7 +145,7 @@ def verify_otp():
     if not secret:
         return jsonify({
             'success': False,
-            'error': '2FA is not enabled'
+            'error': '未开启两步验证'
         }), 400
     
     # Verify OTP
@@ -155,7 +155,7 @@ def verify_otp():
     if not is_valid:
         return jsonify({
             'success': False,
-            'error': 'Invalid OTP code'
+            'error': '无效的验证码'
         }), 401
 
     # Mark current token as 2FA-verified
@@ -295,7 +295,7 @@ def update_password():
     if not new_password:
         return jsonify({
             'success': False,
-            'error': 'New password is required'
+            'error': '新密码不能为空'
         }), 400
 
     admin = auth_bp.store.get_admin_credentials()
@@ -303,10 +303,10 @@ def update_password():
 
     if existing_hash and current_password:
         if not check_password_hash(existing_hash, current_password):
-            return jsonify({
-                'success': False,
-                'error': 'Invalid current password'
-            }), 401
+        return jsonify({
+            'success': False,
+            'error': '当前密码错误'
+        }), 401
 
     password_hash = generate_password_hash(new_password)
     auth_bp.store.update_admin_password(password_hash)

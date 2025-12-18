@@ -58,10 +58,9 @@ def oauth_login():
         client_id = data.get('clientId')
         client_secret = data.get('clientSecret')
         
-        if not client_id or not client_secret:
             return jsonify({
                 'success': False,
-                'error': 'clientId and clientSecret are required'
+                'error': 'clientId 和 clientSecret 不能为空'
             }), 400
         
         # 验证 OAuth 凭证：尝试获取 access token
@@ -109,13 +108,13 @@ def oauth_login():
         return jsonify({
             'success': True,
             'data': {
-                'message': 'OAuth credentials validated and stored successfully'
+                'message': 'OAuth 凭证验证并保存成功'
             }
         }), 200
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to store OAuth credentials: {str(e)}'
+            'error': f'保存 OAuth 凭证失败: {str(e)}'
         }), 500
 
 
@@ -126,10 +125,9 @@ def ingest_cookies():
     try:
         data = request.get_json()
         
-        if not data or 'cookies' not in data:
             return jsonify({
                 'success': False,
-                'error': 'Cookies are required'
+                'error': 'Cookies 不能为空'
             }), 400
         
         cookies = data.get('cookies')
@@ -141,7 +139,7 @@ def ingest_cookies():
             except json.JSONDecodeError:
                 return jsonify({
                     'success': False,
-                    'error': 'Invalid cookies format'
+                    'error': 'Cookies 格式无效'
                 }), 400
         
         # Store cookies encrypted
@@ -158,13 +156,13 @@ def ingest_cookies():
         return jsonify({
             'success': True,
             'data': {
-                'message': 'Cookies validated and stored successfully'
+                'message': 'Cookies 验证并保存成功'
             }
         }), 200
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to ingest cookies: {str(e)}'
+            'error': f'导入 Cookies 失败: {str(e)}'
         }), 500
 
 
@@ -184,7 +182,7 @@ def get_session_health():
                 'success': True,
                 'data': {
                     'hasValidSession': False,
-                    'message': 'No 123 session configured'
+                    'message': '未配置 123 云盘会话'
                 }
             }), 200
         
@@ -193,13 +191,13 @@ def get_session_health():
             'data': {
                 'hasValidSession': True,
                 'lastCheck': __import__('datetime').datetime.now().isoformat(),
-                'message': 'Session check complete'
+                'message': '会话检查完成'
             }
         }), 200
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to check session: {str(e)}'
+            'error': f'检查会话失败: {str(e)}'
         }), 500
 
 
@@ -223,7 +221,7 @@ def list_directories():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to list directories: {str(e)}'
+            'error': f'获取目录列表失败: {str(e)}'
         }), 500
 
 
@@ -240,13 +238,12 @@ def rename_file():
         if not file_id:
             return jsonify({
                 'success': False,
-                'error': 'fileId is required'
+                'error': 'fileId 不能为空'
             }), 400
         
-        if not new_name:
             return jsonify({
                 'success': False,
-                'error': 'newName is required'
+                'error': 'newName 不能为空'
             }), 400
         
         result = _cloud123_service.rename_file(file_id, new_name)
@@ -259,7 +256,7 @@ def rename_file():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to rename: {str(e)}'
+            'error': f'重命名失败: {str(e)}'
         }), 500
 
 
@@ -276,13 +273,12 @@ def move_file():
         if not file_id:
             return jsonify({
                 'success': False,
-                'error': 'fileId is required'
+                'error': 'fileId 不能为空'
             }), 400
         
-        if not target_dir_id:
             return jsonify({
                 'success': False,
-                'error': 'targetDirId is required'
+                'error': 'targetDirId 不能为空'
             }), 400
         
         result = _cloud123_service.move_file(file_id, target_dir_id)
@@ -295,7 +291,7 @@ def move_file():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to move: {str(e)}'
+            'error': f'移动失败: {str(e)}'
         }), 500
 
 
@@ -311,7 +307,7 @@ def delete_file():
         if not file_id:
             return jsonify({
                 'success': False,
-                'error': 'fileId is required'
+                'error': 'fileId 不能为空'
             }), 400
         
         result = _cloud123_service.delete_file(file_id)
@@ -324,7 +320,7 @@ def delete_file():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to delete: {str(e)}'
+            'error': f'删除失败: {str(e)}'
         }), 500
 
 
@@ -339,16 +335,14 @@ def create_offline_task():
         source_url = data.get('sourceUrl') or data.get('source_url')
         save_dir_id = data.get('saveDirId') or data.get('save_dir_id')
         
-        if not source_url:
             return jsonify({
                 'success': False,
-                'error': 'sourceUrl is required'
+                'error': 'sourceUrl 不能为空'
             }), 400
         
-        if not save_dir_id:
             return jsonify({
                 'success': False,
-                'error': 'saveDirId is required'
+                'error': 'saveDirId 不能为空'
             }), 400
         
         # Create task via cloud123 service
@@ -374,7 +368,7 @@ def create_offline_task():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to create offline task: {str(e)}'
+            'error': f'创建离线任务失败: {str(e)}'
         }), 500
 
 
@@ -396,5 +390,5 @@ def get_offline_task(task_id: str):
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to get task status: {str(e)}'
+            'error': f'获取任务状态失败: {str(e)}'
         }), 500

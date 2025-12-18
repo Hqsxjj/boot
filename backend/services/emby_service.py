@@ -30,8 +30,11 @@ class EmbyService:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': 'Server URL and API Key are required'
+                'msg': '请先配置服务器地址和 API Key'
             }
+        
+        # 确保 URL 格式正确
+        server_url = server_url.rstrip('/')
         
         try:
             start_time = time.time()
@@ -49,31 +52,31 @@ class EmbyService:
                 return {
                     'success': True,
                     'latency': latency,
-                    'msg': f'Connected successfully ({latency}ms)'
+                    'msg': f'连接成功 ({latency}ms)'
                 }
             else:
                 return {
                     'success': False,
                     'latency': latency,
-                    'msg': f'Connection failed: HTTP {response.status_code}'
+                    'msg': f'连接失败: HTTP {response.status_code}'
                 }
         except requests.Timeout:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': 'Connection timeout'
+                'msg': '连接超时'
             }
         except requests.ConnectionError:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': 'Connection refused'
+                'msg': '拒绝连接'
             }
         except Exception as e:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': f'Error: {str(e)}'
+                'msg': f'错误: {str(e)}'
             }
     
     def scan_missing_episodes(self) -> Dict[str, Any]:
@@ -275,12 +278,12 @@ class EmbyService:
             if response.status_code in [200, 204]:
                 return {
                     'success': True,
-                    'msg': 'Library refresh started'
+                    'msg': '媒体库刷新已开始'
                 }
             else:
                 return {
                     'success': False,
-                    'error': f'Refresh failed: HTTP {response.status_code}'
+                    'error': f'刷新失败: HTTP {response.status_code}'
                 }
         except Exception as e:
             return {
@@ -303,7 +306,8 @@ class EmbyService:
         if not server_url or not api_key:
             return {
                 'success': False,
-                'data': []
+                'data': [],
+                'error': '请先配置服务器地址和 API Key'
             }
         
         try:

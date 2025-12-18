@@ -38,7 +38,7 @@ class LLMService:
         """
         config = self._get_api_config()
         if not config['api_key']:
-            logger.warning("LLM API key not configured, skipping intelligent parsing")
+            logger.warning("未配置 LLM API Key，跳过智能解析")
             return {}
 
         rules = get_recognition_rules()
@@ -104,9 +104,9 @@ class LLMService:
             content = result['choices'][0]['message']['content']
             parsed_data = json.loads(content)
             
-            logger.info(f"LLM successfully parsed '{filename}': {parsed_data}")
+            logger.info(f"LLM 成功解析 '{filename}': {parsed_data}")
             return parsed_data
             
         except Exception as e:
-            logger.error(f"LLM parsing failed for '{filename}': {e}")
+            logger.error(f"LLM 解析失败: '{filename}': {e}")
             return {}

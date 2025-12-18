@@ -26,7 +26,7 @@ class Cloud115Service:
             self.p115client = p115client
         except ImportError:
             self.p115client = None
-            logger.warning('p115client not installed, 115 operations will be mocked')
+            logger.warning('未安装 p115client，115 操作将使用模拟模式')
             
         # Rate limiting
         self._last_request_time = 0
@@ -47,7 +47,7 @@ class Cloud115Service:
             # You can make this configurable via secret_store if needed
             self._qps = 2.0 
         except Exception as e:
-            logger.debug(f'Failed to update QPS from config: {e}')
+            logger.debug(f'从配置更新 QPS 失败: {e}')
 
     def _wait_for_rate_limit(self):
         """Enforce QPS limit."""
@@ -82,7 +82,7 @@ class Cloud115Service:
         self._wait_for_rate_limit()
         
         if not self.p115client:
-            raise ImportError('p115client not installed')
+            raise ImportError('未安装 p115client')
         
         errors = []
         
@@ -101,16 +101,16 @@ class Cloud115Service:
                     cookies = json.loads(cookies_json)
                     if hasattr(self.p115client, 'P115Client'):
                         client = self.p115client.P115Client(cookies=cookies)
-                        logger.info(f'p115client initialized with {source_name} credentials')
+                        logger.info(f'p115client 已使用 {source_name} 凭证初始化')
                         return client
                 except Exception as e:
                     errors.append(f'{source_name}: {e}')
-                    logger.warning(f'Failed to initialize p115client with {source_name}: {e}')
+                    logger.warning(f'使用 {source_name} 初始化 p115client 失败: {e}')
         
         if errors:
-            raise ValueError(f'All 115 login methods failed: {errors}')
+            raise ValueError(f'所有 115 登录方式均失败: {errors}')
         else:
-            raise ValueError('No 115 cookies found in secret store')
+            raise ValueError('在密钥库中未找到 115 cookies')
     
     def create_directory(self, parent_cid: str, name: str) -> Dict[str, Any]:
         """
@@ -156,11 +156,11 @@ class Cloud115Service:
             else:
                  return {
                     'success': False,
-                    'error': 'Create directory operation not supported'
+                     'error': '不支持创建目录操作'
                 }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to create directory: {str(e)}')
+            logger.warning(f'创建目录失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
@@ -169,7 +169,7 @@ class Cloud115Service:
             task_log.failure(str(e))
             return {
                 'success': False,
-                'error': f'Failed to create directory: {str(e)}'
+                'error': f'创建目录失败: {str(e)}'
             }
     
     def list_directory(self, cid: str = '0') -> Dict[str, Any]:
@@ -242,16 +242,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to list directory: {str(e)}')
+            logger.warning(f'列出目录失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to list directory {cid}: {str(e)}')
+            logger.error(f'列出目录 {cid} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to list directory: {str(e)}'
+                'error': f'列出目录失败: {str(e)}'
             }
     
     def rename_file(self, file_id: str, new_name: str) -> Dict[str, Any]:
@@ -275,7 +275,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Rename operation not supported'
+                    'error': '不支持重命名操作'
                 }
             
             return {
@@ -287,16 +287,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to rename file: {str(e)}')
+            logger.warning(f'重命名文件失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to rename file {file_id}: {str(e)}')
+            logger.error(f'重命名文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to rename: {str(e)}'
+                'error': f'重命名失败: {str(e)}'
             }
     
     def move_file(self, file_id: str, target_cid: str) -> Dict[str, Any]:
@@ -320,7 +320,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Move operation not supported'
+                    'error': '不支持移动操作'
                 }
             
             return {
@@ -332,16 +332,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to move file: {str(e)}')
+            logger.warning(f'移动文件失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to move file {file_id}: {str(e)}')
+            logger.error(f'移动文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to move: {str(e)}'
+                'error': f'移动失败: {str(e)}'
             }
     
     def delete_file(self, file_id: str) -> Dict[str, Any]:
@@ -364,7 +364,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Delete operation not supported'
+                    'error': '不支持删除操作'
                 }
             
             return {
@@ -375,16 +375,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to delete file: {str(e)}')
+            logger.warning(f'删除文件失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to delete file {file_id}: {str(e)}')
+            logger.error(f'删除文件 {file_id} 失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to delete: {str(e)}'
+                'error': f'删除失败: {str(e)}'
             }
     
     def get_download_link(self, file_id: str) -> Dict[str, Any]:
@@ -407,7 +407,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Download link operation not supported'
+                    'error': '不支持获取下载链接操作'
                 }
             
             return {
@@ -419,16 +419,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to get download link: {str(e)}')
+            logger.warning(f'获取下载链接失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to get download link for {file_id}: {str(e)}')
+            logger.error(f'获取文件 {file_id} 的下载链接失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to get download link: {str(e)}'
+                'error': f'获取下载链接失败: {str(e)}'
             }
     
     def save_share(self, share_code: str, access_code: str = None, 
@@ -466,7 +466,7 @@ class Cloud115Service:
             return result
             
         except Exception as e:
-            logger.error(f'Failed to save share: {str(e)}')
+            logger.error(f'转存分享失败: {str(e)}')
             return {
                 'success': False,
                 'error': f'转存失败: {str(e)}'
@@ -496,7 +496,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Offline task creation not supported'
+                    'error': '不支持创建离线任务操作'
                 }
             
             # Extract task ID from result
@@ -515,16 +515,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to create offline task: {str(e)}')
+            logger.warning(f'创建离线任务失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to create offline task: {str(e)}')
+            logger.error(f'创建离线任务失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to create offline task: {str(e)}'
+                'error': f'创建离线任务失败: {str(e)}'
             }
     
     def get_offline_task_status(self, task_id: str) -> Dict[str, Any]:
@@ -548,7 +548,7 @@ class Cloud115Service:
             else:
                 return {
                     'success': False,
-                    'error': 'Offline task status not supported'
+                    'error': '不支持获取离线任务状态操作'
                 }
             
             # Find the task by ID
@@ -570,7 +570,7 @@ class Cloud115Service:
             if not task_info:
                 return {
                     'success': False,
-                    'error': f'Task {task_id} not found'
+                    'error': f'未找到任务 {task_id}'
                 }
             
             # Map status to our enum
@@ -610,16 +610,16 @@ class Cloud115Service:
             }
         
         except (ImportError, ValueError) as e:
-            logger.warning(f'Failed to get task status: {str(e)}')
+            logger.warning(f'获取任务状态失败: {str(e)}')
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
-            logger.error(f'Failed to get offline task status: {str(e)}')
+            logger.error(f'获取离线任务状态失败: {str(e)}')
             return {
                 'success': False,
-                'error': f'Failed to get task status: {str(e)}'
+                'error': f'获取任务状态失败: {str(e)}'
             }
     
     def get_session_metadata(self) -> Dict[str, Any]:
@@ -634,6 +634,6 @@ class Cloud115Service:
             if metadata_json:
                 return json.loads(metadata_json)
         except Exception as e:
-            logger.warning(f'Failed to get session metadata: {str(e)}')
+            logger.warning(f'获取会话元数据失败: {str(e)}')
         
         return {}

@@ -40,17 +40,15 @@ def start_qr_login():
         logger.info(f"start_qr_login called: login_app={login_app}, login_method={login_method}, app_id={app_id}, raw_data={data}")
         
         # 验证登录方式
-        if login_method not in ['qrcode', 'cookie', 'open_app']:
             return jsonify({
                 'success': False,
-                'error': 'Invalid login method. Use qrcode, cookie, or open_app'
+                'error': '无效的登录方式。请使用 qrcode, cookie 或 open_app'
             }), 400
         
         # open_app 模式必须提供 appId
-        if login_method == 'open_app' and not app_id:
             return jsonify({
                 'success': False,
-                'error': 'appId is required for open_app login method'
+                'error': 'open_app 登录方式必须提供 appId'
             }), 400
         
         # Start QR login
@@ -60,10 +58,9 @@ def start_qr_login():
             app_id=app_id  # 传递第三方 App ID
         )
         
-        if 'error' in result and result.get('success') == False:
             return jsonify({
                 'success': False,
-                'error': result.get('error', 'Failed to start QR login')
+                'error': result.get('error', '启动二维码登录失败')
             }), 400
         
         return jsonify({
@@ -78,7 +75,7 @@ def start_qr_login():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to start QR login: {str(e)}'
+            'error': f'启动二维码登录失败: {str(e)}'
         }), 500
 
 
@@ -92,7 +89,7 @@ def poll_login_status(session_id: str):
         if not result.get('success'):
             return jsonify({
                 'success': False,
-                'error': result.get('error', 'Login failed'),
+                'error': result.get('error', '登录失败'),
                 'status': result.get('status', 'error')
             }), 400
         

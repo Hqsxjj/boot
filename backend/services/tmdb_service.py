@@ -49,7 +49,7 @@ class TmdbService:
         # 1. Try API if key exists
         if api_key:
             try:
-                logger.info("Fetching TMDB wallpaper via API...")
+                logger.info("正在通过 API 获取 TMDB 壁纸...")
                 url = f"{TMDB_API_URL}/trending/all/week?api_key={api_key}&language=zh-CN"
                 resp = requests.get(url, timeout=10)
                 if resp.status_code == 200:
@@ -63,14 +63,14 @@ class TmdbService:
                         backdrop = item.get('backdrop_path')
                         return f"https://image.tmdb.org/t/p/original{backdrop}"
             except Exception as e:
-                logger.error(f"TMDB API failed: {e}")
+                logger.error(f"TMDB API 请求失败: {e}")
 
         # 2. Scrape Fallback
         return self._scrape_homepage()
 
     def _scrape_homepage(self):
         try:
-            logger.info("Scraping TMDB homepage for wallpaper...")
+            logger.info("正在抓取 TMDB 首页壁纸...")
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
@@ -90,10 +90,10 @@ class TmdbService:
                     # Return a random one if multiple found, or just the first
                     return matches[0]
             
-            logger.warning("No wallpaper found via scraping.")
+            logger.warning("未通过抓取找到壁纸。")
 
         except Exception as e:
-            logger.error(f"Scrape failed: {e}")
+            logger.error(f"壁纸抓取失败: {e}")
         
         return None
 
