@@ -93,8 +93,8 @@ class P115Service:
                 import qrcode
                 from io import BytesIO
                 
-                # 115扫码登录的URL格式
-                qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+                # 115扫码登录的内容格式 - 直接是 uid
+                qr_content = uid
                 
                 qr = qrcode.QRCode(
                     version=1,
