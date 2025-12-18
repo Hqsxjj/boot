@@ -34,7 +34,7 @@ class P115Service:
         """Initialize P115Service."""
         self._client = None
         self._session_cache = {}  # In-memory cache for login sessions
-        self._session_timeout = timedelta(minutes=5)  # QR code timeout
+        self._session_timeout = timedelta(minutes=2)  # QR code timeout (115 server expires in ~2 min)
         
         # Try to import p115client
         try:
