@@ -395,25 +395,7 @@ export const UserCenterView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* 启用开关 */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {config?.proxy?.enabled ? '已启用' : '已禁用'}
-                </span>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={config?.proxy?.enabled || false}
-                    onChange={(e) => updateNested('proxy', 'enabled', e.target.checked)}
-                    className="sr-only"
-                  />
-                  <div className={`w-10 h-5 rounded-full transition-colors ${config?.proxy?.enabled ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform mt-0.5 ${config?.proxy?.enabled ? 'translate-x-5.5 ml-0.5' : 'translate-x-0.5'}`}></div>
-                  </div>
-                </div>
-              </label>
-
-              {config?.proxy?.enabled && config?.proxy?.host && (
+              {config?.proxy?.host && (
                 <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-800/50">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                   <span className="text-[10px] font-mono font-medium text-green-600 dark:text-green-400">
@@ -433,7 +415,7 @@ export const UserCenterView: React.FC = () => {
             </div>
           </div>
 
-          <div className={`p-6 transition-all duration-300 ${!config?.proxy?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className="p-6 transition-all duration-300">
             <div className="space-y-5">
               {/* 第一行：类型 + 主机 + 端口 */}
               {/* Row 1: Type & Port */}
@@ -522,31 +504,6 @@ export const UserCenterView: React.FC = () => {
               <h3 className="font-bold text-slate-700 dark:text-slate-200">WebDAV 服务</h3>
             </div>
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {config?.strm?.webdav?.enabled ? '已启用' : '已禁用'}
-                </span>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={config?.strm?.webdav?.enabled || false}
-                    onChange={(e) => {
-                      if (!config) return;
-                      setConfig(prev => prev ? ({
-                        ...prev,
-                        strm: {
-                          ...prev.strm,
-                          webdav: { ...prev.strm?.webdav, enabled: e.target.checked }
-                        }
-                      }) : null);
-                    }}
-                    className="sr-only"
-                  />
-                  <div className={`w-10 h-5 rounded-full transition-colors ${config?.strm?.webdav?.enabled ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform mt-0.5 ${config?.strm?.webdav?.enabled ? 'translate-x-5.5 ml-0.5' : 'translate-x-0.5'}`}></div>
-                  </div>
-                </div>
-              </label>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
@@ -558,7 +515,7 @@ export const UserCenterView: React.FC = () => {
             </div>
           </div>
 
-          <div className={`p-6 transition-all duration-300 ${!config?.strm?.webdav?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className="p-6 transition-all duration-300">
             <div className="bg-teal-50/50 dark:bg-teal-900/10 p-3 rounded-xl border-[0.5px] border-teal-100/50 dark:border-teal-900/30 text-sm text-teal-700 dark:text-teal-400 mb-6 flex items-center gap-3 backdrop-blur-sm shadow-inner">
               <HardDrive size={18} />
               <span>
