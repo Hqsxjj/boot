@@ -51,79 +51,120 @@ def test_emby_connection():
 @require_auth
 def scan_missing_episodes():
     """Scan for missing episodes in Emby."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         if not _emby_service:
             return jsonify({
                 'success': False,
-                'error': 'Emby service not initialized'
+                'error': 'Emby 服务未初始化'
             }), 500
         
-        result = _emby_service.scan_missing_episodes()
+        # 检查是否请求演示数据
+        data = request.get_json() or {}
+        demo_mode = data.get('demo', False)
         
-        # 如果 Emby 未配置或连接失败，返回模拟数据用于演示
-        if not result.get('success'):
-            mock_data = [
-                {
-                    'id': 'mock1',
-                    'name': '鱿鱼游戏',
-                    'season': 2,
-                    'totalEp': 7,
-                    'localEp': 4,
-                    'missing': 'E05, E06, E07',
-                    'poster': 'https://image.tmdb.org/t/p/w200/dDlEmu3EZ0Pgg93K2SVNLCjCSvE.jpg'
-                },
-                {
-                    'id': 'mock2',
-                    'name': '怪奇物语',
-                    'season': 4,
-                    'totalEp': 9,
-                    'localEp': 7,
-                    'missing': 'E08, E09',
-                    'poster': 'https://image.tmdb.org/t/p/w200/49WJfeN0moxb9IPfGn8AIqMGskD.jpg'
-                },
-                {
-                    'id': 'mock3',
-                    'name': '黑暗荣耀',
-                    'season': 2,
-                    'totalEp': 8,
-                    'localEp': 6,
-                    'missing': 'E07, E08',
-                    'poster': 'https://image.tmdb.org/t/p/w200/9knZcsG1XM4T6PEk9WPGH0ZmPHf.jpg'
-                },
-                {
-                    'id': 'mock4',
-                    'name': '权力的游戏',
-                    'season': 8,
-                    'totalEp': 6,
-                    'localEp': 6,
-                    'missing': '',
-                    'poster': 'https://image.tmdb.org/t/p/w200/z121dSTR7PY9KxKuvwiIFSYW8cf.jpg'
-                },
-                {
-                    'id': 'mock5',
-                    'name': '纸钞屋',
-                    'season': 5,
-                    'totalEp': 10,
-                    'localEp': 8,
-                    'missing': 'E09, E10',
-                    'poster': 'https://image.tmdb.org/t/p/w200/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg'
-                }
-            ]
+        if demo_mode:
+            # 返回模拟数据用于演示
+            mock_data = _get_mock_missing_data()
             return jsonify({
                 'success': True,
                 'data': mock_data,
                 'demo': True
             }), 200
         
+        result = _emby_service.scan_missing_episodes()
+        logger.info(f"Scan missing episodes result: success={result.get('success')}, count={len(result.get('data', []))}")
+        
+        # 如果扫描失败，返回错误信息
+        if not result.get('success'):
+            error_msg = result.get('error', '扫描失败')
+            logger.warning(f"Scan missing episodes failed: {error_msg}")
+            
+            # 检查是否是配置问题
+            if 'Emby未配置' in error_msg:
+                return jsonify({
+                    'success': False,
+                    'error': '请先配置 Emby 服务器地址和 API Key',
+                    'data': []
+                }), 200
+            elif '连接' in error_msg or 'timeout' in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'error': f'无法连接 Emby 服务器: {error_msg}',
+                    'data': []
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': error_msg,
+                    'data': []
+                }), 200
+        
         return jsonify({
-            'success': result['success'],
+            'success': True,
             'data': result.get('data', [])
         }), 200
+        
     except Exception as e:
+        import traceback
+        logging.getLogger(__name__).error(f"Scan missing episodes exception: {traceback.format_exc()}")
         return jsonify({
             'success': False,
-            'error': f'Failed to scan missing episodes: {str(e)}'
+            'error': f'扫描缺集失败: {str(e)}'
         }), 500
+
+
+def _get_mock_missing_data():
+    """返回演示用的模拟缺集数据"""
+    return [
+        {
+            'id': 'mock1',
+            'name': '鱿鱼游戏',
+            'season': 2,
+            'totalEp': 7,
+            'localEp': 4,
+            'missing': 'E05, E06, E07',
+            'poster': 'https://image.tmdb.org/t/p/w200/dDlEmu3EZ0Pgg93K2SVNLCjCSvE.jpg'
+        },
+        {
+            'id': 'mock2',
+            'name': '怪奇物语',
+            'season': 4,
+            'totalEp': 9,
+            'localEp': 7,
+            'missing': 'E08, E09',
+            'poster': 'https://image.tmdb.org/t/p/w200/49WJfeN0moxb9IPfGn8AIqMGskD.jpg'
+        },
+        {
+            'id': 'mock3',
+            'name': '黑暗荣耀',
+            'season': 2,
+            'totalEp': 8,
+            'localEp': 6,
+            'missing': 'E07, E08',
+            'poster': 'https://image.tmdb.org/t/p/w200/9knZcsG1XM4T6PEk9WPGH0ZmPHf.jpg'
+        },
+        {
+            'id': 'mock4',
+            'name': '权力的游戏',
+            'season': 8,
+            'totalEp': 6,
+            'localEp': 6,
+            'missing': '',
+            'poster': 'https://image.tmdb.org/t/p/w200/z121dSTR7PY9KxKuvwiIFSYW8cf.jpg'
+        },
+        {
+            'id': 'mock5',
+            'name': '纸钞屋',
+            'season': 5,
+            'totalEp': 10,
+            'localEp': 8,
+            'missing': 'E09, E10',
+            'poster': 'https://image.tmdb.org/t/p/w200/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg'
+        }
+    ]
 
 
 @emby_bp.route('/refresh-library', methods=['POST'])

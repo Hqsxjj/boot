@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ViewState } from '../types';
-import { UserCog, Bot, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { UserCog, Bot, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -27,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: ViewState.USER_CENTER, label: '用户中心', icon: UserCog },
     { id: ViewState.BOT_SETTINGS, label: '机器人设置', icon: Bot },
     { id: ViewState.CLOUD_ORGANIZE, label: '网盘整理', icon: CloudCog },
+    { id: ViewState.RESOURCE_SEARCH, label: '资源搜索', icon: Sparkles },
     { id: ViewState.EMBY_INTEGRATION, label: 'Emby 联动', icon: Tv },
     { id: ViewState.LOGS, label: '运行日志', icon: Terminal },
   ];
@@ -54,8 +55,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onChangeView(item.id)}
               title={collapsed ? item.label : undefined}
               className={`w-full flex items-center ${collapsed ? 'justify-center px-0 py-3' : 'gap-3 px-3 py-3'} rounded-xl transition-all duration-200 group relative ${isActive
-                  ? 'bg-brand-50/80 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400 font-bold shadow-sm backdrop-blur-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                ? 'bg-brand-50/80 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400 font-bold shadow-sm backdrop-blur-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
             >
               {isActive && <div className="absolute left-0 top-1 bottom-1 w-1 bg-brand-500 rounded-r-full"></div>}

@@ -20,6 +20,7 @@ from blueprints.bot import bot_bp, init_bot_blueprint
 from blueprints.emby import emby_bp, init_emby_blueprint
 from blueprints.strm import strm_bp, init_strm_blueprint
 from blueprints.logs import logs_bp, init_logs_blueprint
+from blueprints.resource_search import resource_search_bp, init_resource_search_blueprint
 from blueprints.keywords import keywords_bp, set_keyword_store
 from models.database import init_all_databases, get_session_factory
 from models.offline_task import OfflineTask
@@ -161,6 +162,7 @@ def create_app(config=None):
     init_emby_blueprint(store)
     init_strm_blueprint(store)
     init_logs_blueprint()
+    init_resource_search_blueprint(store)
     
     # Initialize keyword store for AI recognition caching
     from services.keyword_store import KeywordStore
@@ -209,6 +211,7 @@ def create_app(config=None):
     app.register_blueprint(strm_bp)
     app.register_blueprint(logs_bp)
     app.register_blueprint(keywords_bp)
+    app.register_blueprint(resource_search_bp)
     
     # Initialize Wallpaper Blueprint
     from blueprints.wallpaper import wallpaper_bp

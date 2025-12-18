@@ -34,7 +34,7 @@ class P115Service:
         """Initialize P115Service."""
         self._client = None
         self._session_cache = {}  # In-memory cache for login sessions
-        self._session_timeout = timedelta(minutes=2)  # QR code timeout (115 server expires in ~2 min)
+        self._session_timeout = timedelta(minutes=3)  # QR code timeout (increased for user convenience)
         
         # Try to import p115client
         try:
@@ -52,7 +52,7 @@ class P115Service:
     def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
         """
         下载二维码图片并转换为 base64 data URI。
-        如果下载失败，则使用本地 qrcode 库生成。
+        优先使用本地 qrcode 库生成（更快更可靠），失败时再尝试下载。
         
         Args:
             qrcode_url: 二维码图片URL
@@ -61,33 +61,9 @@ class P115Service:
         Returns:
             base64 data URI 格式的图片数据
         """
-        logger.info(f"Attempting to fetch QR code from: {qrcode_url}")
+        logger.info(f"Generating QR code for uid: {uid[:16] if uid else 'N/A'}...")
         
-        # 方案1: 尝试从115 API下载
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://115.com/',
-                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
-            }
-            
-            response = requests.get(qrcode_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            
-            # 检查响应内容是否是有效的图片
-            content_type = response.headers.get('Content-Type', '')
-            if 'image' in content_type and len(response.content) > 100:
-                img_base64 = base64.b64encode(response.content).decode('utf-8')
-                data_uri = f"data:{content_type};base64,{img_base64}"
-                logger.info(f"QR code fetched successfully from 115 API, size: {len(response.content)} bytes")
-                return data_uri
-            else:
-                logger.warning(f"Invalid image response from 115 API: content_type={content_type}, size={len(response.content)}")
-                
-        except Exception as e:
-            logger.warning(f"Failed to fetch QR code from 115 API: {str(e)}")
-        
-        # 方案2: 使用本地 qrcode 库生成
+        # 方案1 (优先): 使用本地 qrcode 库生成（更快更可靠）
         if uid:
             try:
                 import qrcode
@@ -117,17 +93,48 @@ class P115Service:
                 return data_uri
                 
             except ImportError:
-                logger.error("qrcode library not installed, falling back to third-party service")
+                logger.warning("qrcode library not installed, falling back to URL download")
             except Exception as e:
-                logger.error(f"Failed to generate QR code locally: {str(e)}")
+                logger.warning(f"Failed to generate QR code locally: {str(e)}, falling back to URL download")
         
-        # 方案3: 使用第三方二维码生成服务
+        # 方案2: 尝试从115 API下载
+        if qrcode_url:
+            for attempt in range(2):  # 最多重试 2 次
+                try:
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Referer': 'https://115.com/',
+                        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+                    }
+                    
+                    # 使用较短的超时（5秒），避免长时间等待
+                    response = requests.get(qrcode_url, headers=headers, timeout=5)
+                    response.raise_for_status()
+                    
+                    # 检查响应内容是否是有效的图片
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'image' in content_type and len(response.content) > 100:
+                        img_base64 = base64.b64encode(response.content).decode('utf-8')
+                        data_uri = f"data:{content_type};base64,{img_base64}"
+                        logger.info(f"QR code fetched successfully from 115 API, size: {len(response.content)} bytes")
+                        return data_uri
+                    else:
+                        logger.warning(f"Invalid image response from 115 API: content_type={content_type}, size={len(response.content)}")
+                        break  # 无效响应，不重试
+                        
+                except requests.Timeout:
+                    logger.warning(f"Attempt {attempt + 1}: 115 API request timeout")
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt + 1}: Failed to fetch QR code from 115 API: {str(e)}")
+        
+        # 方案3: 使用第三方二维码生成服务 (最后备选)
         if uid:
-            fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
-            logger.info(f"Using third-party QR service: {fallback_url}")
+            fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={uid}"
+            logger.info(f"Using third-party QR service as fallback")
             return fallback_url
         
         # 最后返回原始URL
+        logger.warning("All QR code generation methods failed, returning original URL")
         return qrcode_url
     
     def start_qr_login(self, 

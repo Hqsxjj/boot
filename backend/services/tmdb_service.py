@@ -97,6 +97,94 @@ class TmdbService:
         
         return None
 
+    def get_trending_week(self, config: dict = None, limit: int = 12) -> Dict[str, Any]:
+        """
+        获取近一周热门电影和电视剧
+        
+        Args:
+            config: 配置字典
+            limit: 返回数量限制
+            
+        Returns:
+            热门资源列表
+        """
+        api_key = self.get_api_key(config)
+        if not api_key:
+            return {'success': False, 'error': 'TMDB API Key 未配置', 'data': []}
+        
+        try:
+            # 获取本周热门（电影+电视剧混合）
+            url = f"{TMDB_API_URL}/trending/all/week"
+            params = {
+                'api_key': api_key,
+                'language': 'zh-CN'
+            }
+            
+            resp = requests.get(url, params=params, timeout=15)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get('results', [])
+                
+                # 格式化结果
+                formatted = []
+                for item in results[:limit]:
+                    media_type = item.get('media_type', 'movie')
+                    
+                    # 获取标题和年份
+                    if media_type == 'movie':
+                        title = item.get('title', '')
+                        original_title = item.get('original_title', '')
+                        release_date = item.get('release_date', '')
+                    else:
+                        title = item.get('name', '')
+                        original_title = item.get('original_name', '')
+                        release_date = item.get('first_air_date', '')
+                    
+                    year = release_date[:4] if release_date else None
+                    
+                    # 只包含有海报的项目
+                    if not item.get('poster_path'):
+                        continue
+                    
+                    formatted.append({
+                        'id': str(item.get('id')),
+                        'title': title,
+                        'original_title': original_title,
+                        'year': int(year) if year else 2024,
+                        'type': media_type,
+                        'quality': '4K' if item.get('vote_average', 0) >= 7.5 else '1080P',
+                        'poster_url': f"https://image.tmdb.org/t/p/w500{item.get('poster_path')}",
+                        'backdrop_url': f"https://image.tmdb.org/t/p/original{item.get('backdrop_path')}" if item.get('backdrop_path') else None,
+                        'rating': round(item.get('vote_average', 0), 1),
+                        'description': item.get('overview', '')[:200] if item.get('overview') else '',
+                        'share_links': [
+                            {
+                                'source': 'Telegram 资源群',
+                                'link': None,  # 需要真实数据源
+                                'code': None
+                            },
+                            {
+                                'source': '网络搜索',
+                                'link': None,
+                                'code': None
+                            }
+                        ]
+                    })
+                
+                return {
+                    'success': True,
+                    'data': formatted,
+                    'source': 'tmdb'
+                }
+            else:
+                logger.error(f"TMDB trending API returned {resp.status_code}")
+                return {'success': False, 'error': f'TMDB API 返回 {resp.status_code}', 'data': []}
+                
+        except Exception as e:
+            logger.error(f"TMDB get trending failed: {e}")
+            return {'success': False, 'error': str(e), 'data': []}
+
     # ==================== TMDB 搜索和详情 API ====================
     
     def search_movie(self, title: str, year: Optional[str] = None, config: dict = None) -> Dict[str, Any]:

@@ -327,4 +327,20 @@ export const api = {
     const res = await apiClient.get<ApiResponse<{ url: string; source: string }>>('/wallpaper/trending');
     return res.data;
   },
+
+  // --- Resource Search ---
+  searchResources: async (query: string) => {
+    const res = await apiClient.post<ApiResponse<any[]>>('/resource-search/search', { query });
+    return res.data;
+  },
+
+  getTrendingResources: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/resource-search/trending');
+    return res.data;
+  },
+
+  getResourceDetail: async (resourceId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/resource-search/resource/${encodeURIComponent(resourceId)}`);
+    return res.data;
+  },
 };

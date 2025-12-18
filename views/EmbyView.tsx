@@ -100,13 +100,28 @@ export const EmbyView: React.FC = () => {
         setIsScanning(true);
         try {
             const result = await api.scanEmbyMissing();
-            setMissingData(result.data || []);
-            setToast('扫描完成');
-        } catch (e) {
-            setToast('扫描失败');
+            console.log('Scan result:', result);
+
+            if (result.success) {
+                setMissingData(result.data || []);
+                if (result.data && result.data.length === 0) {
+                    setToast('扫描完成，未发现缺集');
+                } else {
+                    setToast(`扫描完成，发现 ${result.data?.length || 0} 个缺集`);
+                }
+            } else {
+                // 处理后端返回的错误
+                const errorMsg = (result as any).error || '未知错误';
+                setToast(`扫描失败: ${errorMsg}`);
+                console.error('Scan failed:', errorMsg);
+            }
+        } catch (e: any) {
+            const errorMsg = e?.response?.data?.error || e?.message || '网络错误';
+            setToast(`扫描失败: ${errorMsg}`);
+            console.error('Scan error:', e);
         } finally {
             setIsScanning(false);
-            setTimeout(() => setToast(null), 2000);
+            setTimeout(() => setToast(null), 4000);
         }
     };
 
