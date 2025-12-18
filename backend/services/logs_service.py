@@ -1,17 +1,20 @@
 import os
 import time
+import glob
 from typing import List, Dict, Any, Optional
 
 
 class LogsService:
     """Service for reading application logs."""
     
-    def __init__(self, log_file: str = '/data/app.log'):
-        self.log_file = log_file
+    def __init__(self, log_dir: str = None):
+        # Use DATA_DIR environment variable or fallback
+        data_dir = os.environ.get('DATA_DIR', '/data')
+        self.log_dir = log_dir or os.path.join(data_dir, 'logs')
     
     def get_logs(self, limit: int = 100, since: Optional[float] = None) -> List[Dict[str, Any]]:
         """
-        Get logs from the application log file.
+        Get logs from all application log files.
         
         Args:
             limit: Maximum number of log entries to return
@@ -23,26 +26,38 @@ class LogsService:
         logs = []
         
         try:
-            if not os.path.exists(self.log_file):
-                return []
+            # Create log dir if not exists
+            os.makedirs(self.log_dir, exist_ok=True)
             
-            # Read the log file
-            with open(self.log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
+            # Find all log files
+            log_files = glob.glob(os.path.join(self.log_dir, '*.log'))
             
-            # Process log entries
-            # Assuming log format: [TIMESTAMP] [LEVEL] message
-            for line in reversed(lines):
+            if not log_files:
+                return self._get_default_logs()
+            
+            # Read from all log files
+            all_lines = []
+            for log_file in log_files:
+                try:
+                    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = f.readlines()
+                        # Tag each line with its source file
+                        source = os.path.basename(log_file).replace('.log', '')
+                        for line in lines:
+                            all_lines.append((source, line))
+                except Exception:
+                    continue
+            
+            # Parse log entries (newest first)
+            for source, line in reversed(all_lines):
                 line = line.strip()
                 if not line:
                     continue
                 
                 try:
-                    # Parse log line - flexible parsing to handle various formats
-                    entry = self._parse_log_line(line)
+                    entry = self._parse_log_line(line, source)
                     
                     if entry:
-                        # Filter by timestamp if since is provided
                         if since and entry.get('timestamp', 0) < since:
                             continue
                         
@@ -51,42 +66,52 @@ class LogsService:
                         if len(logs) >= limit:
                             break
                 except Exception:
-                    # Skip unparseable lines
                     continue
             
         except Exception as e:
-            # Return at least a sample of default logs on error
             return self._get_default_logs()
         
-        return logs
+        return logs if logs else self._get_default_logs()
     
-    def _parse_log_line(self, line: str) -> Optional[Dict[str, Any]]:
+    def _parse_log_line(self, line: str, source: str = 'app') -> Optional[Dict[str, Any]]:
         """Parse a single log line."""
-        # Try to extract timestamp and level
         timestamp = time.time()
         level = 'INFO'
         message = line
+        module = source
         
-        # Example: [2023-10-27 10:30:01] [INFO] message
+        # Parse format: HH:MM:SS │ 级别 │ 模块 │ 消息
+        # Or: YYYY-MM-DD HH:MM:SS │ 级别 │ 模块 │ 消息
         try:
-            if '[' in line and ']' in line:
-                parts = line.split(']')
-                
-                if len(parts) >= 2:
-                    # Extract timestamp from first bracket
-                    time_part = parts[0].replace('[', '').strip()
+            if '│' in line:
+                parts = line.split('│')
+                if len(parts) >= 4:
+                    time_part = parts[0].strip()
+                    level_part = parts[1].strip()
+                    module_part = parts[2].strip()
+                    message = '│'.join(parts[3:]).strip()
                     
-                    # Extract level from second bracket
-                    if len(parts) > 1 and '[' in parts[1]:
-                        level_part = parts[1].split('[')[1].split(']')[0]
-                        if level_part in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL', 'WARN', 'SUCCESS']:
-                            level = level_part
+                    # Map Chinese level to English
+                    level_map = {
+                        '调试': 'DEBUG', '信息': 'INFO', '警告': 'WARN',
+                        '错误': 'ERROR', '严重': 'CRITICAL',
+                        'DEBUG': 'DEBUG', 'INFO': 'INFO', 'WARNING': 'WARN',
+                        'WARN': 'WARN', 'ERROR': 'ERROR', 'CRITICAL': 'CRITICAL'
+                    }
+                    level = level_map.get(level_part, 'INFO')
+                    module = module_part
                     
-                    # Rest is the message
-                    if len(parts) >= 3:
-                        message = ']'.join(parts[2:]).strip()
-                    else:
-                        message = parts[1].strip()
+                    # Try to parse time
+                    try:
+                        from datetime import datetime
+                        if len(time_part) > 10:
+                            dt = datetime.strptime(time_part, '%Y-%m-%d %H:%M:%S')
+                        else:
+                            dt = datetime.strptime(time_part, '%H:%M:%S')
+                            dt = dt.replace(year=datetime.now().year, month=datetime.now().month, day=datetime.now().day)
+                        timestamp = dt.timestamp()
+                    except:
+                        pass
         except Exception:
             pass
         
@@ -94,14 +119,14 @@ class LogsService:
             'time': self._format_timestamp(timestamp),
             'timestamp': timestamp,
             'status': self._map_level_to_status(level),
-            'level': level,
-            'message': message[:500]  # Limit message length
+            'level': module,  # Use module as "任务" column
+            'message': message[:500]
         }
     
     def _format_timestamp(self, ts: float) -> str:
         """Format timestamp for display."""
-        import datetime
-        dt = datetime.datetime.fromtimestamp(ts)
+        from datetime import datetime
+        dt = datetime.fromtimestamp(ts)
         return dt.strftime('%Y-%m-%d %H:%M:%S')
     
     def _map_level_to_status(self, level: str) -> str:
@@ -118,21 +143,14 @@ class LogsService:
         return level_map.get(level.upper(), 'INFO')
     
     def _get_default_logs(self) -> List[Dict[str, Any]]:
-        """Return default sample logs when file is not available."""
+        """Return default sample logs when no files available."""
         now = time.time()
         return [
             {
-                'time': self._format_timestamp(now - 10),
-                'timestamp': now - 10,
-                'status': 'SUCCESS',
-                'level': 'INFO',
-                'message': '系统启动完成'
-            },
-            {
-                'time': self._format_timestamp(now - 5),
-                'timestamp': now - 5,
+                'time': self._format_timestamp(now),
+                'timestamp': now,
                 'status': 'INFO',
-                'level': 'INFO',
-                'message': '已连接 Telegram Bot'
-            },
+                'level': '系统',
+                'message': '日志系统已启动 - 等待新日志写入...'
+            }
         ]
