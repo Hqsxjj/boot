@@ -4,7 +4,6 @@ import { UserCenterView } from './views/UserCenterView';
 import { BotSettingsView } from './views/BotSettingsView';
 import { CloudOrganizeView } from './views/CloudOrganizeView';
 import { EmbyView } from './views/EmbyView';
-import { StrmView } from './views/StrmView';
 import { LogsView } from './views/LogsView';
 import { LoginView } from './views/LoginView';
 import { ViewState } from './types';
@@ -30,7 +29,6 @@ const PATH_MAP: Record<ViewState, string> = {
   [ViewState.BOT_SETTINGS]: 'bot-settings',
   [ViewState.CLOUD_ORGANIZE]: 'cloud-organize',
   [ViewState.EMBY_INTEGRATION]: 'emby',
-  [ViewState.STRM_GENERATION]: 'strm',
   [ViewState.LOGS]: 'logs',
 };
 
@@ -156,7 +154,6 @@ const App: React.FC = () => {
       case ViewState.BOT_SETTINGS: return <BotSettingsView />;
       case ViewState.CLOUD_ORGANIZE: return <CloudOrganizeView />;
       case ViewState.EMBY_INTEGRATION: return <EmbyView />;
-      case ViewState.STRM_GENERATION: return <StrmView />;
       case ViewState.LOGS: return <LogsView />;
       default: return <UserCenterView />;
     }
@@ -225,7 +222,6 @@ const App: React.FC = () => {
                       { id: ViewState.BOT_SETTINGS, label: '机器人设置' },
                       { id: ViewState.CLOUD_ORGANIZE, label: '网盘整理' },
                       { id: ViewState.EMBY_INTEGRATION, label: 'Emby 联动' },
-                      { id: ViewState.STRM_GENERATION, label: 'STRM 生成' },
                       { id: ViewState.LOGS, label: '运行日志' },
                     ].map(item => (
                       <button

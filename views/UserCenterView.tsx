@@ -511,6 +511,120 @@ export const UserCenterView: React.FC = () => {
             </div>
           </div>
         </section>
+
+        {/* WebDAV Server */}
+        <section className={`${glassCardClass} lg:col-span-2`}>
+          <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-teal-50 dark:bg-teal-900/20 rounded-lg text-teal-600 dark:text-teal-400 shadow-inner">
+                <Globe size={20} />
+              </div>
+              <h3 className="font-bold text-slate-700 dark:text-slate-200">WebDAV 服务</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {config?.strm?.webdav?.enabled ? '已启用' : '已禁用'}
+                </span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={config?.strm?.webdav?.enabled || false}
+                    onChange={(e) => {
+                      if (!config) return;
+                      setConfig(prev => prev ? ({
+                        ...prev,
+                        strm: {
+                          ...prev.strm,
+                          webdav: { ...prev.strm?.webdav, enabled: e.target.checked }
+                        }
+                      }) : null);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className={`w-10 h-5 rounded-full transition-colors ${config?.strm?.webdav?.enabled ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform mt-0.5 ${config?.strm?.webdav?.enabled ? 'translate-x-5.5 ml-0.5' : 'translate-x-0.5'}`}></div>
+                  </div>
+                </div>
+              </label>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`${actionBtnClass} bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-900/20 dark:text-teal-400 dark:hover:bg-teal-900/40 disabled:opacity-50`}
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
+                保存设置
+              </button>
+            </div>
+          </div>
+
+          <div className={`p-6 transition-all duration-300 ${!config?.strm?.webdav?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="bg-teal-50/50 dark:bg-teal-900/10 p-3 rounded-xl border-[0.5px] border-teal-100/50 dark:border-teal-900/30 text-sm text-teal-700 dark:text-teal-400 mb-6 flex items-center gap-3 backdrop-blur-sm shadow-inner">
+              <HardDrive size={18} />
+              <span>
+                WebDAV 挂载地址: <strong>http://{window.location.hostname}:18080/dav</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">用户名</label>
+                <input
+                  type="text"
+                  value={config?.strm?.webdav?.username || 'admin'}
+                  onChange={(e) => {
+                    if (!config) return;
+                    setConfig(prev => prev ? ({
+                      ...prev,
+                      strm: {
+                        ...prev.strm,
+                        webdav: { ...prev.strm?.webdav, username: e.target.value }
+                      }
+                    }) : null);
+                  }}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">密码</label>
+                <SensitiveInput
+                  value={config?.strm?.webdav?.password || ''}
+                  onChange={(e) => {
+                    if (!config) return;
+                    setConfig(prev => prev ? ({
+                      ...prev,
+                      strm: {
+                        ...prev.strm,
+                        webdav: { ...prev.strm?.webdav, password: e.target.value }
+                      }
+                    }) : null);
+                  }}
+                  className={inputClass}
+                />
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config?.strm?.webdav?.readOnly || false}
+                    onChange={(e) => {
+                      if (!config) return;
+                      setConfig(prev => prev ? ({
+                        ...prev,
+                        strm: {
+                          ...prev.strm,
+                          webdav: { ...prev.strm?.webdav, readOnly: e.target.checked }
+                        }
+                      }) : null);
+                    }}
+                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">只读模式</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* PWA Module - Bottom */}
