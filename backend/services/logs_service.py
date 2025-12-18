@@ -8,8 +8,17 @@ class LogsService:
     """Service for reading application logs."""
     
     def __init__(self, log_dir: str = None):
-        # Use DATA_DIR environment variable or fallback
-        data_dir = os.environ.get('DATA_DIR', '/data')
+        # Use DATA_DIR environment variable or fallback to local 'data' folder
+        data_dir = os.environ.get('DATA_DIR')
+        if not data_dir:
+            # Try to find 'data' in current directory or backend directory
+            if os.path.isdir('data'):
+                data_dir = 'data'
+            elif os.path.isdir('backend/data'):
+                data_dir = 'backend/data'
+            else:
+                data_dir = '/data'
+        
         self.log_dir = log_dir or os.path.join(data_dir, 'logs')
     
     def get_logs(self, limit: int = 100, since: Optional[float] = None) -> List[Dict[str, Any]]:

@@ -79,7 +79,16 @@ class ChineseFormatter(logging.Formatter):
 
 def get_log_dir():
     """获取日志目录路径"""
-    data_dir = os.environ.get('DATA_DIR', '/data')
+    data_dir = os.environ.get('DATA_DIR')
+    if not data_dir:
+        # Try to find 'data' in current directory or backend directory
+        if os.path.isdir('data'):
+            data_dir = 'data'
+        elif os.path.isdir('backend/data'):
+            data_dir = 'backend/data'
+        else:
+            data_dir = '/data'
+            
     log_dir = os.path.join(data_dir, 'logs')
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
