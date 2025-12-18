@@ -122,15 +122,36 @@ export const CloudOrganizeView: React.FC = () => {
       }) : null);
    };
 
+   const AI_PRESETS: Record<string, { baseUrl: string; model: string }> = {
+      openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+      gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-1.5-flash' },
+      deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+      zhipu: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+      moonshot: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+      groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama3-70b-8192' },
+      custom: { baseUrl: '', model: '' }
+   };
+
    const updateAiConfig = (key: string, value: any) => {
       if (!config) return;
-      setConfig(prev => prev ? ({
-         ...prev,
-         organize: {
-            ...prev.organize,
-            ai: { ...prev.organize.ai, [key]: value }
+      setConfig(prev => {
+         if (!prev) return null;
+         const newAi = { ...prev.organize.ai, [key]: value };
+
+         // 如果切换了服务商，自动应用预置值
+         if (key === 'provider' && AI_PRESETS[value]) {
+            newAi.baseUrl = AI_PRESETS[value].baseUrl;
+            newAi.model = AI_PRESETS[value].model;
          }
-      }) : null);
+
+         return {
+            ...prev,
+            organize: {
+               ...prev.organize,
+               ai: newAi
+            }
+         };
+      });
    };
 
    const updateOrganize = (key: string, value: any) => {
@@ -815,8 +836,10 @@ export const CloudOrganizeView: React.FC = () => {
                                        <option value="openai">ChatGPT (OpenAI)</option>
                                        <option value="gemini">Google Gemini</option>
                                        <option value="deepseek">DeepSeek 深度求索</option>
-                                       <option value="zhipu">智谱 GLM</option>
-                                       <option value="custom">自定义 (Compatible)</option>
+                                       <option value="zhipu">智谱 GLM (清华)</option>
+                                       <option value="moonshot">月之暗面 (Kimi)</option>
+                                       <option value="groq">Groq (极速推理)</option>
+                                       <option value="custom">自定义 (OpenAI 兼容)</option>
                                     </select>
                                  </div>
                                  <div>
@@ -833,7 +856,7 @@ export const CloudOrganizeView: React.FC = () => {
                                        type="text"
                                        value={config.organize.ai.baseUrl}
                                        onChange={(e) => updateAiConfig('baseUrl', e.target.value)}
-                                       placeholder={config.organize.ai.provider === 'deepseek' ? 'https://api.deepseek.com/v1' : config.organize.ai.provider === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.openai.com/v1'}
+                                       placeholder={AI_PRESETS[config.organize.ai.provider]?.baseUrl || 'https://api.openai.com/v1'}
                                        className={inputClass}
                                     />
                                  </div>
@@ -843,7 +866,7 @@ export const CloudOrganizeView: React.FC = () => {
                                        type="text"
                                        value={config.organize.ai.model}
                                        onChange={(e) => updateAiConfig('model', e.target.value)}
-                                       placeholder={config.organize.ai.provider === 'openai' ? 'gpt-3.5-turbo' : config.organize.ai.provider === 'gemini' ? 'gemini-pro' : config.organize.ai.provider === 'deepseek' ? 'deepseek-chat' : config.organize.ai.provider === 'zhipu' ? 'glm-4' : 'model-name'}
+                                       placeholder={AI_PRESETS[config.organize.ai.provider]?.model || 'gpt-4o-mini'}
                                        className={inputClass}
                                     />
                                  </div>

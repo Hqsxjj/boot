@@ -18,7 +18,7 @@ class LLMService:
         # Default to OpenAI-compatible interface/format
         api_key = self.secret_store.get_secret('llm_api_key')
         base_url = self.secret_store.get_secret('llm_base_url') or 'https://api.openai.com/v1'
-        model = self.secret_store.get_secret('llm_model') or 'gpt-3.5-turbo'
+        model = self.secret_store.get_secret('llm_model') or 'gpt-4o-mini'
         
         return {
             'api_key': api_key,

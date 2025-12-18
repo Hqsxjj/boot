@@ -100,14 +100,9 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
             'Authorization': f'Bearer {api_key}'
         }
         
-        # Normalize base URL
-        if not base_url.endswith('/'):
-            base_url = base_url + '/'
-        if not base_url.endswith('v1/'):
-            if 'v1' not in base_url:
-                base_url = base_url + 'v1/'
-        
-        endpoint = base_url.rstrip('/') + '/chat/completions'
+        # Normalize base URL and construct endpoint
+        base_url = base_url.rstrip('/')
+        endpoint = f"{base_url}/chat/completions"
         
         payload = {
             'model': model,

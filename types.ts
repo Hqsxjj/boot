@@ -152,7 +152,7 @@ export interface ClassificationRule {
 
 export interface AiConfig {
   enabled: boolean;
-  provider: 'openai' | 'gemini' | 'deepseek' | 'zhipu' | 'custom';
+  provider: 'openai' | 'gemini' | 'deepseek' | 'zhipu' | 'moonshot' | 'groq' | 'custom';
   baseUrl: string;
   apiKey: string;
   model: string;
