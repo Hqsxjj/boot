@@ -311,6 +311,7 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
     const [newSub, setNewSub] = useState({ keyword: '', cloud_type: '115', include: '', exclude: '' });
     const [showAddModal, setShowAddModal] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+    const [editingSub, setEditingSub] = useState<any | null>(null);
 
     useEffect(() => {
         fetchSubscriptions();
@@ -465,6 +466,18 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                         <span className="text-slate-400 italic">无过滤规则</span>
                                     )}
                                 </div>
+
+                                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                                    <span className="text-xs text-slate-500">当前进度:</span>
+                                    <button
+                                        onClick={() => setEditingSub(sub)}
+                                        className="text-xs font-mono font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2 py-0.5 rounded border border-brand-200 dark:border-brand-800/50 hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-colors flex items-center gap-1"
+                                        title="点击修改进度"
+                                    >
+                                        <span className="opacity-50">S</span>{(sub.current_season || 0).toString().padStart(2, '0')}
+                                        <span className="opacity-50 ml-1">E</span>{(sub.current_episode || 0).toString().padStart(2, '0')}
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 text-xs text-slate-500 flex justify-between items-center">
@@ -555,6 +568,47 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                 {isAdding ? '添加中...' : '确定添加'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Progress Modal */}
+            {editingSub && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingSub(null)} />
+                    <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">修改进度: {editingSub.keyword}</h3>
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            const formData = new FormData(e.currentTarget);
+                            const season = parseInt(formData.get('season') as string);
+                            const episode = parseInt(formData.get('episode') as string);
+
+                            try {
+                                await api.updateSubscription(editingSub.id, { current_season: season, current_episode: episode });
+                                setSubscriptions(prev => prev.map(s => s.id === editingSub.id ? { ...s, current_season: season, current_episode: episode } : s));
+                                setEditingSub(null);
+                                showToast('进度已更新');
+                            } catch (err) {
+                                console.error(err);
+                                showToast('更新失败');
+                            }
+                        }}>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">当前季 (Season)</label>
+                                    <input name="season" type="number" defaultValue={editingSub.current_season || 0} min="0" className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">当前集 (Episode)</label>
+                                    <input name="episode" type="number" defaultValue={editingSub.current_episode || 0} min="0" className={inputClass} />
+                                </div>
+                                <div className="flex justify-end gap-3 mt-6">
+                                    <button type="button" onClick={() => setEditingSub(null)} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">取消</button>
+                                    <button type="submit" className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors">保存</button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

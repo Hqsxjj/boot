@@ -75,6 +75,32 @@ def delete_subscription(sub_id):
         logger.error(f"Failed to delete subscription: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@subscription_bp.route('/update/<sub_id>', methods=['PUT', 'POST'])
+@require_auth
+def update_subscription(sub_id):
+    """
+    Update a subscription.
+    Body: { "current_season": 1, "current_episode": 5 }
+    """
+    try:
+        data = request.get_json() or {}
+        service = get_subscription_service()
+        
+        # Whitelist fields to update
+        allowed_fields = ['keyword', 'cloud_type', 'filter_config', 'status', 'current_season', 'current_episode']
+        updates = {k: v for k, v in data.items() if k in allowed_fields}
+        
+        updated_sub = service.update_subscription(sub_id, updates)
+        
+        if updated_sub:
+            return jsonify({'success': True, 'data': updated_sub})
+        else:
+            return jsonify({'success': False, 'error': 'Subscription not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Failed to update subscription: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @subscription_bp.route('/run', methods=['POST'])
 @require_auth
 def run_checks_manually():

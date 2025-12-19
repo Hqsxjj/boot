@@ -365,4 +365,9 @@ export const api = {
     const res = await apiClient.post<ApiResponse<any>>('/subscription/run');
     return res.data;
   },
+
+  updateSubscription: async (subId: string, data: any) => {
+    const res = await apiClient.put<ApiResponse<any>>(`/subscription/update/${subId}`, data);
+    return res.data;
+  },
 };

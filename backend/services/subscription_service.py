@@ -75,7 +75,9 @@ class SubscriptionService:
             'status': 'active',
             'created_at': datetime.now().isoformat(),
             'last_check': None,
-            'last_message': 'Created'
+            'last_message': 'Created',
+            'current_season': 0,
+            'current_episode': 0
         }
         subs = self._load_subscriptions()
         subs.append(sub)
@@ -147,6 +149,23 @@ class SubscriptionService:
             if url in history:
                 continue
                 
+            # Episode Filtering
+            parsed_season, parsed_episode = self._parse_episode_info(title)
+            current_season = sub.get('current_season', 0)
+            current_episode = sub.get('current_episode', 0)
+            
+            # If we tracked progress, skip old episodes
+            is_new = False
+            if parsed_season == 0 and parsed_episode == 0:
+                is_new = True # Unknown format, trust history check
+            elif parsed_season > current_season:
+                is_new = True
+            elif parsed_season == current_season and parsed_episode > current_episode:
+                is_new = True
+            
+            if not is_new:
+                continue
+
             if self._matches_filters(title, filters):
                 matched_items.append(item)
         
@@ -159,6 +178,10 @@ class SubscriptionService:
         count = 0
         success_count = 0
         
+        # Track max progress to update subscription
+        max_season = sub.get('current_season', 0)
+        max_episode = sub.get('current_episode', 0)
+        
         for item in matched_items:
             try:
                 success = self._trigger_download(item, cloud_type)
@@ -170,13 +193,47 @@ class SubscriptionService:
                         'cloud_type': cloud_type
                     }
                     success_count += 1
+                    
+                    # Update progress if this item is newer
+                    s, e = self._parse_episode_info(item.get('title', ''))
+                    if s > max_season:
+                        max_season = s
+                        max_episode = e
+                    elif s == max_season and e > max_episode:
+                        max_episode = e
+                        
                     logger.info(f"Successfully triggered download for {item.get('title')}")
             except Exception as e:
                 logger.error(f"Download failed for item {item.get('title')}: {e}")
                 
             count += 1
-                
-        sub['last_message'] = f"Found {len(matched_items)} matches, downloaded {success_count}"
+        
+        # Save progress
+        sub['current_season'] = max_season
+        sub['current_episode'] = max_episode
+        sub['last_message'] = f"Found {len(matched_items)} matches, downloaded {success_count}. Now at S{max_season}E{max_episode}"
+
+    def _parse_episode_info(self, title: str) -> tuple:
+        """Parse season and episode from title. Returns (season, episode). Default (0, 0)."""
+        import re
+        if not title: return 0, 0
+        
+        # S01E01 or S1E1
+        match = re.search(r'S(\d+)\s*E(\d+)', title, re.IGNORECASE)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+            
+        # E01 or EP01
+        match = re.search(r'(?:E|EP)(\d+)', title, re.IGNORECASE)
+        if match:
+            return 1, int(match.group(1))
+
+        # Chinese: 第xx集
+        match = re.search(r'第(\d+)集', title)
+        if match:
+            return 1, int(match.group(1))
+            
+        return 0, 0
 
     def _matches_filters(self, title: str, filters: Dict) -> bool:
         """
