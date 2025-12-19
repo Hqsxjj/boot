@@ -658,34 +658,54 @@ class P115Service:
         """
         try:
             if not cookies:
+                logger.warning('validate_cookies: empty cookies provided')
                 return False
+            
+            # 检查必要的cookie字段
+            required_keys = ['UID', 'CID', 'SEID']
+            has_required = any(key in cookies for key in required_keys)
+            if not has_required:
+                logger.warning(f'validate_cookies: missing required keys. Got: {list(cookies.keys())}')
+                # 不立即返回False，尝试继续验证
             
             p115client = self._get_p115client_module()
             
-            # Create client with cookies and test authentication
-            if hasattr(p115client, 'P115Client'):
-                client = p115client.P115Client(cookies=cookies)
-            else:
+            if not hasattr(p115client, 'P115Client'):
+                logger.warning('validate_cookies: P115Client not found in p115client module')
                 return False
             
-            # Test by getting user info
-            if hasattr(client, 'get_user_id'):
-                user_id = client.get_user_id()
-                return user_id is not None
-            elif hasattr(client, 'user_id'):
-                return client.user_id is not None
-            else:
-                # 无法验证时尝试调用一个简单的 API 来确认
-                try:
-                    if hasattr(client, 'fs') and hasattr(client.fs, 'listdir'):
-                        client.fs.listdir('0')  # 尝试列出根目录
-                        return True
-                except Exception:
-                    pass
-                # 无法验证，返回 False 而非盲目假设有效
-                logger.warning('Unable to validate cookies: no validation method available')
+            # Create client with cookies and test authentication
+            try:
+                client = p115client.P115Client(cookies=cookies)
+                logger.info('validate_cookies: P115Client created successfully')
+            except Exception as e:
+                logger.warning(f'validate_cookies: P115Client creation failed: {e}')
                 return False
-        except Exception:
+            
+            # 尝试多种方法验证
+            validation_attempts = [
+                ('get_user_id', lambda: client.get_user_id() if hasattr(client, 'get_user_id') else None),
+                ('user_id', lambda: client.user_id if hasattr(client, 'user_id') else None),
+                ('fs_files', lambda: client.fs_files({"cid": 0, "limit": 1}) if hasattr(client, 'fs_files') else None),
+            ]
+            
+            for method_name, method_func in validation_attempts:
+                try:
+                    result = method_func()
+                    if result is not None:
+                        logger.info(f'validate_cookies: validation succeeded via {method_name}')
+                        return True
+                except Exception as e:
+                    logger.debug(f'validate_cookies: {method_name} failed: {e}')
+                    continue
+            
+            logger.warning('validate_cookies: all validation methods failed')
+            return False
+        except ImportError as e:
+            logger.error(f'validate_cookies: p115client not available: {e}')
+            return False
+        except Exception as e:
+            logger.error(f'validate_cookies: unexpected error: {e}')
             return False
     
     def get_authenticated_client(self, cookies: Dict[str, str]):

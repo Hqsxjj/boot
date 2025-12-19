@@ -188,29 +188,38 @@ def ingest_cookies():
         
         cookies = data.get('cookies')
         
-        if not isinstance(cookies, dict):
-            try:
-                if isinstance(cookies, str):
+        # 支持多种cookie格式
+        if isinstance(cookies, str):
+            cookies = cookies.strip()
+            # 尝试解析JSON格式
+            if cookies.startswith('{'):
+                try:
                     cookies = json.loads(cookies)
-            except json.JSONDecodeError:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid cookies format'
-                }), 400
+                except json.JSONDecodeError:
+                    pass
+            
+            # 如果还是字符串，尝试解析 "key=value; key2=value2" 格式
+            if isinstance(cookies, str):
+                cookie_dict = {}
+                for part in cookies.replace('\n', ';').split(';'):
+                    part = part.strip()
+                    if '=' in part:
+                        key, value = part.split('=', 1)
+                        cookie_dict[key.strip()] = value.strip()
+                if cookie_dict:
+                    cookies = cookie_dict
         
-        # Validate cookies
-        is_valid = _p115_service.validate_cookies(cookies)
-        
-        if not is_valid:
+        if not isinstance(cookies, dict) or not cookies:
             return jsonify({
                 'success': False,
-                'error': 'Invalid or expired cookies'
-            }), 401
+                'error': 'Invalid cookies format. Please provide JSON object or key=value; format'
+            }), 400
         
-        # Store cookies encrypted - use manual-specific key for independent storage
+        logger.info(f'Cookie import: received {len(cookies)} cookie keys: {list(cookies.keys())}')
+        
+        # 先保存cookies，然后尝试验证
         cookies_json = json.dumps(cookies)
         _secret_store.set_secret('cloud115_manual_cookies', cookies_json)
-        # Also update legacy key for backwards compatibility
         _secret_store.set_secret('cloud115_cookies', cookies_json)
         
         # Store metadata
@@ -221,12 +230,30 @@ def ingest_cookies():
         }
         _secret_store.set_secret('cloud115_session_metadata', json.dumps(metadata))
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'message': 'Cookies validated and stored successfully'
-            }
-        }), 200
+        # 尝试验证cookies（可选，不影响保存）
+        is_valid = False
+        try:
+            is_valid = _p115_service.validate_cookies(cookies)
+        except Exception as e:
+            logger.warning(f'Cookie validation error (non-critical): {e}')
+        
+        if is_valid:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'message': 'Cookies validated and stored successfully',
+                    'validated': True
+                }
+            }), 200
+        else:
+            # 即使验证失败也保存，让用户可以尝试使用
+            return jsonify({
+                'success': True,
+                'data': {
+                    'message': 'Cookies stored (validation skipped or failed, please test by opening directory selector)',
+                    'validated': False
+                }
+            }), 200
     except Exception as e:
         return jsonify({
             'success': False,
