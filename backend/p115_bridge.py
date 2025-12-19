@@ -34,8 +34,9 @@ class P115Service:
         """Initialize P115Service."""
         self._client = None
         self._session_cache = {}  # In-memory cache for login sessions
-        self._session_timeout = timedelta(minutes=5)  # QR code local timeout (5 min to give user enough time)
+        self._session_timeout = timedelta(minutes=5)  # 总超时时间
         self._http_session = requests.Session()  # 用于 PKCE OAuth 请求
+        self._polling_threads = {}  # 后台轮询线程
         
         # Try to import p115client
         try:
@@ -49,6 +50,66 @@ class P115Service:
         if self.p115client is None:
             raise ImportError('p115client not installed')
         return self.p115client
+    
+    def _background_poll_open_login(self, session_id: str):
+        """
+        后台线程：持续轮询 open_app 扫码状态直到成功或超时。
+        参考 EmbyNginxDK 的 check_login 实现。
+        """
+        import time
+        
+        session_info = self._session_cache.get(session_id)
+        if not session_info:
+            return
+        
+        uid = session_info.get('uid', '')
+        time_val = session_info.get('time', '')
+        sign = session_info.get('sign', '')
+        code_verifier = session_info.get('code_verifier', '')
+        
+        max_retries = 150  # 最多轮询约5分钟 (150 * 2秒)
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            # 检查 session 是否还存在
+            if session_id not in self._session_cache:
+                logger.info(f"Session {session_id} 已被清理，停止轮询")
+                break
+            
+            status_result = self.check_open_login_status(uid, time_val, sign)
+            status_code = status_result.get('status', -1)
+            
+            if status_code == 2:
+                # 用户已确认，获取 access_token
+                token_data = self.get_open_access_token(uid, code_verifier)
+                if token_data:
+                    session_info['status'] = 'success'
+                    session_info['token_data'] = token_data
+                    session_info['cookies'] = token_data
+                    logger.info(f"Session {session_id} 扫码登录成功！")
+                else:
+                    session_info['status'] = 'error'
+                    session_info['error'] = '获取 access_token 失败'
+                break
+            elif status_code == 1:
+                # 已扫描，等待确认
+                session_info['status'] = 'scanned'
+            elif status_code == 0:
+                # 未扫描
+                session_info['status'] = 'waiting'
+            elif status_code == -1:
+                # 过期
+                session_info['status'] = 'expired'
+                logger.info(f"Session {session_id} 二维码过期")
+                break
+            
+            time.sleep(2)  # 每2秒轮询一次
+            retry_count += 1
+        
+        # 超时处理
+        if retry_count >= max_retries and session_info.get('status') not in ['success', 'expired']:
+            session_info['status'] = 'expired'
+            logger.info(f"Session {session_id} 轮询超时")
     
     # ==================== PKCE OAuth 开放 API 方法 ====================
     
@@ -335,11 +396,22 @@ class P115Service:
                     'login_app': 'open_app',
                     'app_id': actual_app_id,
                     'started_at': datetime.now(),
-                    'status': 'pending'
+                    'status': 'waiting'  # 初始状态
                 }
                 
                 # 获取二维码图片
                 qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_url, uid) if qrcode_url else ''
+                
+                # 启动后台轮询线程 - 参考 EmbyNginxDK 的实现
+                import threading
+                polling_thread = threading.Thread(
+                    target=self._background_poll_open_login,
+                    args=(session_id,),
+                    daemon=True
+                )
+                polling_thread.start()
+                self._polling_threads[session_id] = polling_thread
+                logger.info(f"已启动后台轮询线程: session_id={session_id}")
                 
                 return {
                     'sessionId': session_id,
@@ -456,48 +528,37 @@ class P115Service:
             
             login_method = session_info.get('login_method', 'qrcode')
             
-            # ================ open_app 模式：使用 PKCE OAuth ================
+            # ================ open_app 模式：后台线程已轮询，直接读取状态 ================
             if login_method == 'open_app':
-                uid = session_info.get('uid', '')
-                time_val = session_info.get('time', '')
-                sign = session_info.get('sign', '')
-                code_verifier = session_info.get('code_verifier', '')
+                # 后台线程已经在持续轮询 115 API，这里只需读取状态
+                current_status = session_info.get('status', 'waiting')
                 
-                # 检查扫码状态
-                status_result = self.check_open_login_status(uid, time_val, sign)
-                status_code = status_result.get('status', -1)
-                
-                if status_code == 0:
-                    return {'status': 'waiting', 'success': True}
-                elif status_code == 1:
+                if current_status == 'success':
+                    # 登录成功，后台线程已获取 token
+                    return {
+                        'status': 'success',
+                        'cookies': session_info.get('cookies', {}),
+                        'token_data': session_info.get('token_data', {}),
+                        'success': True
+                    }
+                elif current_status == 'scanned':
                     return {'status': 'scanned', 'success': True}
-                elif status_code == 2:
-                    # 用户已确认，获取 access_token
-                    token_data = self.get_open_access_token(uid, code_verifier)
-                    
-                    if token_data:
-                        session_info['status'] = 'success'
-                        # 返回 token 信息（access_token, refresh_token, expires_in）
-                        return {
-                            'status': 'success',
-                            'cookies': token_data,  # 包含 access_token, refresh_token
-                            'token_data': token_data,
-                            'success': True
-                        }
-                    else:
-                        return {
-                            'status': 'error',
-                            'error': '获取 access_token 失败',
-                            'success': False
-                        }
-                else:
-                    # 过期或错误
-                    session_info['status'] = 'expired'
+                elif current_status == 'waiting':
+                    return {'status': 'waiting', 'success': True}
+                elif current_status == 'expired':
                     return {
                         'status': 'expired',
-                        'message': status_result.get('message', ''),
+                        'message': session_info.get('error', '二维码已过期'),
                         'success': False
                     }
+                elif current_status == 'error':
+                    return {
+                        'status': 'error',
+                        'error': session_info.get('error', '登录失败'),
+                        'success': False
+                    }
+                else:
+                    return {'status': 'waiting', 'success': True}
             
             # ================ 普通 qrcode 模式 ================
             qr_data = session_info.get('qr_data', {})
