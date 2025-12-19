@@ -164,7 +164,7 @@ class MediaOrganizer:
                     else:
                         template = rename_config.get('movieTemplate')
                 except Exception as e:
-                    logger.warning(f"Failed to get template from config store: {e}")
+                    logger.warning(f"从配置存储获取模板失败: {e}")
 
             # Fallback to YAML if still no template
             if not template:
@@ -193,7 +193,7 @@ class MediaOrganizer:
             return new_name
             
         except Exception as e:
-            logger.error(f"Generate new name failed: {e}")
+            logger.error(f"生成新文件名失败: {e}")
             return media_info.original_name
     
     def generate_target_path(
@@ -217,7 +217,7 @@ class MediaOrganizer:
                     else:
                         dir_template = rename_config.get('movieDirTemplate')
                 except Exception as e:
-                    logger.warning(f"Failed to get dir template from config store: {e}")
+                    logger.warning(f"从配置存储获取目录模板失败: {e}")
 
             # 2. Fallback to YAML/Defaults if still no template
             if not dir_template:
@@ -253,7 +253,7 @@ class MediaOrganizer:
             return target_dir
             
         except Exception as e:
-            logger.error(f"Generate target path failed: {e}")
+            logger.error(f"生成目标路径失败: {e}")
             return base_dir
     
     def _build_template_variables(self, media_info: MediaInfo, tmdb_info: Optional[Dict] = None, original_extension: str = "") -> Dict[str, Any]:
@@ -369,7 +369,7 @@ class MediaOrganizer:
                             return rule.get('name', 'Unknown')
 
             except Exception as e:
-                logger.warning(f"Error matching rules from ConfigStore: {e}")
+                logger.warning(f"匹配 ConfigStore 规则错误: {e}")
 
         # 2. 回退到 YAML 高级规则 (config_loader)
         from services.config_loader import get_advanced_rules
@@ -499,7 +499,7 @@ class MediaOrganizer:
             else:
                 return {'success': False, 'error': f'不支持的云盘类型: {cloud_type}'}
         except Exception as e:
-            logger.error(f"Organize file failed: {e}")
+            logger.error(f"整理文件失败: {e}")
             return {'success': False, 'error': str(e)}
     
     def _ensure_115_directory(self, path: str) -> Optional[str]:
@@ -531,7 +531,7 @@ class MediaOrganizer:
                 if create_result.get('success'):
                     current_cid = create_result['data']['id']
                 else:
-                    logger.error(f"Failed to create directory {part} in {current_cid}: {create_result.get('error')}")
+                    logger.error(f"在 {current_cid} 中创建目录 {part} 失败: {create_result.get('error')}")
                     return None
                     
         return current_cid
@@ -565,7 +565,7 @@ class MediaOrganizer:
                 if create_result.get('success'):
                     current_id = create_result['data']['id']
                 else:
-                    logger.error(f"Failed to create directory {part} in {current_id}: {create_result.get('error')}")
+                    logger.error(f"在 {current_id} 中创建目录 {part} 失败: {create_result.get('error')}")
                     return None
                     
         return current_id

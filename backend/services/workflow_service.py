@@ -190,7 +190,8 @@ class WorkflowService:
         except Exception as e:
             task.status = WorkflowStatus.FAILED
             task.error = str(e)
-            logger.error(f"Workflow error: {e}")
+            task.error = str(e)
+            logger.error(f"工作流错误: {e}")
             return {'success': False, 'error': str(e)}
     
     def _save_115_share(self, task: WorkflowTask) -> Dict[str, Any]:
@@ -341,7 +342,7 @@ class WorkflowService:
                 break
         
         if not task:
-            logger.warning(f"No workflow task found for offline task {offline_task_id}")
+            logger.warning(f"找不到离线任务 {offline_task_id} 对应的流程任务")
             return
         
         # 启动后续流程
@@ -382,7 +383,7 @@ class WorkflowService:
             task.status = WorkflowStatus.COMPLETED
             
         except Exception as e:
-            logger.error(f"Post-save workflow error: {e}")
+            logger.error(f"保存后工作流执行错误: {e}")
             task.status = WorkflowStatus.FAILED
             task.error = str(e)
     
@@ -398,7 +399,7 @@ class WorkflowService:
 
     def _organize_files(self, task: WorkflowTask) -> Optional[Dict]:
         """整理文件"""
-        logger.info(f"Organizing files for task {task.id}")
+        logger.info(f"开始整理任务 {task.id} 的文件")
         
         try:
             from services.media_organizer import MediaOrganizer
@@ -431,7 +432,7 @@ class WorkflowService:
                     files = result.get('data', [])
             
             if not files:
-                logger.warning(f"No files found for task {task.id}")
+                logger.warning(f"任务 {task.id} 未找到文件")
                 return None
                 
             # 2. 遍历整理每个文件 (简化：只处理第一个视频文件)
@@ -454,7 +455,7 @@ class WorkflowService:
             
             # 4. LLM 兜底识别
             if media_info.type == MediaType.UNKNOWN:
-                logger.info(f"Regex parsing failed for {file_name}, trying LLM...")
+                logger.info(f"正则解析失败: {file_name}, 尝试 AI 识别...")
                 llm_result = llm_service.parse_filename(file_name)
                 
                 if llm_result:
@@ -482,13 +483,13 @@ class WorkflowService:
             }
 
         except Exception as e:
-            logger.error(f"Organization failed: {e}")
+            logger.error(f"整理失败: {e}")
             return None
     
     def _generate_strm(self, task: WorkflowTask) -> None:
         """生成 STRM 文件"""
         if not self.strm_service:
-            logger.warning("STRM service not initialized")
+            logger.warning("STRM 服务未初始化")
             return
         
         try:
@@ -501,9 +502,9 @@ class WorkflowService:
                 strm_type=task.target_cloud,
                 config=config
             )
-            logger.info(f"STRM generated for task {task.id}")
+            logger.info(f"任务 {task.id} STRM 生成完成")
         except Exception as e:
-            logger.error(f"STRM generation error: {e}")
+            logger.error(f"STRM 生成错误: {e}")
     
     def _refresh_emby(self, task: WorkflowTask) -> None:
         """刷新 Emby 媒体库"""
@@ -513,9 +514,9 @@ class WorkflowService:
         
         try:
             self.emby_service.refresh_library()
-            logger.info(f"Emby refreshed for task {task.id}")
+            logger.info(f"任务 {task.id} Emby 刷新完成")
         except Exception as e:
-            logger.error(f"Emby refresh error: {e}")
+            logger.error(f"Emby 刷新错误: {e}")
     
     def _send_notification(self, task: WorkflowTask) -> None:
         """发送 Telegram 通知（海报+详情）"""
@@ -540,9 +541,9 @@ class WorkflowService:
                     text=message
                 )
             
-            logger.info(f"Notification sent for task {task.id}")
+            logger.info(f"任务 {task.id} 通知已发送")
         except Exception as e:
-            logger.error(f"Notification error: {e}")
+            logger.error(f"通知发送错误: {e}")
     
     def _build_notification_message(self, task: WorkflowTask) -> str:
         """构建通知消息"""
