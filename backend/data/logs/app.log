@@ -1,3 +1,9 @@
 2025-12-18 05:10:19 │ 信息   │ 应用     │ Starting application initialization...
 2025-12-18 05:10:19 │ 信息   │ 应用     │ Database initialized: secrets.db (encrypted), appdata.db (general data)
 2025-12-18 05:10:20 │ 信息   │ 应用     │ Services initialized successfully
+2025-12-19 17:03:00 │ 信息   │ 应用     │ 正在启动应用初始化...
+2025-12-19 17:03:00 │ 信息   │ 应用     │ 数据库初始化完成: secrets.db (加密), appdata.db (常规数据)
+2025-12-19 17:03:01 │ 信息   │ 应用     │ 服务初始化成功
+2025-12-19 17:03:04 │ 信息   │ 应用     │ 正在启动应用初始化...
+2025-12-19 17:03:04 │ 信息   │ 应用     │ 数据库初始化完成: secrets.db (加密), appdata.db (常规数据)
+2025-12-19 17:03:05 │ 信息   │ 应用     │ 服务初始化成功
