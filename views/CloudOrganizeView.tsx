@@ -515,9 +515,25 @@ export const CloudOrganizeView: React.FC = () => {
                               ) : (
                                  <div className="text-center animate-in fade-in zoom-in duration-300 relative">
                                     {qrState === 'loading' ? (
-                                       <div className="w-40 h-40 flex items-center justify-center"><RefreshCw className="animate-spin text-brand-500" size={32} /></div>
+                                       <div className="w-48 h-48 flex items-center justify-center"><RefreshCw className="animate-spin text-brand-500" size={32} /></div>
                                     ) : (
-                                       <img src={qrImage} alt="QR" className={`w-40 h-40 rounded-lg border-4 border-white shadow-xl mx-auto mb-4 ${qrState === 'expired' ? 'opacity-20' : ''}`} />
+                                       <div className="relative inline-block">
+                                          <img
+                                             src={qrImage}
+                                             alt="QR"
+                                             className={`w-48 h-48 rounded-lg border-4 border-white shadow-xl mx-auto mb-2 ${qrState === 'expired' ? 'opacity-20' : ''} ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''}`}
+                                          />
+                                          {qrState === 'success' && (
+                                             <div className="absolute inset-0 flex items-center justify-center bg-green-500/80 rounded-lg animate-in fade-in zoom-in">
+                                                <Check size={64} className="text-white" />
+                                             </div>
+                                          )}
+                                          {qrState === 'scanned' && (
+                                             <div className="absolute -top-2 -right-2 bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold animate-pulse shadow-lg">
+                                                已扫描
+                                             </div>
+                                          )}
+                                       </div>
                                     )}
 
                                     {(qrState === 'expired' || qrState === 'error') && (
@@ -528,13 +544,42 @@ export const CloudOrganizeView: React.FC = () => {
                                        </div>
                                     )}
 
-                                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">请使用 115 App 扫码</p>
-                                    <p className={`text-xs mt-1 font-bold ${qrState === 'success' ? 'text-green-500' : 'text-slate-400'}`}>
-                                       {qrState === 'scanned' ? '已扫描，请在手机上确认' :
-                                          qrState === 'success' ? '登录成功！' :
-                                             qrState === 'expired' ? '二维码已过期' :
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">请使用 115 App 扫码登录</p>
+                                    <p className={`text-xs mt-1 font-bold ${qrState === 'success' ? 'text-green-500' : qrState === 'scanned' ? 'text-yellow-500' : 'text-slate-400'}`}>
+                                       {qrState === 'scanned' ? '✓ 已扫描，请在手机上确认登录' :
+                                          qrState === 'success' ? '✓ 登录成功！Cookie 已自动保存' :
+                                             qrState === 'expired' ? '二维码已过期，请刷新' :
                                                 qrState === 'error' ? '获取失败，请重试' : '等待扫描...'}
                                     </p>
+
+                                    {/* 保存二维码按钮 */}
+                                    {qrImage && qrState !== 'loading' && qrState !== 'success' && (
+                                       <div className="mt-4 flex gap-2 justify-center">
+                                          <a
+                                             href={qrImage}
+                                             download={`115_qrcode_${Date.now()}.png`}
+                                             className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                          >
+                                             <Save size={14} /> 保存二维码
+                                          </a>
+                                          <button
+                                             onClick={() => {
+                                                navigator.clipboard.writeText(qrImage);
+                                                setToast('二维码链接已复制到剪贴板');
+                                             }}
+                                             className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                          >
+                                             <Cookie size={14} /> 复制链接
+                                          </button>
+                                       </div>
+                                    )}
+
+                                    {/* 提示文字 */}
+                                    {qrImage && qrState === 'waiting' && (
+                                       <p className="text-xs text-slate-400 mt-3">
+                                          💡 提示：可长按二维码保存到手机相册，在 115 App 中选择"扫一扫"识别
+                                       </p>
+                                    )}
                                  </div>
                               )}
                            </div>
