@@ -393,4 +393,30 @@ export const api = {
     const res = await apiClient.put<ApiResponse<any>>(`/subscription/update/${subId}`, data);
     return res.data;
   },
+
+  getSubscriptionHistory: async (subId: string) => {
+    const res = await apiClient.get<ApiResponse<any[]>>(`/subscription/${subId}/history`);
+    return res.data;
+  },
+
+  checkSubscriptionAvailability: async (subId: string, params: { date?: string; episode?: string }) => {
+    const res = await apiClient.post<ApiResponse<any>>(`/subscription/${subId}/check`, params);
+    return res.data;
+  },
+
+  saveCheckResult: async (data: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/subscription/save_check_result', data);
+    return res.data;
+  },
+
+  getSubscriptionSettings: async () => {
+    const res = await apiClient.get<ApiResponse<any>>('/subscription/settings');
+    return res.data;
+  },
+
+  updateSubscriptionSettings: async (settings: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/subscription/settings', settings);
+    return res.data;
+  },
 };
+

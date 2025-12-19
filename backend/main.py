@@ -213,22 +213,10 @@ def create_app(config=None):
     init_subscription_service(subscription_service)
     app.register_blueprint(subscription_bp)
 
-    # Start Subscription Scheduler
-    def run_subscription_scheduler():
-        while True:
-            try:
-                # Interval: 60 minutes
-                time.sleep(3600)
-                logger.info("Running scheduled subscription checks...")
-                subscription_service.run_checks()
-            except Exception as e:
-                logger.error(f"Subscription scheduler error: {e}")
-                time.sleep(300) # Retry after 5 mins on error
-
     if not app.config.get('TESTING'):
-        scheduler_thread = threading.Thread(target=run_subscription_scheduler, daemon=True)
-        scheduler_thread.start()
-        logger.info("已启动订阅自动检测调度器 (60分钟/次)")
+        subscription_service.start_scheduler()
+        logger.info("已启动订阅自动检测调度器 (APScheduler)")
+
 
     
     # 前端静态文件服务（SPA fallback）

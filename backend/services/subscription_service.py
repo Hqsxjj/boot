@@ -7,6 +7,9 @@ import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import threading
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,13 @@ class SubscriptionService:
         self.pan_search_service = pan_search_service
         self.cloud115_service = cloud115_service
         self.cloud123_service = cloud123_service
+        self.cloud123_service = cloud123_service
         self._lock = threading.Lock()
+        self.settings_path = os.path.join(data_dir, 'subscription_settings.json')
+        self.scheduler = BackgroundScheduler()
+        self.scheduler_job_id = 'subscription_check_job'
         self._ensure_files()
+
 
     def _ensure_files(self):
         """Ensure storage files exist."""
@@ -32,6 +40,11 @@ class SubscriptionService:
         if not os.path.exists(self.history_path):
             with open(self.history_path, 'w') as f:
                 json.dump({}, f)
+
+        if not os.path.exists(self.settings_path):
+            with open(self.settings_path, 'w') as f:
+                json.dump({'check_interval_minutes': 60}, f)
+
 
     def _load_subscriptions(self) -> List[Dict]:
         with self._lock:
@@ -58,6 +71,127 @@ class SubscriptionService:
         with self._lock:
             with open(self.history_path, 'w') as f:
                 json.dump(history, f, indent=2)
+
+    def _load_settings(self) -> Dict[str, Any]:
+        with self._lock:
+            with open(self.settings_path, 'r') as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return {'check_interval_minutes': 60}
+
+    def _save_settings(self, settings: Dict[str, Any]):
+        with self._lock:
+            with open(self.settings_path, 'w') as f:
+                json.dump(settings, f, indent=2)
+
+    def start_scheduler(self):
+        """Start the background scheduler."""
+        if not self.scheduler.running:
+            settings = self._load_settings()
+            interval = settings.get('check_interval_minutes', 60)
+            if interval < 5: interval = 5 # Minimum 5 mins
+            
+            logger.info(f"Starting subscription scheduler with interval {interval} minutes")
+            self.scheduler.add_job(
+                self.run_checks,
+                IntervalTrigger(minutes=interval),
+                id=self.scheduler_job_id,
+                replace_existing=True
+            )
+            self.scheduler.start()
+
+    def get_settings(self) -> Dict[str, Any]:
+        return self._load_settings()
+
+    def update_settings(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        settings = self._load_settings()
+        settings.update(updates)
+        self._save_settings(settings)
+        
+        # Reschedule if interval changed
+        if 'check_interval_minutes' in updates:
+            interval = int(updates['check_interval_minutes'])
+            if interval < 5: interval = 5
+            
+            logger.info(f"Rescheduling subscription checks to every {interval} minutes")
+            try:
+                self.scheduler.reschedule_job(
+                    self.scheduler_job_id,
+                    trigger=IntervalTrigger(minutes=interval)
+                )
+            except Exception:
+                # Job might not exist if not started
+                self.scheduler.add_job(
+                    self.run_checks,
+                    IntervalTrigger(minutes=interval),
+                    id=self.scheduler_job_id,
+                    replace_existing=True
+                )
+                
+        return settings
+
+    def get_subscription_history(self, sub_id: str) -> List[Dict]:
+        """Get history items for a specific subscription."""
+        history = self._load_history()
+        # History is keyed by URL. We need to filter by sub_id.
+        # Structure: { url: { sub_id, title, downloaded_at, ... } }
+        items = []
+        for url, data in history.items():
+            if data.get('sub_id') == sub_id:
+                items.append({
+                    'url': url,
+                    **data
+                })
+        # Sort by date desc
+        items.sort(key=lambda x: x.get('downloaded_at', ''), reverse=True)
+        return items
+
+    def check_subscription_availability(self, sub_id: str, date_str: str = None, ep_str: str = None) -> Dict[str, Any]:
+        """
+        Manually check availability for a subscription with optional filters.
+        Returns search results (not downloaded).
+        """
+        subs = self._load_subscriptions()
+        sub = next((s for s in subs if s['id'] == sub_id), None)
+        if not sub:
+            return {'success': False, 'error': 'Subscription not found'}
+
+        keyword = sub['keyword']
+        if date_str:
+            keyword = f"{keyword} {date_str}"
+        
+        logger.info(f"Manual check for {sub['keyword']} (Search: {keyword})")
+        
+        result = self.pan_search_service.search(keyword, cloud_types=[sub['cloud_type']])
+        if not result.get('success'):
+            return {'success': False, 'error': result.get('error')}
+            
+        items = result.get('data', [])
+        
+        # Filter logic (similar to auto-check but stricter if ep_str provided)
+        matched_items = []
+        filters = sub.get('filter_config', {})
+        
+        target_season = 0
+        target_episode = 0
+        if ep_str:
+            target_season, target_episode = self._parse_episode_info(ep_str)
+
+        for item in items:
+            title = item.get('title', '')
+            
+            # If target episode specified, matching is stricter
+            if target_season > 0 or target_episode > 0:
+                s, e = self._parse_episode_info(title)
+                if s != target_season or e != target_episode:
+                    continue
+            
+            if self._matches_filters(title, filters):
+                matched_items.append(item)
+                
+        return {'success': True, 'data': matched_items}
+
 
     def get_subscriptions(self) -> List[Dict]:
         return self._load_subscriptions()
@@ -184,8 +318,9 @@ class SubscriptionService:
         
         for item in matched_items:
             try:
-                success = self._trigger_download(item, cloud_type)
+                success = self.trigger_download(item, cloud_type)
                 if success:
+
                     history[item['url']] = {
                         'sub_id': sub['id'],
                         'title': item.get('title'),
@@ -266,8 +401,9 @@ class SubscriptionService:
                 
         return True
 
-    def _trigger_download(self, item: Dict, cloud_type: str) -> bool:
+    def trigger_download(self, item: Dict, cloud_type: str) -> bool:
         """Trigger offline download or save share."""
+
         url = item.get('url', '')
         password = item.get('password', '')
         if not url: return False

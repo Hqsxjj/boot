@@ -24,8 +24,14 @@ import {
     FileText,
     CheckSquare,
     Square,
-    Save
+    Save,
+    Settings,
+    History,
+    CheckCircle,
+    Clock,
+    RotateCcw
 } from 'lucide-react';
+
 
 interface ShareFile {
     id: string;
@@ -510,6 +516,23 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
     const [showAddModal, setShowAddModal] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [editingSub, setEditingSub] = useState<any | null>(null);
+    const [showSettings, setShowSettings] = useState(false);
+    const [settings, setSettings] = useState<{ check_interval_minutes: number }>({ check_interval_minutes: 60 });
+    const [savingSettings, setSavingSettings] = useState(false);
+
+    // History Modal
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [historySubId, setHistorySubId] = useState<string | null>(null);
+    const [historyItems, setHistoryItems] = useState<any[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+    // Manual Check in History Modal
+    const [checkDate, setCheckDate] = useState('');
+    const [checkEpisode, setCheckEpisode] = useState('');
+    const [isChecking, setIsChecking] = useState(false);
+    const [checkResults, setCheckResults] = useState<any[]>([]);
+    const [activeHistoryTab, setActiveHistoryTab] = useState<'history' | 'manual'>('history');
+
 
     useEffect(() => {
         fetchSubscriptions();
@@ -582,6 +605,105 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
         }
     };
 
+    const handleOpenSettings = async () => {
+        setShowSettings(true);
+        try {
+            const res = await api.getSubscriptionSettings();
+            if (res.success && res.data) {
+                setSettings(res.data);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('获取设置失败');
+        }
+    };
+
+    const handleSaveSettings = async () => {
+        setSavingSettings(true);
+        try {
+            const res = await api.updateSubscriptionSettings(settings);
+            if (res.success) {
+                showToast('设置已保存');
+                setShowSettings(false);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('保存设置失败');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
+    const handleOpenHistory = async (sub: any) => {
+        setHistorySubId(sub.id);
+        setShowHistoryModal(true);
+        setHistoryItems([]);
+        setCheckResults([]);
+        setActiveHistoryTab('history');
+        setIsLoadingHistory(true);
+        try {
+            const res = await api.getSubscriptionHistory(sub.id);
+            if (res.success) {
+                setHistoryItems(res.data || []);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('获取历史记录失败');
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    const handleManualCheck = async () => {
+        if (!historySubId) return;
+        setIsChecking(true);
+        setCheckResults([]);
+        try {
+            const res = await api.checkSubscriptionAvailability(historySubId, {
+                date: checkDate,
+                episode: checkEpisode
+            });
+            if (res.success) {
+                if (!res.data || res.data.length === 0) {
+                    showToast('未找到匹配资源');
+                } else {
+                    setCheckResults(res.data);
+                }
+            } else {
+                showToast(res.error || '检查失败');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('检查失败');
+        } finally {
+            setIsChecking(false);
+        }
+    };
+
+    const handleSaveCheckResult = async (item: any, sub: any) => {
+        try {
+            const res = await api.saveCheckResult({
+                sub_id: sub.id,
+                cloud_type: sub.cloud_type,
+                item: item
+            });
+            if (res.success) {
+                showToast('转存成功');
+                // Refresh history
+                const histRes = await api.getSubscriptionHistory(sub.id);
+                if (histRes.success) setHistoryItems(histRes.data || []);
+            } else {
+                showToast('转存失败: ' + (res.error || '未知错误'));
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('转存异常');
+        }
+    };
+
+
+
+
 
 
 
@@ -614,6 +736,14 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                         <RefreshCw size={14} className={isRunning ? 'animate-spin' : ''} />
                         立即检查
                     </button>
+                    <button
+                        onClick={handleOpenSettings}
+                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+                    >
+                        <Settings size={14} />
+                        设置
+                    </button>
+
                     <button
                         onClick={() => setShowAddModal(true)}
                         className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors flex items-center gap-2 shadow-lg shadow-brand-500/20"
@@ -684,6 +814,13 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
 
                             <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 text-xs text-slate-500 flex justify-between items-center">
                                 <span>上次检查: {sub.last_check ? new Date(sub.last_check).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '从未'}</span>
+                                <button
+                                    onClick={() => handleOpenHistory(sub)}
+                                    className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
+                                >
+                                    <History size={12} />
+                                    历史与检查
+                                </button>
                             </div>
                             {sub.last_message && (
                                 <div className="mt-2 text-xs text-slate-500 truncate" title={sub.last_message}>
@@ -814,7 +951,168 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                     </div>
                 </div>
             )}
+
+            {/* Settings Modal */}
+            {showSettings && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+                    <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white flex items-center gap-2">
+                            <Settings size={20} />
+                            订阅设置
+                        </h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">自动检查间隔 (分钟)</label>
+                                <input
+                                    type="number"
+                                    min="5"
+                                    value={settings.check_interval_minutes}
+                                    onChange={e => setSettings({ ...settings, check_interval_minutes: parseInt(e.target.value) || 60 })}
+                                    className={inputClass}
+                                />
+                                <p className="text-xs text-slate-500 mt-1">建议设置为 60 分钟以上，过于频繁可能触发网盘限制。</p>
+                            </div>
+                            <div className="flex justify-end gap-3 mt-6">
+                                <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">取消</button>
+                                <button
+                                    onClick={handleSaveSettings}
+                                    disabled={savingSettings}
+                                    className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
+                                >
+                                    {savingSettings ? '保存中...' : '保存'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* History Modal */}
+            {showHistoryModal && historySubId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)} />
+                    <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200 flex flex-col h-[80vh]">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <History className="text-brand-500" />
+                                {subscriptions.find(s => s.id === historySubId)?.keyword} - 详情
+                            </h3>
+                            <button onClick={() => setShowHistoryModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="flex gap-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+                            <button
+                                onClick={() => setActiveHistoryTab('history')}
+                                className={`pb-2 px-2 text-sm font-medium transition-colors border-b-2 ${activeHistoryTab === 'history' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                下载记录
+                            </button>
+                            <button
+                                onClick={() => setActiveHistoryTab('manual')}
+                                className={`pb-2 px-2 text-sm font-medium transition-colors border-b-2 ${activeHistoryTab === 'manual' ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                手动检查
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto">
+                            {activeHistoryTab === 'history' ? (
+                                isLoadingHistory ? (
+                                    <div className="flex justify-center items-center h-40">
+                                        <Loader2 className="animate-spin text-brand-500" size={32} />
+                                    </div>
+                                ) : historyItems.length === 0 ? (
+                                    <div className="text-center text-slate-500 py-10">暂无下载记录</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {historyItems.map((item, i) => (
+                                            <div key={i} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg flex justify-between items-center group hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <div className="overflow-hidden">
+                                                    <div className="font-medium text-slate-700 dark:text-slate-200 truncate pr-4" title={item.title}>{item.title}</div>
+                                                    <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                                                        <span>{new Date(item.downloaded_at).toLocaleString()}</span>
+                                                        <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-[10px] font-bold">已下载</span>
+                                                    </div>
+                                                </div>
+                                                {item.url && (
+                                                    <a href={item.url} target="_blank" rel="noreferrer" className="p-2 text-slate-400 hover:text-brand-500 bg-white dark:bg-slate-700 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <ExternalLink size={16} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl space-y-3">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">特定日期 (可选)</label>
+                                                <input
+                                                    type="date"
+                                                    value={checkDate}
+                                                    onChange={e => setCheckDate(e.target.value)}
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">特定剧集 (可选)</label>
+                                                <input
+                                                    type="text"
+                                                    value={checkEpisode}
+                                                    onChange={e => setCheckEpisode(e.target.value)}
+                                                    className={inputClass}
+                                                    placeholder="例如: S02E05"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button
+                                                onClick={handleManualCheck}
+                                                disabled={isChecking}
+                                                className="px-4 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                            >
+                                                {isChecking ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                                                检查资源
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {checkResults.length > 0 && (
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                                            <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-2">搜索结果 ({checkResults.length})</h4>
+                                            {checkResults.map((item, i) => (
+                                                <div key={i} className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg flex justify-between items-center group">
+                                                    <div className="overflow-hidden flex-1">
+                                                        <div className="font-medium text-slate-700 dark:text-slate-200 truncate pr-4" title={item.title}>{item.title}</div>
+                                                        <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                                                            {item.url && <span className="text-blue-500 truncate max-w-[200px]">{item.url}</span>}
+                                                            {item.share_code && <span className="bg-slate-100 dark:bg-slate-800 px-1 rounded">码: {item.share_code}</span>}
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleSaveCheckResult(item, subscriptions.find(s => s.id === historySubId))}
+                                                        className="ml-2 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 transition-colors flex items-center gap-1 shadow-sm"
+                                                    >
+                                                        <Save size={14} />
+                                                        转存
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+
     );
 };
 
