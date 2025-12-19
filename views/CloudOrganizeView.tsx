@@ -351,7 +351,7 @@ export const CloudOrganizeView: React.FC = () => {
             } catch (err) {
                console.error('QR Poll failed', err);
             }
-         }, 3000);  // 3秒轮询一次，给用户更多扫码时间
+         }, 120000);  // 2分钟轮询一次，给用户足够的扫码时间
       } catch (e: any) {
          console.error('QR Code generation failed:', e);
          setQrState('error');
