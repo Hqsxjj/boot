@@ -285,8 +285,37 @@ class EmbyService:
         full_config = self.store.get_config()
         tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
         tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
+        tmdb_domain = full_config.get('tmdb', {}).get('domain', 'api.themoviedb.org').rstrip('/')
         
         missing_data = []
+        
+        # 定义内部重试函数
+        def _fetch_tmdb_season(series_tmdb_id, season_num):
+            url = f'https://{tmdb_domain}/3/tv/{series_tmdb_id}/season/{season_num}'
+            params = {'api_key': tmdb_api_key, 'language': tmdb_lang}
+            
+            # 1. 尝试使用代理 (如果配置了)
+            proxies = self._get_proxy_config()
+            if proxies:
+                try:
+                    # task_log.info(f"正在通过代理连接 TMDB...")
+                    resp = requests.get(url, params=params, proxies=proxies, timeout=15)
+                    if resp.status_code == 200:
+                        return resp.json()
+                except Exception as e:
+                    # task_log.warning(f"代理连接失败: {e}，尝试直连...")
+                    pass
+            
+            # 2. 尝试直连 (如果代理失败或未配置)
+            try:
+                # task_log.info(f"正在直连 TMDB...")
+                resp = requests.get(url, params=params, timeout=10) # 直连超时短一点
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception as e:
+                pass
+                
+            return None
         
         try:
             # 1. 获取 Emby 中所有电视剧
@@ -369,35 +398,22 @@ class EmbyService:
                     missing_episodes = []
                     
                     if tmdb_api_key and tmdb_id:
-                        try:
-                            proxies = self._get_proxy_config()
-                            tmdb_season_response = requests.get(
-                                f'https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}',
-                                params={
-                                    'api_key': tmdb_api_key,
-                                    'language': tmdb_lang
-                                },
-                                proxies=proxies,
-                                timeout=20
-                            )
+                        tmdb_data = _fetch_tmdb_season(tmdb_id, season_number)
+                        
+                        if tmdb_data:
+                            tmdb_episodes = tmdb_data.get('episodes', [])
+                            total_ep_count = len(tmdb_episodes)
                             
-                            if tmdb_season_response.status_code == 200:
-                                tmdb_data = tmdb_season_response.json()
-                                tmdb_episodes = tmdb_data.get('episodes', [])
-                                total_ep_count = len(tmdb_episodes)
-                                
-                                # 计算缺失集数
-                                all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
-                                missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
-                                
-                                # 使用 TMDB 海报 (如果 Emby 没有)
-                                if not poster_path and tmdb_data.get('poster_path'):
-                                    poster_path = f"https://image.tmdb.org/t/p/w200{tmdb_data['poster_path']}"
-                            else:
-                                task_log.error(f"TMDB请求失败: {tmdb_season_response.status_code} for {series_name} S{season_number}")
-                        except Exception as tmdb_err:
-                            # TMDB 查询失败，使用本地数据
-                            task_log.error(f"TMDB连接错误: {str(tmdb_err)} for {series_name} S{season_number}")
+                            # 计算缺失集数
+                            all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
+                            missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
+                            
+                            # 使用 TMDB 海报 (如果 Emby 没有)
+                            if not poster_path and tmdb_data.get('poster_path'):
+                                poster_path = f"https://image.tmdb.org/t/p/w200{tmdb_data['poster_path']}"
+                        else:
+                            # 失败，记录日志但不中断（静默失败）
+                            # task_log.warning(f"无法获取 {series_name} S{season_number} 的 TMDB 数据")
                             pass
                     
                     # 只添加有缺集的记录
