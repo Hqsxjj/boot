@@ -22,6 +22,11 @@ from blueprints.strm import strm_bp, init_strm_blueprint
 from blueprints.logs import logs_bp, init_logs_blueprint
 from blueprints.resource_search import resource_search_bp, init_resource_search_blueprint
 from blueprints.keywords import keywords_bp, set_keyword_store
+from blueprints.subscription import subscription_bp, init_subscription_service
+from services.subscription_service import SubscriptionService
+from services.pan_search_service import get_pan_search_service
+import threading
+import time
 from models.database import init_all_databases, get_session_factory
 from models.offline_task import OfflineTask
 from services.secret_store import SecretStore
@@ -200,6 +205,30 @@ def create_app(config=None):
     tmdb_service = TmdbService(secret_store, store)
     init_organize_blueprint(store, tmdb_service, cloud115_service, cloud123_service)
     app.register_blueprint(organize_bp)
+
+    # Initialize Subscription Service
+    data_dir = os.path.dirname(data_path)
+    pan_search_service = get_pan_search_service()
+    subscription_service = SubscriptionService(data_dir, pan_search_service, cloud115_service, cloud123_service)
+    init_subscription_service(subscription_service)
+    app.register_blueprint(subscription_bp)
+
+    # Start Subscription Scheduler
+    def run_subscription_scheduler():
+        while True:
+            try:
+                # Interval: 60 minutes
+                time.sleep(3600)
+                logger.info("Running scheduled subscription checks...")
+                subscription_service.run_checks()
+            except Exception as e:
+                logger.error(f"Subscription scheduler error: {e}")
+                time.sleep(300) # Retry after 5 mins on error
+
+    if not app.config.get('TESTING'):
+        scheduler_thread = threading.Thread(target=run_subscription_scheduler, daemon=True)
+        scheduler_thread.start()
+        logger.info("已启动订阅自动检测调度器 (60分钟/次)")
 
     
     # 前端静态文件服务（SPA fallback）

@@ -344,4 +344,25 @@ export const api = {
     const res = await apiClient.get<ApiResponse<any>>(`/resource-search/resource/${encodeURIComponent(resourceId)}`);
     return res.data;
   },
+
+  // --- Subscription ---
+  getSubscriptions: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/subscription/list');
+    return res.data.data;
+  },
+
+  addSubscription: async (data: { keyword: string; cloud_type: string; filter_config: any }) => {
+    const res = await apiClient.post<ApiResponse<any>>('/subscription/add', data);
+    return res.data;
+  },
+
+  deleteSubscription: async (subId: string) => {
+    const res = await apiClient.delete<ApiResponse<any>>(`/subscription/delete/${subId}`);
+    return res.data;
+  },
+
+  runSubscriptionChecks: async () => {
+    const res = await apiClient.post<ApiResponse<any>>('/subscription/run');
+    return res.data;
+  },
 };

@@ -17,7 +17,10 @@ import {
     Info,
     CheckCircle2,
     AlertCircle,
-    Loader2
+    Loader2,
+    Bell,
+    Plus,
+    Trash2
 } from 'lucide-react';
 
 interface ShareLink {
@@ -54,6 +57,7 @@ export const ResourceSearchView: React.FC = () => {
     const [toast, setToast] = useState<string | null>(null);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [searchMessage, setSearchMessage] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'search' | 'subscription'>('search');
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -143,127 +147,416 @@ export const ResourceSearchView: React.FC = () => {
                         搜索全网 115 网盘分享链接，支持电影、电视剧资源
                     </p>
                 </div>
-            </div>
 
-            {/* Search Box */}
-            <section className={`${glassCardClass} p-6`}>
-                <form onSubmit={handleSearch} className="flex gap-4">
-                    <div className="flex-1 relative group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors" size={20} />
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="输入电影或电视剧名称搜索资源..."
-                            className={`${inputClass} pl-12 pr-4 text-lg`}
-                            disabled={isSearching}
-                        />
-                    </div>
+                {/* Tab Switcher */}
+                <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl">
                     <button
-                        type="submit"
-                        disabled={isSearching || !searchQuery.trim()}
-                        className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold shadow-lg shadow-purple-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        onClick={() => setActiveTab('search')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'search'
+                            ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            }`}
                     >
-                        {isSearching ? (
-                            <>
-                                <Loader2 className="animate-spin" size={18} />
-                                搜索中...
-                            </>
-                        ) : (
-                            <>
-                                <Search size={18} />
-                                搜索
-                            </>
-                        )}
+                        资源搜索
                     </button>
-                </form>
-
-                {/* AI Status Hint */}
-                {aiEnabled !== null && (
-                    <div className={`mt-4 flex items-center gap-2 text-xs ${aiEnabled ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                        {aiEnabled ? (
-                            <>
-                                <CheckCircle2 size={14} />
-                                AI 搜索已启用 - 使用您配置的 AI 模型进行智能搜索
-                            </>
-                        ) : (
-                            <>
-                                <AlertCircle size={14} />
-                                AI 未配置 - 请在「网盘整理」页面设置 AI 配置以启用智能搜索
-                            </>
-                        )}
-                    </div>
-                )}
-
-                {searchMessage && (
-                    <div className="mt-3 p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border-[0.5px] border-amber-200/50 dark:border-amber-800/50 text-sm text-amber-700 dark:text-amber-300">
-                        {searchMessage}
-                    </div>
-                )}
-            </section>
-
-            {/* Search Results */}
-            {searchResults.length > 0 && (
-                <section className="space-y-4">
-                    <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                        <Search size={20} />
-                        搜索结果
-                        <span className="text-sm font-normal text-slate-500">({searchResults.length} 条结果)</span>
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {searchResults.map((resource, index) => (
-                            <ResourceCard
-                                key={`search-${index}`}
-                                resource={resource}
-                                onClick={() => handleResourceClick(resource)}
-                            />
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            {/* Trending Resources */}
-            <section className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                        <TrendingUp size={20} className="text-pink-500" />
-                        热门资源
-                    </h3>
                     <button
-                        onClick={fetchTrending}
-                        disabled={isLoadingTrending}
-                        className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 transition-colors"
+                        onClick={() => setActiveTab('subscription')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'subscription'
+                            ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            }`}
                     >
-                        <RefreshCw size={14} className={isLoadingTrending ? 'animate-spin' : ''} />
-                        刷新
+                        <Bell size={14} />
+                        订阅管理
                     </button>
                 </div>
+            </div>
 
-                {isLoadingTrending ? (
-                    <div className="flex justify-center items-center py-20">
-                        <Loader2 className="animate-spin text-brand-500" size={32} />
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {trendingResources.map((resource) => (
-                            <ResourceCard
-                                key={resource.id}
-                                resource={resource}
-                                onClick={() => handleResourceClick(resource)}
-                            />
-                        ))}
-                    </div>
-                )}
-            </section>
+            {activeTab === 'search' ? (
+                <>
+                    {/* Search Box */}
+                    <section className={`${glassCardClass} p-6`}>
+                        <form onSubmit={handleSearch} className="flex gap-4">
+                            <div className="flex-1 relative group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors" size={20} />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="输入电影或电视剧名称搜索资源..."
+                                    className={`${inputClass} pl-12 pr-4 text-lg`}
+                                    disabled={isSearching}
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isSearching || !searchQuery.trim()}
+                                className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold shadow-lg shadow-purple-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {isSearching ? (
+                                    <>
+                                        <Loader2 className="animate-spin" size={18} />
+                                        搜索中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Search size={18} />
+                                        搜索
+                                    </>
+                                )}
+                            </button>
+                        </form>
 
-            {/* Resource Detail Modal */}
-            {selectedResource && (
-                <ResourceDetailModal
-                    resource={selectedResource}
-                    onClose={closeModal}
-                    onCopy={copyToClipboard}
-                />
+                        {/* AI Status Hint */}
+                        {aiEnabled !== null && (
+                            <div className={`mt-4 flex items-center gap-2 text-xs ${aiEnabled ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                {aiEnabled ? (
+                                    <>
+                                        <CheckCircle2 size={14} />
+                                        AI 搜索已启用 - 使用您配置的 AI 模型进行智能搜索
+                                    </>
+                                ) : (
+                                    <>
+                                        <AlertCircle size={14} />
+                                        AI 未配置 - 请在「网盘整理」页面设置 AI 配置以启用智能搜索
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {searchMessage && (
+                            <div className="mt-3 p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border-[0.5px] border-amber-200/50 dark:border-amber-800/50 text-sm text-amber-700 dark:text-amber-300">
+                                {searchMessage}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Search Results */}
+                    {searchResults.length > 0 && (
+                        <section className="space-y-4">
+                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                <Search size={20} />
+                                搜索结果
+                                <span className="text-sm font-normal text-slate-500">({searchResults.length} 条结果)</span>
+                            </h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                                {searchResults.map((resource, index) => (
+                                    <ResourceCard
+                                        key={`search-${index}`}
+                                        resource={resource}
+                                        onClick={() => handleResourceClick(resource)}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Trending Resources */}
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-pink-500" />
+                                热门资源
+                            </h3>
+                            <button
+                                onClick={fetchTrending}
+                                disabled={isLoadingTrending}
+                                className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 transition-colors"
+                            >
+                                <RefreshCw size={14} className={isLoadingTrending ? 'animate-spin' : ''} />
+                                刷新
+                            </button>
+                        </div>
+
+                        {isLoadingTrending ? (
+                            <div className="flex justify-center items-center py-20">
+                                <Loader2 className="animate-spin text-brand-500" size={32} />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                                {trendingResources.map((resource) => (
+                                    <ResourceCard
+                                        key={resource.id}
+                                        resource={resource}
+                                        onClick={() => handleResourceClick(resource)}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Resource Detail Modal */}
+                    {selectedResource && (
+                        <ResourceDetailModal
+                            resource={selectedResource}
+                            onClose={closeModal}
+                            onCopy={copyToClipboard}
+                        />
+                    )}
+                </>
+            ) : (
+                <SubscriptionManager glassCardClass={glassCardClass} inputClass={inputClass} />
+            )}
+        </div>
+    );
+};
+
+// Subscription Manager Component
+const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string }> = ({ glassCardClass, inputClass }) => {
+    const [subscriptions, setSubscriptions] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isAdding, setIsAdding] = useState(false);
+    const [isRunning, setIsRunning] = useState(false);
+    const [newSub, setNewSub] = useState({ keyword: '', cloud_type: '115', include: '', exclude: '' });
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetchSubscriptions();
+    }, []);
+
+    const fetchSubscriptions = async () => {
+        setIsLoading(true);
+        try {
+            const data = await api.getSubscriptions();
+            setSubscriptions(data || []);
+        } catch (e) {
+            console.error(e);
+            showToast('获取订阅列表失败');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleAdd = async () => {
+        if (!newSub.keyword.trim()) return;
+        setIsAdding(true);
+        try {
+            const filter_config = {
+                include: newSub.include.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+                exclude: newSub.exclude.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+            };
+
+            await api.addSubscription({
+                keyword: newSub.keyword,
+                cloud_type: newSub.cloud_type,
+                filter_config
+            });
+
+            setShowAddModal(false);
+            setNewSub({ keyword: '', cloud_type: '115', include: '', exclude: '' });
+            showToast('添加订阅成功');
+            fetchSubscriptions();
+        } catch (e) {
+            console.error(e);
+            showToast('添加订阅失败');
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('确定要删除这个订阅吗？')) return;
+        try {
+            await api.deleteSubscription(id);
+            setSubscriptions(prev => prev.filter(s => s.id !== id));
+            showToast('订阅已删除');
+        } catch (e) {
+            console.error(e);
+            showToast('删除失败');
+        }
+    };
+
+    const handleRunNow = async () => {
+        setIsRunning(true);
+        showToast('正在后台运行订阅检查...');
+        try {
+            await api.runSubscriptionChecks();
+            showToast('检查任务已触发，请稍后刷新查看结果');
+            setTimeout(fetchSubscriptions, 2000); // Wait a bit then refresh
+        } catch (e) {
+            console.error(e);
+            showToast('触发检查失败');
+        } finally {
+            setIsRunning(false);
+        }
+    };
+
+    const showToast = (msg: string) => {
+        setToast(msg);
+        setTimeout(() => setToast(null), 3000);
+    };
+
+    return (
+        <div className="space-y-6">
+            {toast && (
+                <div className="fixed top-6 right-6 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] border-slate-700/50 animate-in slide-in-from-top-2">
+                    <CheckCircle2 size={18} className="text-green-400" />
+                    {toast}
+                </div>
+            )}
+
+            <div className="flex justify-between items-center">
+                <div>
+                    <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200">我的订阅</h3>
+                    <p className="text-sm text-slate-500">自动搜索并下载符合条件的资源</p>
+                </div>
+                <div className="flex gap-3">
+                    <button
+                        onClick={handleRunNow}
+                        disabled={isRunning}
+                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+                    >
+                        <RefreshCw size={14} className={isRunning ? 'animate-spin' : ''} />
+                        立即检查
+                    </button>
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors flex items-center gap-2 shadow-lg shadow-brand-500/20"
+                    >
+                        <Plus size={16} />
+                        新建订阅
+                    </button>
+                </div>
+            </div>
+
+            {isLoading ? (
+                <div className="flex justify-center py-20">
+                    <Loader2 className="animate-spin text-brand-500" size={32} />
+                </div>
+            ) : subscriptions.length === 0 ? (
+                <div className={`${glassCardClass} p-10 flex flex-col items-center justify-center text-slate-400`}>
+                    <Bell size={48} className="mb-4 opacity-50" />
+                    <p>暂无订阅，点击右上角添加</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {subscriptions.map(sub => (
+                        <div key={sub.id} className={`${glassCardClass} p-5 group flex flex-col h-full bg-white/40 dark:bg-slate-900/40`}>
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white font-mono ${sub.cloud_type === '115' ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                                        {sub.cloud_type}
+                                    </span>
+                                    <h4 className="font-bold text-slate-800 dark:text-white text-lg">{sub.keyword}</h4>
+                                </div>
+                                <button
+                                    onClick={() => handleDelete(sub.id)}
+                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-2 mb-4 flex-1">
+                                <div className="flex flex-wrap gap-2 text-xs">
+                                    {(sub.filter_config?.include || []).map((tag: string, i: number) => (
+                                        <span key={`inc-${i}`} className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-200 dark:border-green-800/50">
+                                            +{tag}
+                                        </span>
+                                    ))}
+                                    {(sub.filter_config?.exclude || []).map((tag: string, i: number) => (
+                                        <span key={`exc-${i}`} className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded border border-red-200 dark:border-red-800/50">
+                                            -{tag}
+                                        </span>
+                                    ))}
+                                    {(!sub.filter_config?.include?.length && !sub.filter_config?.exclude?.length) && (
+                                        <span className="text-slate-400 italic">无过滤规则</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 text-xs text-slate-500 flex justify-between items-center">
+                                <span>上次检查: {sub.last_check ? new Date(sub.last_check).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '从未'}</span>
+                            </div>
+                            {sub.last_message && (
+                                <div className="mt-2 text-xs text-slate-500 truncate" title={sub.last_message}>
+                                    {sub.last_message}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Add Modal */}
+            {showAddModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+                    <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">新建订阅</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    搜索关键词 <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newSub.keyword}
+                                    onChange={e => setNewSub({ ...newSub, keyword: e.target.value })}
+                                    className={inputClass}
+                                    placeholder="例如：盗梦空间 4K"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    目标网盘
+                                </label>
+                                <select
+                                    value={newSub.cloud_type}
+                                    onChange={e => setNewSub({ ...newSub, cloud_type: e.target.value })}
+                                    className={inputClass}
+                                >
+                                    <option value="115">115 网盘</option>
+                                    <option value="123">123 云盘</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    包含规则 (逗号分隔)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newSub.include}
+                                    onChange={e => setNewSub({ ...newSub, include: e.target.value })}
+                                    className={inputClass}
+                                    placeholder="例如：HDR, 60FPS"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">必须包含所有规则才会被选中</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    排除规则 (逗号分隔)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newSub.exclude}
+                                    onChange={e => setNewSub({ ...newSub, exclude: e.target.value })}
+                                    className={inputClass}
+                                    placeholder="例如：CAM, TC"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">包含任一规则将被排除</p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => setShowAddModal(false)}
+                                className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleAdd}
+                                disabled={isAdding || !newSub.keyword.trim()}
+                                className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
+                            >
+                                {isAdding ? '添加中...' : '确定添加'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

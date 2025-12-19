@@ -158,6 +158,66 @@ def _sync_ai_credentials_from_config(payload: dict, secret_store: SecretStore | 
         secret_store.set_secret('llm_provider', ai.get('provider', ''))
 
 
+
+def _populate_secrets_to_config(config: dict, secret_store: SecretStore) -> dict:
+    """Populate sensitive fields in config from SecretStore."""
+    if not secret_store:
+        return config
+    
+    # 1. 115 Cookies
+    cookies_json = secret_store.get_secret('cloud115_cookies')
+    if cookies_json:
+        try:
+            cookies = json.loads(cookies_json)
+            if isinstance(cookies, dict):
+                # Convert dict back to cookie string
+                cookie_str = '; '.join([f"{k}={v}" for k, v in cookies.items()])
+                if 'cloud115' not in config:
+                    config['cloud115'] = {}
+                config['cloud115']['cookies'] = cookie_str
+        except:
+            pass
+
+    # 2. 123 Password Credentials
+    pwd_creds_json = secret_store.get_secret('cloud123_password_credentials')
+    if pwd_creds_json:
+        try:
+            creds = json.loads(pwd_creds_json)
+            if 'cloud123' not in config:
+                config['cloud123'] = {}
+            if creds.get('passport'):
+                config['cloud123']['passport'] = creds.get('passport')
+            if creds.get('password'):
+                config['cloud123']['password'] = creds.get('password')
+        except:
+            pass
+
+    # 3. 123 OAuth Credentials
+    oauth_creds_json = secret_store.get_secret('cloud123_oauth_credentials')
+    if oauth_creds_json:
+        try:
+            creds = json.loads(oauth_creds_json)
+            if 'cloud123' not in config:
+                config['cloud123'] = {}
+            if creds.get('clientId'):
+                config['cloud123']['clientId'] = creds.get('clientId')
+            if creds.get('clientSecret'):
+                config['cloud123']['clientSecret'] = creds.get('clientSecret')
+        except:
+            pass
+            
+    # 4. LLM API Key
+    llm_key = secret_store.get_secret('llm_api_key')
+    if llm_key:
+        if 'organize' not in config:
+            config['organize'] = {}
+        if 'ai' not in config['organize']:
+            config['organize']['ai'] = {}
+        config['organize']['ai']['apiKey'] = llm_key
+
+    return config
+
+
 # 定义敏感字段路径列表
 SENSITIVE_FIELDS = [
     ['cloud115', 'cookies'],
@@ -255,6 +315,10 @@ def get_config():
             # 同步 AI 凭证
             if not config_bp.secret_store.get_secret('llm_api_key'):
                  _sync_ai_credentials_from_config(config, config_bp.secret_store)
+        
+        # Populate secrets FROM store TO config response (so frontend sees persisted state)
+        if config_bp.secret_store:
+            config = _populate_secrets_to_config(config, config_bp.secret_store)
         
         # Add session health flags
         config = _add_session_flags(config, config_bp.secret_store)
