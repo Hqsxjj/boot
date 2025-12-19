@@ -9,12 +9,17 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# 设置时区
+ENV TZ=Asia/Shanghai
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     dos2unix \
     gcc \
     python3-dev \
     libc-dev \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .

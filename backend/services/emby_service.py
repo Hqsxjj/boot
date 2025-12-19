@@ -12,9 +12,15 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class EmbyService:
     """Service for handling Emby server integration."""
     
+    # 默认请求头（某些反代需要 User-Agent 才能正常响应）
+    DEFAULT_HEADERS = {
+        'User-Agent': 'Boot-Emby-Client/1.0',
+        'Accept': 'application/json',
+    }
+    
     def __init__(self, store: DataStore):
         self.store = store
-        self.timeout = 10
+        self.timeout = 30  # 增加超时时间以支持跨网络反代
     
     def _get_config(self) -> Dict[str, Any]:
         """Get Emby configuration from store."""
@@ -33,14 +39,22 @@ class EmbyService:
     
     def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
         """
-        统一的请求方法，自动处理 SSL 验证。
+        统一的请求方法，自动处理 SSL 验证和默认请求头。
+        支持通过反代访问 Emby 服务器。
         """
-        # 对 https 连接跳过 SSL 验证
+        # 对 https 连接跳过 SSL 验证（支持自签名证书和反代）
         if 'verify' not in kwargs:
             kwargs['verify'] = self._should_verify_ssl(url)
         
         if 'timeout' not in kwargs:
             kwargs['timeout'] = self.timeout
+        
+        # 合并默认请求头（支持反代检测）
+        headers = kwargs.get('headers', {})
+        for key, value in self.DEFAULT_HEADERS.items():
+            if key not in headers:
+                headers[key] = value
+        kwargs['headers'] = headers
         
         if method.upper() == 'GET':
             return requests.get(url, **kwargs)
@@ -78,10 +92,57 @@ class EmbyService:
             latency = int((time.time() - start_time) * 1000)
             
             if response.status_code == 200:
+                # 尝试解析响应确认是 Emby 服务器
+                try:
+                    data = response.json()
+                    server_name = data.get('ServerName', 'Emby')
+                    version = data.get('Version', '')
+                    return {
+                        'success': True,
+                        'latency': latency,
+                        'msg': f'已连接到 {server_name} {version} ({latency}ms)'
+                    }
+                except:
+                    return {
+                        'success': True,
+                        'latency': latency,
+                        'msg': f'连接成功 ({latency}ms)'
+                    }
+            elif response.status_code == 401:
                 return {
-                    'success': True,
+                    'success': False,
                     'latency': latency,
-                    'msg': f'连接成功 ({latency}ms)'
+                    'msg': 'API Key 无效或已过期'
+                }
+            elif response.status_code == 403:
+                return {
+                    'success': False,
+                    'latency': latency,
+                    'msg': '访问被拒绝，请检查反代配置或防火墙'
+                }
+            elif response.status_code == 404:
+                return {
+                    'success': False,
+                    'latency': latency,
+                    'msg': '地址无效，请检查 URL 是否正确'
+                }
+            elif response.status_code == 502:
+                return {
+                    'success': False,
+                    'latency': latency,
+                    'msg': '反代网关错误，上游 Emby 服务不可达'
+                }
+            elif response.status_code == 503:
+                return {
+                    'success': False,
+                    'latency': latency,
+                    'msg': 'Emby 服务暂时不可用'
+                }
+            elif response.status_code == 504:
+                return {
+                    'success': False,
+                    'latency': latency,
+                    'msg': '反代网关超时，请检查 Emby 服务器状态'
                 }
             else:
                 return {
@@ -93,27 +154,45 @@ class EmbyService:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': '连接超时'
+                'msg': '连接超时 (30秒)，请检查网络或反代响应速度'
             }
         except requests.ConnectionError as e:
-            error_msg = str(e)
+            error_msg = str(e).lower()
             # 提供更友好的错误信息
-            if 'SSL' in error_msg or 'certificate' in error_msg.lower():
+            if 'ssl' in error_msg or 'certificate' in error_msg:
                 return {
                     'success': False,
                     'latency': 0,
-                    'msg': 'SSL 证书验证失败，请检查 https 配置或使用 http'
+                    'msg': 'SSL 证书验证失败'
+                }
+            elif 'name or service not known' in error_msg or 'getaddrinfo' in error_msg:
+                return {
+                    'success': False,
+                    'latency': 0,
+                    'msg': 'DNS 解析失败，请检查域名是否正确'
+                }
+            elif 'connection refused' in error_msg:
+                return {
+                    'success': False,
+                    'latency': 0,
+                    'msg': '连接被拒绝，目标端口未开放或服务未启动'
+                }
+            elif 'network is unreachable' in error_msg:
+                return {
+                    'success': False,
+                    'latency': 0,
+                    'msg': '网络不可达，请检查网络连接'
                 }
             return {
                 'success': False,
                 'latency': 0,
-                'msg': '拒绝连接，请检查服务器地址和端口'
+                'msg': f'连接错误: {str(e)[:100]}'
             }
         except Exception as e:
             return {
                 'success': False,
                 'latency': 0,
-                'msg': f'错误: {str(e)}'
+                'msg': f'错误: {str(e)[:100]}'
             }
     
     def scan_missing_episodes(self) -> Dict[str, Any]:
