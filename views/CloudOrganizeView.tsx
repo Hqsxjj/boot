@@ -353,8 +353,8 @@ export const CloudOrganizeView: React.FC = () => {
                         qrRefreshCountRef.current += 1;
                         console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/500)...`);
                         setQrState('loading');
-                        // 延迟 500ms 重新获取，避免频繁请求
-                        setTimeout(() => generateRealQr(), 500);
+                        // 延迟 2000ms 重新获取，避免频繁请求，给用户一点反应时间
+                        setTimeout(() => generateRealQr(), 2000);
                      } else {
                         setQrState('expired');
                         setToast('二维码已多次过期，请手动刷新');
@@ -370,7 +370,7 @@ export const CloudOrganizeView: React.FC = () => {
             } catch (err) {
                console.error('QR Poll failed', err);
             }
-         }, 2000);  // 2秒轮询状态，及时检测登录成功
+         }, 3000);  // 3秒轮询状态，避免请求过快
       } catch (e: any) {
          console.error('QR Code generation failed:', e);
          setQrState('error');
