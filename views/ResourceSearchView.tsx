@@ -38,7 +38,7 @@ interface ShareFile {
     name: string;
     size: number;
     is_directory: boolean;
-    time: string;
+    time?: string;  // Optional - 123 cloud doesn't provide time
 }
 
 interface ShareLink {
@@ -263,8 +263,8 @@ export const ResourceSearchView: React.FC = () => {
             newExpanded.add(resourceKey);
             setExpandedResources(newExpanded);
 
-            // Load files if not already loaded
-            if (!resourceFiles[resourceKey] && resource.cloud_type === '115') {
+            // Load files if not already loaded (support both 115 and 123 cloud)
+            if (!resourceFiles[resourceKey] && (resource.cloud_type === '115' || resource.cloud_type === '123')) {
                 await loadResourceFiles(resource, resourceKey);
             }
         }
@@ -274,30 +274,46 @@ export const ResourceSearchView: React.FC = () => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
-        // Parse 115 link
-        const match = link.match(/115\.com\/s\/([a-z0-9]+)/i);
-        if (!match) {
-            setToast('不支持的链接格式');
-            setTimeout(() => setToast(null), 3000);
-            return;
-        }
-
-        const shareCode = match[1];
-        let accessCode = '';
-        try {
-            const urlObj = new URL(link);
-            accessCode = urlObj.searchParams.get('password') || '';
-        } catch (e) {
-            // ignore
-        }
-
         // Add to loading state
         const newLoading = new Set(loadingResourceFiles);
         newLoading.add(resourceKey);
         setLoadingResourceFiles(newLoading);
 
         try {
-            const response = await api.get115ShareFiles(shareCode, accessCode);
+            let response;
+
+            // Check for 115 link
+            const match115 = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+            // Check for 123 link - format: https://www.123pan.com/s/xxxx or https://www.123pan.cn/s/xxxx
+            const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
+
+            if (match115) {
+                const shareCode = match115[1];
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('password') || '';
+                } catch (e) {
+                    // ignore
+                }
+                response = await api.get115ShareFiles(shareCode, accessCode);
+            } else if (match123) {
+                const shareCode = match123[1];
+                // 123 cloud access code is usually after '-' in share code or as query param
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                } catch (e) {
+                    // ignore
+                }
+                response = await api.get123ShareFiles(shareCode, accessCode);
+            } else {
+                setToast('不支持的链接格式');
+                setTimeout(() => setToast(null), 3000);
+                return;
+            }
+
             if (response.success) {
                 setResourceFiles(prev => ({ ...prev, [resourceKey]: response.data || [] }));
                 // Default select all files for this resource
@@ -356,25 +372,49 @@ export const ResourceSearchView: React.FC = () => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
-        const match = link.match(/115\.com\/s\/([a-z0-9]+)/i);
-        if (!match) return;
-
-        const shareCode = match[1];
-        let accessCode = '';
         try {
-            const urlObj = new URL(link);
-            accessCode = urlObj.searchParams.get('password') || '';
-        } catch (e) {
-            // ignore
-        }
+            let response;
 
-        try {
-            const response = await api.save115Share(
-                shareCode,
-                accessCode,
-                undefined,
-                Array.from(selectedIds)
-            );
+            // Check for 115 link
+            const match115 = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+            // Check for 123 link
+            const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
+
+            if (match115) {
+                const shareCode = match115[1];
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('password') || '';
+                } catch (e) {
+                    // ignore
+                }
+                response = await api.save115Share(
+                    shareCode,
+                    accessCode,
+                    undefined,
+                    Array.from(selectedIds)
+                );
+            } else if (match123) {
+                const shareCode = match123[1];
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                } catch (e) {
+                    // ignore
+                }
+                response = await api.save123Share(
+                    shareCode,
+                    accessCode,
+                    undefined,
+                    Array.from(selectedIds)
+                );
+            } else {
+                setToast('不支持的链接格式');
+                setTimeout(() => setToast(null), 3000);
+                return;
+            }
 
             if (response.success) {
                 setToast(`成功转存 ${response.data.count} 个文件`);
@@ -1298,7 +1338,7 @@ const ResourceCard: React.FC<{
     const [imageError, setImageError] = useState(false);
 
     const resourceKey = resource.id || resource.title;
-    const has115Files = resource.cloud_type === '115' && onToggleExpand;
+    const hasCloudFiles = (resource.cloud_type === '115' || resource.cloud_type === '123') && onToggleExpand;
 
     return (
         <div className="group relative rounded-xl overflow-visible">
@@ -1417,7 +1457,7 @@ const ResourceCard: React.FC<{
             </div>
 
             {/* Expandable File List Section */}
-            {has115Files && (
+            {hasCloudFiles && (
                 <div className="mt-2">
                     <button
                         onClick={(e) => {
@@ -1479,8 +1519,8 @@ const ResourceCard: React.FC<{
                                                     onToggleFileSelection?.(file.id);
                                                 }}
                                                 className={`flex items-start gap-2 p-2 rounded cursor-pointer transition-colors ${selectedFileIds?.has(file.id)
-                                                        ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
-                                                        : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                                                    ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
+                                                    : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'
                                                     }`}
                                             >
                                                 <div className="mt-0.5">

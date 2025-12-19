@@ -398,3 +398,67 @@ def get_offline_task(task_id: str):
             'success': False,
             'error': f'获取任务状态失败: {str(e)}'
         }), 500
+
+
+@cloud123_bp.route('/share/files', methods=['POST'])
+@require_auth
+def get_share_files():
+    """Get file list from a 123 cloud share link."""
+    try:
+        data = request.get_json() or {}
+        
+        share_code = data.get('shareCode') or data.get('share_code')
+        access_code = data.get('accessCode') or data.get('access_code') or ''
+        
+        if not share_code:
+            return jsonify({
+                'success': False,
+                'error': '分享码不能为空'
+            }), 400
+        
+        result = _cloud123_service.get_share_files(share_code, access_code)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'获取分享文件列表失败: {str(e)}'
+        }), 500
+
+
+@cloud123_bp.route('/share/save', methods=['POST'])
+@require_auth
+def save_share():
+    """Save files from a 123 cloud share link."""
+    try:
+        data = request.get_json() or {}
+        
+        share_code = data.get('shareCode') or data.get('share_code')
+        access_code = data.get('accessCode') or data.get('access_code') or ''
+        save_path = data.get('savePath') or data.get('save_path') or '0'
+        file_ids = data.get('fileIds') or data.get('file_ids')
+        
+        if not share_code:
+            return jsonify({
+                'success': False,
+                'error': '分享码不能为空'
+            }), 400
+        
+        # If file_ids provided, use selective save (need to modify service later)
+        # For now, use the standard save_share
+        result = _cloud123_service.save_share(share_code, access_code, save_path)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'转存失败: {str(e)}'
+        }), 500

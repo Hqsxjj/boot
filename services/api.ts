@@ -223,6 +223,29 @@ export const api = {
     return res.data;
   },
 
+  // --- 123 Share Interface ---
+
+  get123ShareFiles: async (shareCode: string, accessCode?: string) => {
+    const res = await apiClient.post<ApiResponse<{ id: string; name: string; size: number; is_directory: boolean }[]>>(
+      '/123/share/files',
+      {
+        shareCode,
+        accessCode,
+      }
+    );
+    return res.data;
+  },
+
+  save123Share: async (shareCode: string, accessCode?: string, savePath?: string, fileIds?: string[]) => {
+    const res = await apiClient.post<ApiResponse<{ message: string; count: number }>>('/123/share/save', {
+      shareCode,
+      accessCode,
+      savePath,
+      fileIds,
+    });
+    return res.data;
+  },
+
   list123Directories: async (dirId: string = '/') => {
     const res = await apiClient.get<ApiResponse<CloudDirectoryEntry[]>>('/123/directories', {
       params: { dirId },

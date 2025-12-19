@@ -385,6 +385,64 @@ class Cloud123Service:
                 'error': f'发生异常错误: {str(e)}'
             }
 
+    def get_share_files(self, share_code: str, access_code: str = None) -> Dict[str, Any]:
+        """
+        获取 123 云盘分享链接中的文件列表。
+        
+        Args:
+            share_code: 分享码 (如 abc123-xyz)
+            access_code: 提取码
+        
+        Returns:
+            Dict with success flag and file list
+        """
+        try:
+            # 获取分享信息
+            share_info_payload = {
+                'shareKey': share_code,
+                'sharePwd': access_code or ''
+            }
+            
+            share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
+            
+            if not share_result.get('success'):
+                return {
+                    'success': False,
+                    'error': share_result.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                }
+            
+            share_data = share_result.get('data', {})
+            file_list = share_data.get('fileList', []) if isinstance(share_data, dict) else []
+            
+            if not file_list:
+                return {
+                    'success': False,
+                    'error': '分享中没有文件'
+                }
+            
+            # 格式化文件列表
+            formatted_files = []
+            for item in file_list:
+                formatted_files.append({
+                    'id': str(item.get('fileId', '')),
+                    'name': item.get('fileName', ''),
+                    'size': item.get('size', 0),
+                    'is_directory': item.get('type', 0) == 1,  # type=1 means directory
+                    'ext': item.get('etag', ''),
+                })
+            
+            return {
+                'success': True,
+                'data': formatted_files
+            }
+            
+        except Exception as e:
+            logger.error(f'获取 123 分享文件列表失败: {str(e)}')
+            return {
+                'success': False,
+                'error': f'获取文件列表失败: {str(e)}'
+            }
+
     def save_share(self, share_code: str, access_code: str = None,
                    save_path: str = '0') -> Dict[str, Any]:
         """
