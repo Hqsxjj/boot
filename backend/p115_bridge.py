@@ -35,6 +35,7 @@ class P115Service:
         self._client = None
         self._session_cache = {}  # In-memory cache for login sessions
         self._session_timeout = timedelta(minutes=5)  # QR code local timeout (5 min to give user enough time)
+        self._http_session = requests.Session()  # 用于 PKCE OAuth 请求
         
         # Try to import p115client
         try:
@@ -48,6 +49,133 @@ class P115Service:
         if self.p115client is None:
             raise ImportError('p115client not installed')
         return self.p115client
+    
+    # ==================== PKCE OAuth 开放 API 方法 ====================
+    
+    def _generate_pkce_params(self) -> tuple:
+        """生成 PKCE 参数 (code_verifier, code_challenge)"""
+        import secrets
+        import hashlib
+        
+        code_verifier = secrets.token_urlsafe(96)[:128]
+        code_challenge = base64.b64encode(
+            hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        ).decode("utf-8")
+        return code_verifier, code_challenge
+    
+    def generate_open_qrcode(self, app_id: int = 100197531) -> Optional[Dict[str, Any]]:
+        """
+        使用 PKCE 规范生成开放 API 二维码
+        
+        Args:
+            app_id: 第三方应用 ID
+            
+        Returns:
+            包含二维码 URL 和验证参数的字典
+        """
+        try:
+            code_verifier, code_challenge = self._generate_pkce_params()
+            
+            resp = self._http_session.post(
+                "https://passportapi.115.com/open/authDeviceCode",
+                data={
+                    "client_id": app_id,
+                    "code_challenge": code_challenge,
+                    "code_challenge_method": "sha256"
+                },
+                timeout=10
+            )
+            result = resp.json()
+            
+            if result.get("code") != 0:
+                logger.warning(f"authDeviceCode failed: {result.get('message')}")
+                return None
+            
+            data = result.get("data", {})
+            return {
+                "qrcode_url": data.get("qrcode", ""),
+                "code_verifier": code_verifier,
+                "uid": data.get("uid", ""),
+                "time": str(data.get("time", "")),
+                "sign": data.get("sign", "")
+            }
+        except Exception as e:
+            logger.error(f"generate_open_qrcode failed: {str(e)}")
+            return None
+    
+    def check_open_login_status(self, uid: str, time: str, sign: str) -> Dict[str, Any]:
+        """
+        检查开放 API 扫码状态
+        
+        Returns:
+            {"status": 0/1/2, "message": "..."} 其中 0=未扫描, 1=已扫描, 2=已确认
+        """
+        try:
+            resp = self._http_session.get(
+                "https://qrcodeapi.115.com/get/status/",
+                params={
+                    "uid": uid,
+                    "time": int(time) if time else 0,
+                    "sign": sign
+                },
+                timeout=10
+            )
+            result = resp.json()
+            data = result.get("data", {})
+            
+            if not data:
+                return {"status": -1, "message": "二维码已过期"}
+            
+            return {"status": data.get("status", 0), "message": "OK"}
+        except Exception as e:
+            logger.error(f"check_open_login_status failed: {str(e)}")
+            return {"status": -1, "message": str(e)}
+    
+    def get_open_access_token(self, uid: str, code_verifier: str) -> Optional[Dict[str, Any]]:
+        """
+        获取开放 API access_token
+        
+        Returns:
+            {"access_token": "...", "refresh_token": "...", "expires_in": 7200}
+        """
+        try:
+            resp = self._http_session.post(
+                "https://passportapi.115.com/open/deviceCodeToToken",
+                data={
+                    "uid": uid,
+                    "code_verifier": code_verifier
+                },
+                timeout=10
+            )
+            result = resp.json()
+            
+            if result.get("code") != 0:
+                logger.error(f"deviceCodeToToken failed: {result.get('message')}")
+                return None
+            
+            return result.get("data")
+        except Exception as e:
+            logger.error(f"get_open_access_token failed: {str(e)}")
+            return None
+    
+    def refresh_open_access_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+        """刷新开放 API access_token"""
+        try:
+            resp = self._http_session.post(
+                "https://passportapi.115.com/open/refreshToken",
+                data={"refresh_token": refresh_token},
+                timeout=10
+            )
+            result = resp.json()
+            
+            if result.get("code") != 0:
+                logger.error(f"refreshToken failed: {result.get('message')}")
+                return None
+            
+            return result.get("data")
+        except Exception as e:
+            logger.error(f"refresh_open_access_token failed: {str(e)}")
+            return None
     
     def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
         """
@@ -169,7 +297,7 @@ class P115Service:
             
             # 区分两种登录逻辑
             if login_method == 'open_app':
-                # 第三方应用模式：使用 P115OpenClient
+                # 第三方应用模式：使用 PKCE OAuth 流程
                 if not app_id:
                     return {
                         'error': 'App ID is required for open_app login method',
@@ -182,43 +310,27 @@ class P115Service:
                         'error': f'Invalid app_id: {app_id}. Must be a numeric ID.',
                         'success': False
                     }
-                logger.info(f"open_app mode: app_id={app_id}, actual_app_id={actual_app_id}")
+                logger.info(f"open_app mode: using PKCE OAuth with app_id={actual_app_id}")
                 
-                # 使用 P115OpenClient.login_qrcode_token_open 获取二维码
-                try:
-                    # 根据 p115client 文档，使用类方法获取 token
-                    if hasattr(p115client, 'P115OpenClient'):
-                        qr_token_result = p115client.P115OpenClient.login_qrcode_token_open(actual_app_id)
-                    else:
-                        qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
-                    
-                    logger.info(f"open_app qr_token_result: {qr_token_result}")
-                except Exception as e:
-                    logger.error(f"login_qrcode_token_open exception: {str(e)}")
+                # 使用 PKCE OAuth 流程生成二维码
+                qr_result = self.generate_open_qrcode(actual_app_id)
+                
+                if not qr_result:
                     return {
-                        'error': f'获取第三方应用二维码失败: {str(e)}',
+                        'error': '获取第三方应用二维码失败',
                         'success': False
                     }
                 
-                # 检查返回结果
-                if isinstance(qr_token_result, dict):
-                    if qr_token_result.get('state') != 1 and qr_token_result.get('code') != 0:
-                        error_msg = qr_token_result.get('message') or qr_token_result.get('error') or '未知错误'
-                        return {
-                            'error': f"获取二维码失败: {error_msg}",
-                            'success': False
-                        }
-                    qr_data = qr_token_result.get('data', {})
-                else:
-                    qr_data = qr_token_result if qr_token_result else {}
+                qrcode_url = qr_result.get('qrcode_url', '')
+                uid = qr_result.get('uid', '')
                 
-                qrcode_url = qr_data.get('qrcode', '')
-                uid = qr_data.get('uid', '')
-                
-                # Cache session info - open_app 模式
+                # Cache session info - 保存 code_verifier 用于后续获取 token
                 self._session_cache[session_id] = {
                     'uid': uid,
-                    'qr_data': qr_data,
+                    'time': qr_result.get('time', ''),
+                    'sign': qr_result.get('sign', ''),
+                    'code_verifier': qr_result.get('code_verifier', ''),
+                    'qr_data': qr_result,
                     'login_method': 'open_app',
                     'login_app': 'open_app',
                     'app_id': actual_app_id,
@@ -342,40 +454,67 @@ class P115Service:
                     'status': 'expired'
                 }
             
+            login_method = session_info.get('login_method', 'qrcode')
+            
+            # ================ open_app 模式：使用 PKCE OAuth ================
+            if login_method == 'open_app':
+                uid = session_info.get('uid', '')
+                time_val = session_info.get('time', '')
+                sign = session_info.get('sign', '')
+                code_verifier = session_info.get('code_verifier', '')
+                
+                # 检查扫码状态
+                status_result = self.check_open_login_status(uid, time_val, sign)
+                status_code = status_result.get('status', -1)
+                
+                if status_code == 0:
+                    return {'status': 'waiting', 'success': True}
+                elif status_code == 1:
+                    return {'status': 'scanned', 'success': True}
+                elif status_code == 2:
+                    # 用户已确认，获取 access_token
+                    token_data = self.get_open_access_token(uid, code_verifier)
+                    
+                    if token_data:
+                        session_info['status'] = 'success'
+                        # 返回 token 信息（access_token, refresh_token, expires_in）
+                        return {
+                            'status': 'success',
+                            'cookies': token_data,  # 包含 access_token, refresh_token
+                            'token_data': token_data,
+                            'success': True
+                        }
+                    else:
+                        return {
+                            'status': 'error',
+                            'error': '获取 access_token 失败',
+                            'success': False
+                        }
+                else:
+                    # 过期或错误
+                    session_info['status'] = 'expired'
+                    return {
+                        'status': 'expired',
+                        'message': status_result.get('message', ''),
+                        'success': False
+                    }
+            
+            # ================ 普通 qrcode 模式 ================
             qr_data = session_info.get('qr_data', {})
             uid = qr_data.get('uid', '')
             time_val = qr_data.get('time', 0)
             sign = qr_data.get('sign', '')
             
-            # 使用 login_qrcode_scan_status 检查扫码状态
-            # 构建 payload
-            payload = {
-                'uid': uid,
-                'time': time_val,
-                'sign': sign
-            }
+            payload = {'uid': uid, 'time': time_val, 'sign': sign}
             
             try:
                 status_result = p115client.P115Client.login_qrcode_scan_status(payload)
-                
-                # 状态码含义:
-                # 0: 未扫描
-                # 1: 已扫描，等待确认
-                # 2: 已确认登录
-                # -1/-2: 二维码过期/已取消
-                
                 status_code = status_result.get('data', {}).get('status', 0)
                 
                 if status_code == 0:
-                    return {
-                        'status': 'waiting',
-                        'success': True
-                    }
+                    return {'status': 'waiting', 'success': True}
                 elif status_code == 1:
-                    return {
-                        'status': 'scanned',
-                        'success': True
-                    }
+                    return {'status': 'scanned', 'success': True}
                 elif status_code == 2:
                     # 用户已确认，获取 cookies
                     try:
@@ -384,9 +523,7 @@ class P115Service:
                         if scan_result.get('state') == 1:
                             cookie_data = scan_result.get('data', {}).get('cookie', {})
                             
-                            # 解析 cookies - 可能是字符串格式或字典格式
                             if isinstance(cookie_data, str):
-                                # 解析 cookie 字符串
                                 cookies = {}
                                 for part in cookie_data.split(';'):
                                     part = part.strip()
@@ -419,14 +556,9 @@ class P115Service:
                             'success': False
                         }
                 else:
-                    # 过期或取消
                     session_info['status'] = 'expired'
-                    return {
-                        'status': 'expired',
-                        'success': False
-                    }
+                    return {'status': 'expired', 'success': False}
             except Exception as e:
-                # API 调用失败，记录错误并返回错误状态而非假装等待
                 logger.warning(f'QR scan status API call failed: {str(e)}')
                 return {
                     'status': 'error',
