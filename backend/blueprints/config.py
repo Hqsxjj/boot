@@ -50,35 +50,52 @@ def _parse_cookie_string(cookie_str: str) -> dict:
 
 
 def _sync_cloud115_cookies_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 115 Cookie 到 SecretStore"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not secret_store or not isinstance(payload, dict):
+        logger.debug('_sync_cloud115_cookies: secret_store 或 payload 无效')
         return
 
     cloud115 = payload.get('cloud115')
     if not isinstance(cloud115, dict):
+        logger.debug('_sync_cloud115_cookies: cloud115 配置无效')
         return
 
     cookies_value = cloud115.get('cookies')
     if not isinstance(cookies_value, str):
+        logger.debug('_sync_cloud115_cookies: cookies 不是字符串')
         return
 
     cookies_str = cookies_value.strip()
 
     if not cookies_str:
+        logger.info('_sync_cloud115_cookies: Cookie 为空，删除已存储的凭证')
         secret_store.delete_secret('cloud115_cookies')
+        secret_store.delete_secret('cloud115_manual_cookies')
         secret_store.delete_secret('cloud115_session_metadata')
         return
 
     parsed = _parse_cookie_string(cookies_str)
     if not parsed:
+        logger.warning(f'_sync_cloud115_cookies: Cookie 解析失败，原始值: {cookies_str[:50]}...')
         return
 
-    secret_store.set_secret('cloud115_cookies', json.dumps(parsed))
+    logger.info(f'_sync_cloud115_cookies: 成功解析 {len(parsed)} 个 Cookie 键: {list(parsed.keys())}')
+    
+    # 保存到多个密钥确保兼容性
+    cookies_json = json.dumps(parsed)
+    secret_store.set_secret('cloud115_cookies', cookies_json)
+    secret_store.set_secret('cloud115_manual_cookies', cookies_json)  # 添加手动导入密钥
+    
     metadata = {
         'login_method': 'manual_import',
         'login_app': cloud115.get('loginApp', 'web'),
         'logged_in_at': __import__('datetime').datetime.now().isoformat(),
     }
     secret_store.set_secret('cloud115_session_metadata', json.dumps(metadata))
+    logger.info('_sync_cloud115_cookies: Cookie 已保存到 SecretStore')
 
 
 def _sync_cloud123_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:

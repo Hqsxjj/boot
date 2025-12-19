@@ -86,6 +86,13 @@ class Cloud115Service:
         
         errors = []
         
+        # 调试：列出所有可用的凭证
+        available_keys = []
+        for key in ['cloud115_openapp_cookies', 'cloud115_qr_cookies', 'cloud115_manual_cookies', 'cloud115_cookies']:
+            if self.secret_store.get_secret(key):
+                available_keys.append(key)
+        logger.info(f'115 凭证检查: 可用密钥 = {available_keys}')
+        
         # 首先尝试 open_app 模式 (P115OpenClient with access_token)
         open_app_json = self.secret_store.get_secret('cloud115_openapp_cookies')
         if open_app_json:
@@ -93,7 +100,7 @@ class Cloud115Service:
                 token_data = json.loads(open_app_json)
                 # 检查是否是 access_token 格式
                 if 'access_token' in token_data or 'refresh_token' in token_data:
-                    # 使用 P115OpenClient
+                    logger.info('检测到 access_token 格式，尝试使用 P115OpenClient')
                     if hasattr(self.p115client, 'P115OpenClient'):
                         refresh_token = token_data.get('refresh_token', '')
                         access_token = token_data.get('access_token', '')
@@ -103,7 +110,6 @@ class Cloud115Service:
                             logger.info('p115client.P115OpenClient 已使用 refresh_token 初始化')
                             return client
                         elif access_token:
-                            # 如果只有 access_token，尝试直接使用
                             client = self.p115client.P115OpenClient.__new__(self.p115client.P115OpenClient)
                             client._access_token = access_token
                             logger.info('p115client.P115OpenClient 已使用 access_token 初始化')
@@ -116,10 +122,9 @@ class Cloud115Service:
         
         # 回退到 Cookie 模式 (P115Client)
         credential_sources = [
-            ('cloud115_qr_cookies', 'QR扫码'),           # 优先: 扫码登录的 cookies
-            ('cloud115_openapp_cookies', '第三方AppID'), # 尝试作为 cookies 格式
-            ('cloud115_manual_cookies', '手动导入'),      # 再次: 手动导入的 cookies
-            ('cloud115_cookies', '通用'),                 # 兼容: 旧版单一 cookies
+            ('cloud115_qr_cookies', 'QR扫码'),
+            ('cloud115_manual_cookies', '手动导入'),
+            ('cloud115_cookies', '通用'),
         ]
         
         for secret_key, source_name in credential_sources:
@@ -127,22 +132,29 @@ class Cloud115Service:
             if cookies_json:
                 try:
                     cookies = json.loads(cookies_json)
-                    # 如果是 token 格式，跳过（上面已经尝试过）
+                    # 如果是 token 格式，跳过
                     if 'access_token' in cookies or 'refresh_token' in cookies:
+                        logger.debug(f'{secret_key} 是 token 格式，跳过')
                         continue
+                    
+                    logger.info(f'尝试使用 {source_name} ({secret_key}) 初始化 P115Client，Cookie 键: {list(cookies.keys())}')
                     
                     if hasattr(self.p115client, 'P115Client'):
                         client = self.p115client.P115Client(cookies=cookies)
-                        logger.info(f'p115client 已使用 {source_name} 凭证初始化')
+                        logger.info(f'p115client 已使用 {source_name} 凭证初始化成功')
                         return client
                 except Exception as e:
                     errors.append(f'{source_name}: {e}')
                     logger.warning(f'使用 {source_name} 初始化 p115client 失败: {e}')
         
         if errors:
-            raise ValueError(f'所有 115 登录方式均失败: {errors}')
+            error_msg = f'所有 115 登录方式均失败: {errors}'
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         else:
-            raise ValueError('在密钥库中未找到 115 cookies')
+            error_msg = '在密钥库中未找到 115 cookies'
+            logger.error(error_msg)
+            raise ValueError(error_msg)
     
     def create_directory(self, parent_cid: str, name: str) -> Dict[str, Any]:
         """

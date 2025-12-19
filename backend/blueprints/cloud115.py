@@ -86,10 +86,15 @@ def start_qr_login():
 @require_auth
 def poll_login_status(session_id: str):
     """Poll QR code login status and persist cookies on success."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         result = _p115_service.poll_login_status(session_id)
+        logger.info(f'poll_login_status: session={session_id}, result.status={result.get("status")}, success={result.get("success")}')
         
         if not result.get('success'):
+            logger.warning(f'poll_login_status 失败: {result.get("error")}')
             return jsonify({
                 'success': False,
                 'error': result.get('error', '登录失败'),
@@ -101,10 +106,13 @@ def poll_login_status(session_id: str):
             cookies = result.get('cookies', {})
             
             if not cookies:
+                logger.warning('poll_login_status: 登录成功但没有收到 cookies')
                 return jsonify({
                     'success': False,
                     'error': 'No cookies received from login'
                 }), 400
+            
+            logger.info(f'poll_login_status: 收到 cookies，键: {list(cookies.keys()) if isinstance(cookies, dict) else "非字典"}')
             
             # Store cookies encrypted - use method-specific key for independent storage
             cookies_json = json.dumps(cookies)
@@ -112,8 +120,10 @@ def poll_login_status(session_id: str):
             
             if login_method == 'open_app':
                 _secret_store.set_secret('cloud115_openapp_cookies', cookies_json)
+                logger.info('poll_login_status: 已保存到 cloud115_openapp_cookies')
             else:
                 _secret_store.set_secret('cloud115_qr_cookies', cookies_json)
+                logger.info('poll_login_status: 已保存到 cloud115_qr_cookies')
             
             # Also update legacy key for backwards compatibility
             _secret_store.set_secret('cloud115_cookies', cookies_json)
@@ -129,6 +139,7 @@ def poll_login_status(session_id: str):
             
             # Clear session
             _p115_service.clear_session(session_id)
+            logger.info('poll_login_status: 登录成功，session 已清理')
             
             return jsonify({
                 'success': True,
@@ -147,6 +158,7 @@ def poll_login_status(session_id: str):
             }
         }), 200
     except Exception as e:
+        logger.error(f'poll_login_status 异常: {str(e)}')
         return jsonify({
             'success': False,
             'error': f'Failed to poll status: {str(e)}'
