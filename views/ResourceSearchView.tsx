@@ -20,8 +20,20 @@ import {
     Loader2,
     Bell,
     Plus,
-    Trash2
+    Trash2,
+    FileText,
+    CheckSquare,
+    Square,
+    Save
 } from 'lucide-react';
+
+interface ShareFile {
+    id: string;
+    name: string;
+    size: number;
+    is_directory: boolean;
+    time: string;
+}
 
 interface ShareLink {
     source: string;
@@ -58,7 +70,16 @@ export const ResourceSearchView: React.FC = () => {
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [searchMessage, setSearchMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'search' | 'subscription'>('search');
+
     const searchInputRef = useRef<HTMLInputElement>(null);
+
+    // Share File Modal State
+    const [showFileModal, setShowFileModal] = useState(false);
+    const [shareFiles, setShareFiles] = useState<ShareFile[]>([]);
+    const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+    const [isFileLoading, setIsFileLoading] = useState(false);
+    const [sharingResource, setSharingResource] = useState<{ shareCode: string; accessCode: string; resourceTitle: string } | null>(null);
+
 
     useEffect(() => {
         fetchTrending();
@@ -119,6 +140,99 @@ export const ResourceSearchView: React.FC = () => {
 
     const closeModal = () => {
         setSelectedResource(null);
+    };
+
+    const handlePreviewContent = async (resource: Resource) => {
+        const link = resource.share_link || resource.share_links?.[0]?.link;
+        if (!link) return;
+
+        // Simple parsing for 115 links
+        // Format: https://115.com/s/sw3xxxx?password=yyyy
+        const match = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+        if (!match) {
+            setToast('不支持的链接格式');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        const shareCode = match[1];
+        let accessCode = '';
+        try {
+            const urlObj = new URL(link);
+            accessCode = urlObj.searchParams.get('password') || '';
+        } catch (e) {
+            // URL parse error, maybe partial url
+        }
+
+        setSharingResource({ shareCode, accessCode, resourceTitle: resource.title });
+        setShowFileModal(true);
+        setIsFileLoading(true);
+        setShareFiles([]);
+        setSelectedFileIds(new Set());
+
+        try {
+            const response = await api.get115ShareFiles(shareCode, accessCode);
+            if (response.success) {
+                setShareFiles(response.data || []);
+                // Default select all
+                const allIds = new Set((response.data || []).map(f => f.id));
+                setSelectedFileIds(allIds);
+            } else {
+                setToast(response.error || '获取文件列表失败');
+                setTimeout(() => setToast(null), 3000);
+                setShowFileModal(false);
+            }
+        } catch (e) {
+            console.error(e);
+            setToast('获取文件列表失败');
+            setTimeout(() => setToast(null), 3000);
+            setShowFileModal(false);
+        } finally {
+            setIsFileLoading(false);
+        }
+    };
+
+    const handleSaveSelectedFiles = async () => {
+        if (!sharingResource || selectedFileIds.size === 0) return;
+
+        try {
+            const response = await api.save115Share(
+                sharingResource.shareCode,
+                sharingResource.accessCode,
+                undefined, // default cid
+                Array.from(selectedFileIds)
+            );
+
+            if (response.success) {
+                setToast(`成功转存 ${response.data.count} 个文件`);
+                setShowFileModal(false);
+            } else {
+                setToast(response.error || '转存失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            console.error(e);
+            setToast('转存失败');
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const toggleFileSelection = (id: string) => {
+        const newSet = new Set(selectedFileIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedFileIds(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedFileIds.size === shareFiles.length) {
+            setSelectedFileIds(new Set());
+        } else {
+            setSelectedFileIds(new Set(shareFiles.map(f => f.id)));
+        }
     };
 
     const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
@@ -279,7 +393,8 @@ export const ResourceSearchView: React.FC = () => {
                                     <ResourceCard
                                         key={resource.id}
                                         resource={resource}
-                                        onClick={() => handleResourceClick(resource)}
+                                        onClick={() => setSelectedResource(resource)}
+                                        onPreview={handlePreviewContent}
                                     />
                                 ))}
                             </div>
@@ -293,6 +408,89 @@ export const ResourceSearchView: React.FC = () => {
                             onClose={closeModal}
                             onCopy={copyToClipboard}
                         />
+                    )}
+
+                    {/* Share File Selection Modal */}
+                    {showFileModal && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowFileModal(false)} />
+                            <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                        <FileText className="text-brand-500" />
+                                        {sharingResource?.resourceTitle} - 文件列表
+                                    </h3>
+                                    <button onClick={() => setShowFileModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                        <X size={24} />
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto min-h-[200px] border border-slate-200 dark:border-slate-700 rounded-lg p-2">
+                                    {isFileLoading ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <Loader2 className="animate-spin text-brand-500" size={32} />
+                                        </div>
+                                    ) : shareFiles.length === 0 ? (
+                                        <div className="flex items-center justify-center h-full text-slate-500">
+                                            没有找到文件
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between p-2 border-b border-slate-100 dark:border-slate-800">
+                                                <button
+                                                    onClick={toggleSelectAll}
+                                                    className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-brand-500"
+                                                >
+                                                    {selectedFileIds.size === shareFiles.length ? <CheckSquare size={18} /> : <Square size={18} />}
+                                                    全选 ({selectedFileIds.size}/{shareFiles.length})
+                                                </button>
+                                            </div>
+                                            {shareFiles.map(file => (
+                                                <div
+                                                    key={file.id}
+                                                    onClick={() => toggleFileSelection(file.id)}
+                                                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${selectedFileIds.has(file.id)
+                                                        ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
+                                                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+                                                        }`}
+                                                >
+                                                    <div className={`text-brand-500 ${selectedFileIds.has(file.id) ? 'opacity-100' : 'opacity-40'}`}>
+                                                        {selectedFileIds.has(file.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate" title={file.name}>
+                                                            {file.name}
+                                                        </div>
+                                                        <div className="text-xs text-slate-500 flex gap-3 mt-0.5">
+                                                            <span>{file.is_directory ? '文件夹' : '文件'}</span>
+                                                            {file.size > 0 && <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>}
+                                                            <span>{file.time ? new Date(file.time).toLocaleDateString() : ''}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-end gap-3 mt-6">
+                                    <button
+                                        onClick={() => setShowFileModal(false)}
+                                        className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleSaveSelectedFiles}
+                                        disabled={selectedFileIds.size === 0}
+                                        className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        <Save size={18} />
+                                        转存选中 ({selectedFileIds.size})
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </>
             ) : (
@@ -383,6 +581,10 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
             setIsRunning(false);
         }
     };
+
+
+
+
 
     const showToast = (msg: string) => {
         setToast(msg);
@@ -620,7 +822,8 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
 const ResourceCard: React.FC<{
     resource: Resource;
     onClick: () => void;
-}> = ({ resource, onClick }) => {
+    onPreview?: (resource: Resource) => void;
+}> = ({ resource, onClick, onPreview }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -656,16 +859,32 @@ const ResourceCard: React.FC<{
 
                     {/* Direct Save Button */}
                     {(resource.share_link || (resource.share_links && resource.share_links[0]?.link)) && (
-                        <a
-                            href={resource.share_link || resource.share_links?.[0]?.link || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className={`w-full py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg ${resource.cloud_type === '115' ? 'bg-orange-500/90 hover:bg-orange-600' : resource.cloud_type === '123' ? 'bg-blue-500/90 hover:bg-blue-600' : 'bg-brand-500/90 hover:bg-brand-600'}`}
-                        >
-                            <ExternalLink size={14} />
-                            {resource.cloud_type === '115' ? '115 转存' : resource.cloud_type === '123' ? '123 转存' : '前往转存'}
-                        </a>
+                        <div className="flex gap-2 w-full">
+                            {/* 115 Preview Button */}
+                            {resource.cloud_type === '115' && onPreview && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onPreview(resource);
+                                    }}
+                                    className="flex-1 py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg bg-orange-500/90 hover:bg-orange-600"
+                                >
+                                    <FileText size={14} />
+                                    预览
+                                </button>
+                            )}
+
+                            <a
+                                href={resource.share_link || resource.share_links?.[0]?.link || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className={`py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg ${resource.cloud_type === '115' ? 'bg-orange-500/90 hover:bg-orange-600 flex-1' : 'bg-brand-500/90 hover:bg-brand-600 w-full'}`}
+                            >
+                                <ExternalLink size={14} />
+                                {resource.cloud_type === '115' ? '直存' : '转存'}
+                            </a>
+                        </div>
                     )}
 
                     <button className="w-full py-2 bg-white/20 backdrop-blur-sm rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 hover:bg-white/30 transition-colors">

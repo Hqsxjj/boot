@@ -500,7 +500,7 @@ class Cloud115Service:
             }
     
     def save_share(self, share_code: str, access_code: str = None, 
-                   save_cid: str = '0') -> Dict[str, Any]:
+                   save_cid: str = '0', file_ids: List[str] = None) -> Dict[str, Any]:
         """
         转存 115 分享链接到指定目录。
         
@@ -508,6 +508,7 @@ class Cloud115Service:
             share_code: 分享码 (如 sw3xxxx)
             access_code: 访问码/提取码
             save_cid: 保存目录 CID，默认根目录
+            file_ids: 可选的文件 ID 列表，如果提供则只转存这些文件
         
         Returns:
             Dict with success flag and saved file info
@@ -528,7 +529,8 @@ class Cloud115Service:
                 share_code=share_code,
                 access_code=access_code,
                 save_cid=save_cid,
-                cookies=cookies_json
+                cookies=cookies_json,
+                file_ids=file_ids
             )
             
             return result
@@ -538,6 +540,35 @@ class Cloud115Service:
             return {
                 'success': False,
                 'error': f'转存失败: {str(e)}'
+            }
+    
+    def get_share_files(self, share_code: str, access_code: str = None) -> Dict[str, Any]:
+        """
+        获取分享链接中的文件列表
+        """
+        try:
+            from p115_bridge import get_p115_service
+            
+            # 获取 cookies
+            cookies_json = self.secret_store.get_secret('cloud115_cookies')
+            if not cookies_json:
+                return {
+                    'success': False,
+                    'error': '未登录 115 账号'
+                }
+            
+            p115_service = get_p115_service()
+            result = p115_service.get_share_files(
+                share_code=share_code,
+                access_code=access_code,
+                cookies=cookies_json
+            )
+            return result
+        except Exception as e:
+            logger.error(f'获取分享文件列表失败: {str(e)}')
+            return {
+                'success': False,
+                'error': str(e)
             }
     
     def create_offline_task(self, source_url: str, save_cid: str) -> Dict[str, Any]:

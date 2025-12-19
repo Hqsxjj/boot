@@ -185,6 +185,29 @@ export const api = {
     return res.data;
   },
 
+  // --- 115 Share Interface ---
+
+  get115ShareFiles: async (shareCode: string, accessCode?: string) => {
+    const res = await apiClient.post<ApiResponse<{ id: string; name: string; size: number; is_directory: boolean; time: string }[]>>(
+      '/115/share/files',
+      {
+        shareCode,
+        accessCode,
+      }
+    );
+    return res.data;
+  },
+
+  save115Share: async (shareCode: string, accessCode?: string, saveCid?: string, fileIds?: string[]) => {
+    const res = await apiClient.post<ApiResponse<{ message: string; count: number }>>('/115/share/save', {
+      shareCode,
+      accessCode,
+      saveCid,
+      fileIds,
+    });
+    return res.data;
+  },
+
   // --- 123 云盘接口 ---
 
   /**

@@ -729,8 +729,61 @@ class P115Service:
                 'success': False
             }
     
+    def get_share_files(self, share_code: str, access_code: str = None, cookies: str = None) -> Dict[str, Any]:
+        """
+        获取分享链接中的文件列表
+        """
+        try:
+            p115client_mod = self._get_p115client_module()
+            
+            # 获取或创建 client
+            if cookies:
+                client = p115client_mod.P115Client(cookies=cookies)
+            elif self._client:
+                client = self._client
+            else:
+                return {
+                    'success': False,
+                    'error': '未登录 115 账号，请先登录'
+                }
+            
+            # 使用 share_snap 获取分享快照
+            share_info = client.share_snap({'share_code': share_code, 'receive_code': access_code or ''})
+            
+            if not share_info or share_info.get('state', True) is False:
+                return {
+                    'success': False,
+                    'error': share_info.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                }
+            
+            # 获取分享中的文件列表
+            file_list = share_info.get('data', {}).get('list', [])
+            
+            # 格式化输出
+            result_list = []
+            for f in file_list:
+                result_list.append({
+                    'id': str(f.get('fid') or f.get('file_id') or f.get('id')),
+                    'name': f.get('n') or f.get('name'),
+                    'size': f.get('s') or f.get('size'),
+                    'is_directory': bool(f.get('cid') or f.get('ico') == 'folder'),
+                    'time': f.get('t') or f.get('time')
+                })
+                
+            return {
+                'success': True,
+                'data': result_list
+            }
+            
+        except Exception as e:
+            logger.error(f'获取分享文件列表失败: {str(e)}')
+            return {
+                'success': False,
+                'error': f'获取文件列表失败: {str(e)}'
+            }
+
     def save_share(self, share_code: str, access_code: str = None, 
-                   save_cid: str = '0', cookies: str = None) -> Dict[str, Any]:
+                   save_cid: str = '0', cookies: str = None, file_ids: list = None) -> Dict[str, Any]:
         """
         转存 115 分享链接到指定目录。
         
@@ -739,6 +792,7 @@ class P115Service:
             access_code: 访问码/提取码
             save_cid: 保存目录 ID，默认根目录
             cookies: 可选的 cookies 字符串
+            file_ids: 可选的文件 ID 列表，如果提供则只转存这些文件
         
         Returns:
             Dict with success flag and saved file info
@@ -757,14 +811,12 @@ class P115Service:
                     'error': '未登录 115 账号，请先登录'
                 }
             
-            # 构建分享链接 URL
-            share_url = f"https://115.com/s/{share_code}"
-            if access_code:
-                share_url += f"?password={access_code}"
-            
-            # 先获取分享信息
-            try:
-                # 使用 share_snap 获取分享快照
+            # 如果指定了 file_ids，直接使用
+            target_file_ids = []
+            if file_ids and isinstance(file_ids, list) and len(file_ids) > 0:
+                target_file_ids = file_ids
+            else:
+                # 否则获取所有文件
                 share_info = client.share_snap({'share_code': share_code, 'receive_code': access_code or ''})
                 
                 if not share_info or share_info.get('state', True) is False:
@@ -773,59 +825,52 @@ class P115Service:
                         'error': share_info.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
                     }
                 
-                # 获取分享中的文件列表
                 file_list = share_info.get('data', {}).get('list', [])
                 if not file_list:
                     return {
                         'success': False,
                         'error': '分享中没有文件'
                     }
-                
-                # 获取所有文件 ID
-                file_ids = [str(f.get('fid') or f.get('file_id') or f.get('id')) for f in file_list]
-                
-                # 使用 share_receive 转存文件
-                receive_payload = {
-                    'share_code': share_code,
-                    'receive_code': access_code or '',
-                    'file_id': ','.join(file_ids),
-                    'cid': save_cid
-                }
-                
-                result = client.share_receive(receive_payload)
-                
-                if result and result.get('state', False):
-                    return {
-                        'success': True,
-                        'data': {
-                            'file_id': file_ids[0] if len(file_ids) == 1 else file_ids,
-                            'count': len(file_ids),
-                            'save_cid': save_cid
-                        },
-                        'message': f'成功转存 {len(file_ids)} 个文件'
-                    }
-                else:
-                    return {
-                        'success': False,
-                        'error': result.get('error', '转存失败')
-                    }
-                    
-            except Exception as api_error:
-                return {
+                target_file_ids = [str(f.get('fid') or f.get('file_id') or f.get('id')) for f in file_list]
+            
+            if not target_file_ids:
+                 return {
                     'success': False,
-                    'error': f'调用分享 API 失败: {str(api_error)}'
-                }
-                
-        except ImportError:
-            return {
-                'success': False,
-                'error': 'p115client 未安装'
+                    'error': '未选择要转存的文件'
+                 }
+
+            # 使用 share_receive 转存文件
+            receive_payload = {
+                'share_code': share_code,
+                'receive_code': access_code or '',
+                'file_id': ','.join(target_file_ids),
+                'cid': save_cid
             }
+            
+            result = client.share_receive(receive_payload)
+            
+            if result and result.get('state', False):
+                return {
+                    'success': True,
+                    'data': {
+                        'message': '转存任务已提交',
+                        'count': len(target_file_ids)
+                    }
+                }
+            else:
+                 error_msg = result.get('error') or result.get('message') or 'Unknown error'
+                 return {
+                    'success': False,
+                    'error': f'转存失败: {error_msg}'
+                 }
+                 
         except Exception as e:
+            logger.error(f'转存分享失败: {str(e)}')
             return {
                 'success': False,
                 'error': f'转存失败: {str(e)}'
             }
+
     
     def clear_session(self, session_id: str = None):
         """Clear cached session(s)."""

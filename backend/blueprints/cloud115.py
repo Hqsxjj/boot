@@ -481,6 +481,68 @@ def create_offline_task():
         }), 500
 
 
+@cloud115_bp.route('/share/files', methods=['POST'])
+@require_auth
+def get_share_files():
+    """Get file list from a 115 share link."""
+    try:
+        data = request.get_json() or {}
+        
+        share_code = data.get('shareCode') or data.get('share_code')
+        access_code = data.get('accessCode') or data.get('access_code')
+        
+        if not share_code:
+            return jsonify({
+                'success': False,
+                'error': 'shareCode is required'
+            }), 400
+        
+        result = _cloud115_service.get_share_files(share_code, access_code)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get share files: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/share/save', methods=['POST'])
+@require_auth
+def save_share():
+    """Save 115 share link to cloud."""
+    try:
+        data = request.get_json() or {}
+        
+        share_code = data.get('shareCode') or data.get('share_code')
+        access_code = data.get('accessCode') or data.get('access_code')
+        save_cid = data.get('saveCid') or data.get('save_cid') or '0'
+        file_ids = data.get('fileIds') or data.get('file_ids')
+        
+        if not share_code:
+            return jsonify({
+                'success': False,
+                'error': 'shareCode is required'
+            }), 400
+        
+        result = _cloud115_service.save_share(share_code, access_code, save_cid, file_ids)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to save share: {str(e)}'
+        }), 500
+
+
 
 # ============================================================
 # 🚀 追加的新接口：返回全部 loginApp 端
