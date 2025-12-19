@@ -652,13 +652,26 @@ const ResourceCard: React.FC<{
                 )}
 
                 {/* Overlay on hover */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="absolute bottom-0 left-0 right-0 p-3">
-                        <button className="w-full py-2 bg-white/20 backdrop-blur-sm rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 hover:bg-white/30 transition-colors">
-                            <Play size={14} />
-                            查看资源
-                        </button>
-                    </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 gap-2">
+
+                    {/* Direct Save Button */}
+                    {(resource.share_link || (resource.share_links && resource.share_links[0]?.link)) && (
+                        <a
+                            href={resource.share_link || resource.share_links?.[0]?.link || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className={`w-full py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg ${resource.cloud_type === '115' ? 'bg-orange-500/90 hover:bg-orange-600' : resource.cloud_type === '123' ? 'bg-blue-500/90 hover:bg-blue-600' : 'bg-brand-500/90 hover:bg-brand-600'}`}
+                        >
+                            <ExternalLink size={14} />
+                            {resource.cloud_type === '115' ? '115 转存' : resource.cloud_type === '123' ? '123 转存' : '前往转存'}
+                        </a>
+                    )}
+
+                    <button className="w-full py-2 bg-white/20 backdrop-blur-sm rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 hover:bg-white/30 transition-colors">
+                        <Info size={14} />
+                        查看详情
+                    </button>
                 </div>
 
                 {/* Quality Badge */}
