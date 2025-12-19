@@ -153,7 +153,8 @@ class EmbyService:
         
         try:
             # 1. 获取 Emby 中所有电视剧
-            series_response = requests.get(
+            series_response = self._make_request(
+                'GET',
                 f'{server_url}/emby/Items',
                 params={
                     'api_key': api_key,
@@ -182,7 +183,8 @@ class EmbyService:
                     poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
                 
                 # 2. 获取该剧的所有季
-                seasons_response = requests.get(
+                seasons_response = self._make_request(
+                    'GET',
                     f'{server_url}/emby/Shows/{series_id}/Seasons',
                     params={'api_key': api_key, 'Fields': 'ProviderIds'},
                     timeout=15
@@ -202,7 +204,8 @@ class EmbyService:
                         continue
                     
                     # 3. 获取该季的所有集
-                    episodes_response = requests.get(
+                    episodes_response = self._make_request(
+                        'GET',
                         f'{server_url}/emby/Shows/{series_id}/Episodes',
                         params={
                             'api_key': api_key,
@@ -306,7 +309,8 @@ class EmbyService:
             else:
                 url = f'{server_url}/emby/Library/Refresh'
             
-            response = requests.post(
+            response = self._make_request(
+                'POST',
                 url,
                 params={'api_key': api_key},
                 timeout=self.timeout
@@ -360,7 +364,8 @@ class EmbyService:
             if item_type:
                 params['IncludeItemTypes'] = item_type
             
-            response = requests.get(
+            response = self._make_request(
+                'GET',
                 f'{server_url}/emby/Items',
                 params=params,
                 timeout=self.timeout
@@ -427,7 +432,8 @@ class EmbyService:
             }
         
         try:
-            response = requests.get(
+            response = self._make_request(
+                'GET',
                 f'{server_url}/emby/Items/{item_id}',
                 params={
                     'api_key': api_key,
@@ -565,7 +571,8 @@ class EmbyService:
         
         try:
             # 获取项目的 MediaSources 信息
-            response = requests.get(
+            response = self._make_request(
+                'GET',
                 f'{server_url}/emby/Items/{item_id}',
                 params={
                     'api_key': api_key,
