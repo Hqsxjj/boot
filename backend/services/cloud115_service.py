@@ -86,10 +86,38 @@ class Cloud115Service:
         
         errors = []
         
-        # 尝试多个凭证来源，按优先级顺序
+        # 首先尝试 open_app 模式 (P115OpenClient with access_token)
+        open_app_json = self.secret_store.get_secret('cloud115_openapp_cookies')
+        if open_app_json:
+            try:
+                token_data = json.loads(open_app_json)
+                # 检查是否是 access_token 格式
+                if 'access_token' in token_data or 'refresh_token' in token_data:
+                    # 使用 P115OpenClient
+                    if hasattr(self.p115client, 'P115OpenClient'):
+                        refresh_token = token_data.get('refresh_token', '')
+                        access_token = token_data.get('access_token', '')
+                        
+                        if refresh_token:
+                            client = self.p115client.P115OpenClient(refresh_token)
+                            logger.info('p115client.P115OpenClient 已使用 refresh_token 初始化')
+                            return client
+                        elif access_token:
+                            # 如果只有 access_token，尝试直接使用
+                            client = self.p115client.P115OpenClient.__new__(self.p115client.P115OpenClient)
+                            client._access_token = access_token
+                            logger.info('p115client.P115OpenClient 已使用 access_token 初始化')
+                            return client
+                    else:
+                        logger.warning('p115client 不支持 P115OpenClient，尝试 Cookie 登录')
+            except Exception as e:
+                errors.append(f'第三方AppID: {e}')
+                logger.warning(f'使用 P115OpenClient 初始化失败: {e}')
+        
+        # 回退到 Cookie 模式 (P115Client)
         credential_sources = [
             ('cloud115_qr_cookies', 'QR扫码'),           # 优先: 扫码登录的 cookies
-            ('cloud115_openapp_cookies', '第三方AppID'), # 其次: 第三方 AppID 登录
+            ('cloud115_openapp_cookies', '第三方AppID'), # 尝试作为 cookies 格式
             ('cloud115_manual_cookies', '手动导入'),      # 再次: 手动导入的 cookies
             ('cloud115_cookies', '通用'),                 # 兼容: 旧版单一 cookies
         ]
@@ -99,6 +127,10 @@ class Cloud115Service:
             if cookies_json:
                 try:
                     cookies = json.loads(cookies_json)
+                    # 如果是 token 格式，跳过（上面已经尝试过）
+                    if 'access_token' in cookies or 'refresh_token' in cookies:
+                        continue
+                    
                     if hasattr(self.p115client, 'P115Client'):
                         client = self.p115client.P115Client(cookies=cookies)
                         logger.info(f'p115client 已使用 {source_name} 凭证初始化')
