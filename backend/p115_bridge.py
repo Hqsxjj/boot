@@ -52,54 +52,20 @@ class P115Service:
     def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
         """
         下载二维码图片并转换为 base64 data URI。
-        优先使用本地 qrcode 库生成（更快更可靠），失败时再尝试下载。
+        优先使用115官方API下载（确保正确格式），本地生成作为备选。
         
         Args:
             qrcode_url: 二维码图片URL
-            uid: 用于本地生成二维码的UID
+            uid: UID（用于备选方案）
         
         Returns:
             base64 data URI 格式的图片数据
         """
-        logger.info(f"Generating QR code for uid: {uid[:16] if uid else 'N/A'}...")
+        logger.info(f"Fetching QR code for uid: {uid[:16] if uid else 'N/A'}...")
         
-        # 方案1 (优先): 使用本地 qrcode 库生成（更快更可靠）
-        if uid:
-            try:
-                import qrcode
-                from io import BytesIO
-                
-                # 115扫码登录的内容格式 - 直接是 uid
-                qr_content = uid
-                
-                qr = qrcode.QRCode(
-                    version=1,
-                    error_correction=qrcode.constants.ERROR_CORRECT_L,
-                    box_size=10,
-                    border=4,
-                )
-                qr.add_data(qr_content)
-                qr.make(fit=True)
-                
-                img = qr.make_image(fill_color="black", back_color="white")
-                buffer = BytesIO()
-                img.save(buffer, format='PNG')
-                buffer.seek(0)
-                
-                img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-                data_uri = f"data:image/png;base64,{img_base64}"
-                
-                logger.info(f"QR code generated locally using qrcode library for uid: {uid[:8]}...")
-                return data_uri
-                
-            except ImportError:
-                logger.warning("qrcode library not installed, falling back to URL download")
-            except Exception as e:
-                logger.warning(f"Failed to generate QR code locally: {str(e)}, falling back to URL download")
-        
-        # 方案2: 尝试从115 API下载
+        # 方案1 (优先): 从115官方API下载二维码图片
         if qrcode_url:
-            for attempt in range(2):  # 最多重试 2 次
+            for attempt in range(3):  # 最多重试 3 次
                 try:
                     headers = {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -107,8 +73,8 @@ class P115Service:
                         'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
                     }
                     
-                    # 使用较短的超时（5秒），避免长时间等待
-                    response = requests.get(qrcode_url, headers=headers, timeout=5)
+                    # 增加超时时间到10秒
+                    response = requests.get(qrcode_url, headers=headers, timeout=10)
                     response.raise_for_status()
                     
                     # 检查响应内容是否是有效的图片
@@ -127,13 +93,57 @@ class P115Service:
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1}: Failed to fetch QR code from 115 API: {str(e)}")
         
-        # 方案3: 使用第三方二维码生成服务 (最后备选)
+        # 方案2 (备选): 使用第三方二维码生成服务
         if uid:
-            fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={uid}"
-            logger.info(f"Using third-party QR service as fallback")
-            return fallback_url
+            # 使用115扫码需要的正确内容格式
+            qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+            fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={requests.utils.quote(qr_content)}"
+            
+            try:
+                response = requests.get(fallback_url, timeout=10)
+                if response.status_code == 200 and len(response.content) > 100:
+                    img_base64 = base64.b64encode(response.content).decode('utf-8')
+                    data_uri = f"data:image/png;base64,{img_base64}"
+                    logger.info(f"QR code fetched from third-party service")
+                    return data_uri
+            except Exception as e:
+                logger.warning(f"Third-party QR service failed: {str(e)}")
         
-        # 最后返回原始URL
+        # 方案3 (最后备选): 本地生成二维码
+        if uid:
+            try:
+                import qrcode
+                from io import BytesIO
+                
+                # 115扫码登录的内容格式
+                qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+                
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(qr_content)
+                qr.make(fit=True)
+                
+                img = qr.make_image(fill_color="black", back_color="white")
+                buffer = BytesIO()
+                img.save(buffer, format='PNG')
+                buffer.seek(0)
+                
+                img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+                data_uri = f"data:image/png;base64,{img_base64}"
+                
+                logger.info(f"QR code generated locally for uid: {uid[:8]}...")
+                return data_uri
+                
+            except ImportError:
+                logger.warning("qrcode library not installed")
+            except Exception as e:
+                logger.warning(f"Failed to generate QR code locally: {str(e)}")
+        
+        # 最后返回原始URL（让前端尝试直接加载）
         logger.warning("All QR code generation methods failed, returning original URL")
         return qrcode_url
     
