@@ -668,16 +668,15 @@ class Cloud123Service:
             except Exception as e:
                 logger.warning(f"p123client list 错误: {e}, 正在回退到 REST API")
         
-        # 回退到 REST API
+        # 回退到 REST API - 使用官方文档规定的参数格式
         try:
+            # 根据官方文档：只需要 parentFileId 和 limit
             params = {
                 'parentFileId': int(dir_id),
-                'limit': 100,
-                'Page': 1,
-                'orderBy': 'file_name',
-                'orderDirection': 'asc'
+                'limit': 100
             }
             
+            logger.info(f'123云盘 REST API 请求: /api/v2/file/list, params={params}')
             result = self._make_api_request('GET', '/api/v2/file/list', params=params)
             
             if not result.get('success'):
