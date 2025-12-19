@@ -64,6 +64,7 @@ export const CloudOrganizeView: React.FC = () => {
    const [qrImage, setQrImage] = useState<string>('');
    const [qrSessionId, setQrSessionId] = useState<string>('');
    const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
+   const qrRefreshCountRef = useRef<number>(0);  // 自动刷新计数器，最多刷新10次
 
    useEffect(() => {
       fetchConfig();
@@ -289,6 +290,8 @@ export const CloudOrganizeView: React.FC = () => {
       setQrState('loading');
       setQrImage('');
       setQrSessionId('');
+      // 手动触发时重置刷新计数器
+      qrRefreshCountRef.current = 0;
 
       try {
          // 2. 补丁：区分 qrcode / open_app 调用参数
@@ -326,9 +329,21 @@ export const CloudOrganizeView: React.FC = () => {
                      setToast('登录成功，Cookie 已自动保存');
                      break;
                   case 'expired':
+                     stopQrCheck();
+                     // 自动刷新二维码（最多10次，约30分钟）
+                     if (qrRefreshCountRef.current < 10) {
+                        qrRefreshCountRef.current += 1;
+                        console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/10)...`);
+                        setQrState('loading');
+                        generateRealQr();
+                     } else {
+                        setQrState('expired');
+                        setToast('二维码已多次过期，请手动刷新');
+                     }
+                     break;
                   case 'error':
                      stopQrCheck();
-                     setQrState(status);
+                     setQrState('error');
                      break;
                   default:
                      break;
