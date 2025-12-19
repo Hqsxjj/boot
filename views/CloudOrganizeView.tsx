@@ -124,11 +124,14 @@ export const CloudOrganizeView: React.FC = () => {
 
    const AI_PRESETS: Record<string, { baseUrl: string; model: string }> = {
       openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-      gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-1.5-flash' },
+      gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash-exp' },
       deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
       zhipu: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
       moonshot: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-      groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama3-70b-8192' },
+      groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
+      qwen: { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo-latest' },
+      siliconflow: { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
+      openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemini-2.0-flash-exp:free' },
       custom: { baseUrl: '', model: '' }
    };
 
@@ -879,11 +882,14 @@ export const CloudOrganizeView: React.FC = () => {
                                        className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm backdrop-blur-sm"
                                     >
                                        <option value="openai">ChatGPT (OpenAI)</option>
-                                       <option value="gemini">Google Gemini</option>
+                                       <option value="gemini">Google Gemini 🆓</option>
                                        <option value="deepseek">DeepSeek 深度求索</option>
-                                       <option value="zhipu">智谱 GLM (清华)</option>
+                                       <option value="zhipu">智谱 GLM 🆓</option>
                                        <option value="moonshot">月之暗面 (Kimi)</option>
-                                       <option value="groq">Groq (极速推理)</option>
+                                       <option value="groq">Groq (极速推理) 🆓</option>
+                                       <option value="qwen">通义千问 (阿里)</option>
+                                       <option value="siliconflow">SiliconFlow 硅基流动 🆓</option>
+                                       <option value="openrouter">OpenRouter 🆓</option>
                                        <option value="custom">自定义 (OpenAI 兼容)</option>
                                     </select>
                                  </div>
