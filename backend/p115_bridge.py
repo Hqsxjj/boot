@@ -284,8 +284,8 @@ class P115Service:
         
         # 方案2 (备选): 使用第三方二维码生成服务
         if uid:
-            # 使用115扫码需要的正确内容格式
-            qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+            # 正确的115扫码URL格式 (从p115client.login_qrcode_token返回的qrcode字段学到的)
+            qr_content = f"https://115.com/scan/dg-{uid}"
             fallback_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={requests.utils.quote(qr_content)}"
             
             try:
@@ -293,7 +293,7 @@ class P115Service:
                 if response.status_code == 200 and len(response.content) > 100:
                     img_base64 = base64.b64encode(response.content).decode('utf-8')
                     data_uri = f"data:image/png;base64,{img_base64}"
-                    logger.info(f"QR code fetched from third-party service")
+                    logger.info(f"QR code fetched from third-party service with correct 115 scan URL")
                     return data_uri
             except Exception as e:
                 logger.warning(f"Third-party QR service failed: {str(e)}")
@@ -304,8 +304,8 @@ class P115Service:
                 import qrcode
                 from io import BytesIO
                 
-                # 115扫码登录的内容格式
-                qr_content = f"https://qrcodeapi.115.com/api/1.0/web/1.0/token?uid={uid}"
+                # 115扫码登录的正确URL格式
+                qr_content = f"https://115.com/scan/dg-{uid}"
                 
                 qr = qrcode.QRCode(
                     version=1,
@@ -324,7 +324,7 @@ class P115Service:
                 img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
                 data_uri = f"data:image/png;base64,{img_base64}"
                 
-                logger.info(f"QR code generated locally for uid: {uid[:8]}...")
+                logger.info(f"QR code generated locally for uid: {uid[:8]}... with correct 115 scan URL")
                 return data_uri
                 
             except ImportError:
@@ -454,20 +454,21 @@ class P115Service:
                         'success': False
                     }
                 
-                # 新版 p115client 可能直接返回 image data 或 url
-                # 如有 qrcode 字段且包含 http，则直接使用
-                # 否则构造 qrcodeapi
-                if qr_data.get('qrcode') and str(qr_data.get('qrcode')).startswith('http'):
-                    qrcode_url = qr_data.get('qrcode')
-                else:
-                    qrcode_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
+                # qr_data['qrcode'] 是扫码内容URL (如 https://115.com/scan/dg-{uid})
+                # qrcodeapi.115.com 是获取QR图片的API
+                # 保存扫码内容URL用于备选方案
+                scan_url = qr_data.get('qrcode', f"https://115.com/scan/dg-{uid}")
                 
-                logger.info(f"QR code generated successfully: uid={uid[:8]}...")
+                # 使用官方API获取QR图片
+                qrcode_image_url = f"https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode?uid={uid}"
+                
+                logger.info(f"QR login started: uid={uid[:8]}..., scan_url={scan_url[:40]}...")
                 
                 # Cache session info - 普通扫码模式
                 self._session_cache[session_id] = {
                     'uid': uid,
                     'qr_data': qr_data,
+                    'scan_url': scan_url,  # 保存扫码内容URL
                     'login_method': login_method,
                     'login_app': login_app,
                     'app_id': app_id,  # 可能为 None，普通模式不需要
@@ -476,7 +477,7 @@ class P115Service:
                 }
                 
                 # 代理下载二维码并转 base64（传递uid用于本地生成备选）
-                qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_url, uid)
+                qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_image_url, uid)
                 
                 return {
                     'sessionId': session_id,
