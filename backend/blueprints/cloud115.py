@@ -94,6 +94,14 @@ def poll_login_status(session_id: str):
         logger.info(f'poll_login_status: session={session_id}, result.status={result.get("status")}, success={result.get("success")}')
         
         if not result.get('success'):
+            # Allow frontend to handle expired state gracefully
+            if result.get('status') == 'expired':
+                return jsonify({
+                    'success': False,
+                    'error': result.get('error', '二维码已过期'),
+                    'status': 'expired'
+                }), 200
+
             logger.warning(f'poll_login_status 失败: {result.get("error")}')
             return jsonify({
                 'success': False,
