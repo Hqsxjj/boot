@@ -370,13 +370,15 @@ class EmbyService:
                     
                     if tmdb_api_key and tmdb_id:
                         try:
+                            proxies = self._get_proxy_config()
                             tmdb_season_response = requests.get(
                                 f'https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}',
                                 params={
                                     'api_key': tmdb_api_key,
                                     'language': tmdb_lang
                                 },
-                                timeout=10
+                                proxies=proxies,
+                                timeout=20
                             )
                             
                             if tmdb_season_response.status_code == 200:
@@ -391,8 +393,11 @@ class EmbyService:
                                 # 使用 TMDB 海报 (如果 Emby 没有)
                                 if not poster_path and tmdb_data.get('poster_path'):
                                     poster_path = f"https://image.tmdb.org/t/p/w200{tmdb_data['poster_path']}"
+                            else:
+                                task_log.error(f"TMDB请求失败: {tmdb_season_response.status_code} for {series_name} S{season_number}")
                         except Exception as tmdb_err:
                             # TMDB 查询失败，使用本地数据
+                            task_log.error(f"TMDB连接错误: {str(tmdb_err)} for {series_name} S{season_number}")
                             pass
                     
                     # 只添加有缺集的记录
