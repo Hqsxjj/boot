@@ -310,15 +310,16 @@ def search_resources():
         search_source = 'none'
         error_message = None
         
-        # 1. 首先尝试盘搜 API (不需要代理)
+        # 1. 首先尝试盘搜 API (不需要代理) - 只搜索 115 和 123 网盘
         try:
             pan_service = get_pan_search_service()
-            pan_result = pan_service.search(query)
+            # 只搜索 115 和 123 网盘资源
+            pan_result = pan_service.search(query, cloud_types=['115', '123'])
             
             if pan_result.get('success') and pan_result.get('data'):
                 results = pan_result.get('data', [])
                 search_source = 'pansou'
-                logger.info(f"盘搜 API 搜索成功，返回 {len(results)} 个结果")
+                logger.info(f"盘搜 API (115/123) 搜索成功，返回 {len(results)} 个结果")
         except Exception as e:
             logger.warning(f"盘搜 API 搜索失败: {e}")
             error_message = f"盘搜服务暂时不可用: {str(e)}"

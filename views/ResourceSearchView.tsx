@@ -41,6 +41,7 @@ interface Resource {
     source?: string;
     share_link?: string | null;
     share_code?: string | null;
+    cloud_type?: string;
 }
 
 export const ResourceSearchView: React.FC = () => {
@@ -323,11 +324,17 @@ const ResourceCard: React.FC<{
                     {resource.type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
                 </div>
 
-                {/* Rating */}
                 {resource.rating && (
                     <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[10px] font-bold text-amber-400">
                         <Star size={10} fill="currentColor" />
                         {resource.rating.toFixed(1)}
+                    </div>
+                )}
+
+                {/* Cloud Source Badge */}
+                {resource.cloud_type && (
+                    <div className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-sm font-mono tracking-tighter ${resource.cloud_type === '115' ? 'bg-orange-500/90' : resource.cloud_type === '123' ? 'bg-blue-500/90' : 'bg-slate-500/90'}`}>
+                        {resource.cloud_type === '115' ? '115' : resource.cloud_type === '123' ? '123' : resource.cloud_type}
                     </div>
                 )}
             </div>
