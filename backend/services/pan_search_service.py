@@ -138,6 +138,10 @@ class PanSearchService:
                 continue
                 
             for item in items:
+                images = item.get('images', [])
+                # 使用第一张图片作为海报，如果没有则使用默认占位图
+                poster_url = images[0] if images else 'https://via.placeholder.com/300x450?text=No+Poster'
+                
                 result = {
                     'cloud_type': cloud_type,
                     'title': item.get('note', ''),
@@ -145,7 +149,15 @@ class PanSearchService:
                     'password': item.get('password', ''),
                     'datetime': item.get('datetime', ''),
                     'source': item.get('source', ''),
-                    'images': item.get('images', [])
+                    'images': images,
+                    'poster_url': poster_url,
+                    # 添加前端期望的其他字段
+                    'id': str(hash(item.get('url', '') + item.get('note', '')))[-8:],
+                    'year': 2024,  # 默认年份
+                    'type': 'movie',  # 默认类型
+                    'quality': '未知',
+                    'share_link': item.get('url', ''),
+                    'share_code': item.get('password', '')
                 }
                 results.append(result)
         
