@@ -64,8 +64,13 @@ def oauth_login():
                 'error': 'clientId 和 clientSecret 不能为空'
             }), 400
         
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'123 OAuth login attempt with clientId: {client_id[:8]}...')
+        
         # 验证 OAuth 凭证：尝试获取 access token
         import requests as http_requests
+        from datetime import datetime, timedelta
         try:
             url = "https://open-api.123pan.com/api/v1/access_token"
             payload = {
@@ -77,16 +82,37 @@ def oauth_login():
                 "Platform": "open_platform"
             }
             
+            logger.info(f'Requesting access token from {url}')
             response = http_requests.post(url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
+            
+            logger.info(f'123 API response status: {response.status_code}')
+            logger.info(f'123 API response body: {response.text[:500]}')
             
             result = response.json()
             if result.get('code') != 0:
+                error_msg = result.get('message', '未知错误')
+                logger.warning(f'123 OAuth failed: code={result.get("code")}, message={error_msg}')
                 return jsonify({
                     'success': False,
-                    'error': f"OAuth 凭证验证失败: {result.get('message', '未知错误')}"
+                    'error': f"OAuth 凭证验证失败: {error_msg}"
                 }), 400
+            
+            # 提取token数据
+            token_data = result.get('data', {})
+            access_token = token_data.get('accessToken')
+            expires_in = token_data.get('expiredAt', 7200)  # 默认2小时
+            
+            if not access_token:
+                logger.warning('123 OAuth: no access token in response')
+                return jsonify({
+                    'success': False,
+                    'error': '未能获取 access token'
+                }), 400
+            
+            logger.info(f'123 OAuth success: got access token, expires_in={expires_in}')
+            
         except http_requests.RequestException as e:
+            logger.error(f'123 OAuth request failed: {e}')
             return jsonify({
                 'success': False,
                 'error': f'OAuth 凭证验证失败: {str(e)}'
@@ -99,10 +125,17 @@ def oauth_login():
         }
         _secret_store.set_secret('cloud123_oauth_credentials', json.dumps(credentials))
         
+        # 保存 access token
+        token_info = {
+            'access_token': access_token,
+            'expires_at': (datetime.now() + timedelta(seconds=expires_in - 300)).isoformat()  # 提前5分钟过期
+        }
+        _secret_store.set_secret('cloud123_token', json.dumps(token_info))
+        
         # Store metadata
         metadata = {
             'login_method': 'oauth',
-            'logged_in_at': __import__('datetime').datetime.now().isoformat()
+            'logged_in_at': datetime.now().isoformat()
         }
         _secret_store.set_secret('cloud123_session_metadata', json.dumps(metadata))
         
@@ -113,6 +146,8 @@ def oauth_login():
             }
         }), 200
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'123 OAuth exception: {e}')
         return jsonify({
             'success': False,
             'error': f'保存 OAuth 凭证失败: {str(e)}'
