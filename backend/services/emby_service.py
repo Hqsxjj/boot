@@ -1,8 +1,12 @@
 import requests
 import time
+import urllib3
 from persistence.store import DataStore
 from typing import Dict, Any, List
 from utils.logger import TaskLogger
+
+# 禁用 SSL 警告（用于自签名证书）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class EmbyService:
@@ -19,6 +23,31 @@ class EmbyService:
             return config.get('emby', {})
         except Exception:
             return {}
+    
+    def _should_verify_ssl(self, url: str) -> bool:
+        """
+        判断是否需要验证 SSL。
+        对于 https 连接，返回 False 以跳过验证（支持自签名证书）。
+        """
+        return not url.startswith('https://')
+    
+    def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """
+        统一的请求方法，自动处理 SSL 验证。
+        """
+        # 对 https 连接跳过 SSL 验证
+        if 'verify' not in kwargs:
+            kwargs['verify'] = self._should_verify_ssl(url)
+        
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = self.timeout
+        
+        if method.upper() == 'GET':
+            return requests.get(url, **kwargs)
+        elif method.upper() == 'POST':
+            return requests.post(url, **kwargs)
+        else:
+            return requests.request(method, url, **kwargs)
     
     def test_connection(self) -> Dict[str, Any]:
         """Test connection to Emby server."""
@@ -40,10 +69,10 @@ class EmbyService:
             start_time = time.time()
             
             # Test connection by making a simple API call
-            response = requests.get(
+            response = self._make_request(
+                'GET',
                 f'{server_url}/emby/System/Info',
-                params={'api_key': api_key},
-                timeout=self.timeout
+                params={'api_key': api_key}
             )
             
             latency = int((time.time() - start_time) * 1000)
@@ -66,11 +95,19 @@ class EmbyService:
                 'latency': 0,
                 'msg': '连接超时'
             }
-        except requests.ConnectionError:
+        except requests.ConnectionError as e:
+            error_msg = str(e)
+            # 提供更友好的错误信息
+            if 'SSL' in error_msg or 'certificate' in error_msg.lower():
+                return {
+                    'success': False,
+                    'latency': 0,
+                    'msg': 'SSL 证书验证失败，请检查 https 配置或使用 http'
+                }
             return {
                 'success': False,
                 'latency': 0,
-                'msg': '拒绝连接'
+                'msg': '拒绝连接，请检查服务器地址和端口'
             }
         except Exception as e:
             return {

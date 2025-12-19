@@ -84,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-100/50 dark:bg-black/20 border border-slate-200/50 dark:border-white/5 overflow-hidden backdrop-blur-sm">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse shrink-0"></div>
             <div className="flex flex-col whitespace-nowrap">
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">端口: 12808</span>
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">端口: 18080</span>
             </div>
           </div>
         )}
