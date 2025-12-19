@@ -330,12 +330,13 @@ export const CloudOrganizeView: React.FC = () => {
                      break;
                   case 'expired':
                      stopQrCheck();
-                     // 自动刷新二维码（最多10次，约30分钟）
-                     if (qrRefreshCountRef.current < 10) {
+                     // 自动刷新二维码（循环次数增加到 500 次，确保足够时间）
+                     if (qrRefreshCountRef.current < 500) {
                         qrRefreshCountRef.current += 1;
-                        console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/10)...`);
+                        console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/500)...`);
                         setQrState('loading');
-                        generateRealQr();
+                        // 延迟 500ms 重新获取，避免频繁请求
+                        setTimeout(() => generateRealQr(), 500);
                      } else {
                         setQrState('expired');
                         setToast('二维码已多次过期，请手动刷新');
