@@ -554,16 +554,32 @@ class Cloud123Service:
         p123_client = self._get_p123_client()
         if p123_client:
             try:
-                # p123client 使用 open 接口
-                resp = p123_client.open_fs_file_list({
+                # p123client 可能有多种 API 方法名，按优先级尝试
+                # 1. open_fs_file_list (open接口)
+                # 2. fs_file_list (文件系统接口)  
+                # 3. file_list (通用接口)
+                resp = None
+                api_payload = {
                     'parentFileId': int(dir_id),
                     'limit': 100,
                     'Page': 1,
                     'orderBy': 'file_name',
                     'orderDirection': 'asc'
-                })
+                }
                 
-                if resp.get('code') == 0:
+                # 尝试不同的 API 方法
+                for method_name in ['open_fs_file_list', 'fs_file_list', 'file_list']:
+                    if hasattr(p123_client, method_name):
+                        method = getattr(p123_client, method_name)
+                        try:
+                            resp = method(api_payload)
+                            logger.info(f'使用 p123client.{method_name}() 成功')
+                            break
+                        except Exception as method_err:
+                            logger.debug(f'p123client.{method_name}() 失败: {method_err}')
+                            continue
+                
+                if resp and resp.get('code') == 0:
                     api_data = resp.get('data', {})
                     file_list = api_data.get('fileList', []) if isinstance(api_data, dict) else []
                     
@@ -582,12 +598,15 @@ class Cloud123Service:
                                 'date': update_time[:10] if update_time else datetime.now().strftime('%Y-%m-%d')
                             })
                     
+                    task_log.success(f'获取到 {len(entries)} 个项目')
                     return {
                         'success': True,
                         'data': entries
                     }
-                else:
+                elif resp:
                     logger.warning(f"p123client list 失败: {resp.get('message')}, 正在回退到 REST API")
+                else:
+                    logger.warning("p123client 没有可用的文件列表方法, 正在回退到 REST API")
             except Exception as e:
                 logger.warning(f"p123client list 错误: {e}, 正在回退到 REST API")
         

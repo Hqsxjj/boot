@@ -187,34 +187,55 @@ class Cloud115Service:
         try:
             client = self._get_authenticated_client()
             
-            # Get directory listing
-            if hasattr(client, 'fs'):
-                # Use file system interface
-                entries = client.fs.listdir(cid)
-            elif hasattr(client, 'list_files'):
-                entries = client.list_files(cid)
-            else:
-                # Fallback: return empty list if method not available
-                return {
-                    'success': True,
-                    'data': []
-                }
+            # 使用正确的 p115client API: fs_files
+            # 参考: https://p115client.readthedocs.io/
+            try:
+                # p115client 使用 fs_files 方法获取目录内容
+                # show_dir=1 表示同时显示目录
+                response = client.fs_files({"cid": int(cid), "show_dir": 1, "limit": 100})
+                
+                # 检查响应格式
+                if isinstance(response, dict):
+                    if response.get('state', True) == False:
+                        error_msg = response.get('error', '获取目录失败')
+                        logger.warning(f'fs_files 返回错误: {error_msg}')
+                        return {
+                            'success': False,
+                            'error': error_msg
+                        }
+                    # 提取文件列表 - p115client 返回格式: {'data': [...], 'count': N, ...}
+                    entries = response.get('data', [])
+                else:
+                    entries = list(response) if response else []
+            except AttributeError:
+                # 如果 fs_files 不存在，尝试其他方法
+                logger.warning('fs_files 方法不存在，尝试备用方案')
+                if hasattr(client, 'fs') and hasattr(client.fs, 'listdir'):
+                    entries = client.fs.listdir(cid)
+                elif hasattr(client, 'list_files'):
+                    entries = client.list_files(cid)
+                else:
+                    return {
+                        'success': True,
+                        'data': []
+                    }
             
             # Transform entries to match frontend format
             result = []
             for entry in entries:
                 # Extract fields with various possible attribute names (Support both dict and object)
                 if isinstance(entry, dict):
-                    entry_id = entry.get('id') or entry.get('fid') or entry.get('cid') or entry.get('file_id')
-                    entry_name = entry.get('name') or entry.get('n')
-                    # Check for directory: p115 usually uses 'ico'='folder' or explicit is_directory
-                    is_directory = entry.get('is_directory') or entry.get('ico') == 'folder' or entry.get('file_type') == 0
-                    timestamp = entry.get('timestamp') or entry.get('t') or entry.get('time')
+                    # p115client fs_files 返回字段: fid/cid, n/name, ico, t/te
+                    entry_id = entry.get('cid') or entry.get('fid') or entry.get('id') or entry.get('file_id')
+                    entry_name = entry.get('n') or entry.get('name')
+                    # Check for directory: p115 uses 'ico'='folder' or file_type判断
+                    is_directory = entry.get('ico') == 'folder' or entry.get('file_type') == 0 or entry.get('is_directory')
+                    timestamp = entry.get('te') or entry.get('t') or entry.get('timestamp') or entry.get('time')
                 else:
-                    entry_id = getattr(entry, 'id', None) or getattr(entry, 'fid', None) or getattr(entry, 'cid', None)
-                    entry_name = getattr(entry, 'name', None) or getattr(entry, 'n', None)
-                    is_directory = getattr(entry, 'is_directory', None) or getattr(entry, 'ico', None) == 'folder'
-                    timestamp = getattr(entry, 'timestamp', None) or getattr(entry, 't', None)
+                    entry_id = getattr(entry, 'cid', None) or getattr(entry, 'fid', None) or getattr(entry, 'id', None)
+                    entry_name = getattr(entry, 'n', None) or getattr(entry, 'name', None)
+                    is_directory = getattr(entry, 'ico', None) == 'folder' or getattr(entry, 'is_directory', None)
+                    timestamp = getattr(entry, 'te', None) or getattr(entry, 't', None) or getattr(entry, 'timestamp', None)
                 
                 # Get timestamp
                 if timestamp:
@@ -236,6 +257,7 @@ class Cloud115Service:
                         'date': date_str
                     })
             
+            task_log.success(f'获取到 {len(result)} 个项目')
             return {
                 'success': True,
                 'data': result
@@ -243,12 +265,14 @@ class Cloud115Service:
         
         except (ImportError, ValueError) as e:
             logger.warning(f'列出目录失败: {str(e)}')
+            task_log.failure(str(e))
             return {
                 'success': False,
                 'error': str(e)
             }
         except Exception as e:
             logger.error(f'列出目录 {cid} 失败: {str(e)}')
+            task_log.failure(str(e))
             return {
                 'success': False,
                 'error': f'列出目录失败: {str(e)}'
