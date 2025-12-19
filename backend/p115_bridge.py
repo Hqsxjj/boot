@@ -169,7 +169,7 @@ class P115Service:
             
             # 区分两种登录逻辑
             if login_method == 'open_app':
-                # 第三方应用模式：使用 login_qrcode_token_open
+                # 第三方应用模式：使用 P115OpenClient
                 if not app_id:
                     return {
                         'error': 'App ID is required for open_app login method',
@@ -178,31 +178,41 @@ class P115Service:
                 
                 actual_app_id = int(app_id) if isinstance(app_id, str) and app_id.isdigit() else app_id
                 if isinstance(actual_app_id, str):
-                    # app_id 应该是数字，如果仍是字符串则无效
                     return {
                         'error': f'Invalid app_id: {app_id}. Must be a numeric ID.',
                         'success': False
                     }
-                logger.info(f"open_app mode: app_id={app_id}, actual_app_id={actual_app_id}, type={type(actual_app_id)}")
+                logger.info(f"open_app mode: app_id={app_id}, actual_app_id={actual_app_id}")
                 
-                # 使用 login_qrcode_token_open 获取第三方应用二维码
+                # 使用 P115OpenClient.login_qrcode_token_open 获取二维码
                 try:
-                    qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
-                    logger.info(f"open_app qr_token_result: state={qr_token_result.get('state')}, code={qr_token_result.get('code')}")
+                    # 根据 p115client 文档，使用类方法获取 token
+                    if hasattr(p115client, 'P115OpenClient'):
+                        qr_token_result = p115client.P115OpenClient.login_qrcode_token_open(actual_app_id)
+                    else:
+                        qr_token_result = p115client.P115Client.login_qrcode_token_open(actual_app_id)
+                    
+                    logger.info(f"open_app qr_token_result: {qr_token_result}")
                 except Exception as e:
                     logger.error(f"login_qrcode_token_open exception: {str(e)}")
-                    raise
-                
-                if qr_token_result.get('state') != 1:
                     return {
-                        'error': f"Failed to get QR token: {qr_token_result.get('message', qr_token_result.get('error', 'Unknown error'))}",
+                        'error': f'获取第三方应用二维码失败: {str(e)}',
                         'success': False
                     }
                 
-                qr_data = qr_token_result.get('data', {})
-                qrcode_url = qr_data.get('qrcode', '')
+                # 检查返回结果
+                if isinstance(qr_token_result, dict):
+                    if qr_token_result.get('state') != 1 and qr_token_result.get('code') != 0:
+                        error_msg = qr_token_result.get('message') or qr_token_result.get('error') or '未知错误'
+                        return {
+                            'error': f"获取二维码失败: {error_msg}",
+                            'success': False
+                        }
+                    qr_data = qr_token_result.get('data', {})
+                else:
+                    qr_data = qr_token_result if qr_token_result else {}
                 
-                # 如果返回数据包含 uid，也存储它
+                qrcode_url = qr_data.get('qrcode', '')
                 uid = qr_data.get('uid', '')
                 
                 # Cache session info - open_app 模式
@@ -216,7 +226,7 @@ class P115Service:
                     'status': 'pending'
                 }
                 
-                # 代理下载二维码并转 base64（传递uid用于本地生成备选）
+                # 获取二维码图片
                 qrcode_base64 = self._fetch_qrcode_as_base64(qrcode_url, uid) if qrcode_url else ''
                 
                 return {
