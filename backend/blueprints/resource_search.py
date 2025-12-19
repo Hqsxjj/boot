@@ -284,16 +284,21 @@ def _get_fallback_trending() -> list:
 @require_auth
 def search_resources():
     """
-    Search for 115 share links using AI.
+    Search for cloud drive share links.
+    
+    优先使用盘搜 API (pan.jivon.de)，AI 大模型作为辅助。
+    这样没有代理的用户也可以搜索资源。
     
     Request body:
     {
-        "query": "电影/电视剧名称"
+        "query": "电影/电视剧名称",
+        "use_ai": false  // 可选，是否同时使用 AI 辅助搜索
     }
     """
     try:
         data = request.get_json() or {}
         query = data.get('query', '').strip()
+        use_ai = data.get('use_ai', False)
         
         if not query:
             return jsonify({
@@ -301,52 +306,66 @@ def search_resources():
                 'error': '请输入搜索关键词'
             }), 400
         
-        ai_config = _get_ai_config()
+        results = []
+        search_source = 'none'
+        error_message = None
         
-        if not ai_config:
-            # Fall back to mock search results if AI not configured
-            logger.info("AI 未配置，使用模拟搜索结果")
-            mock_results = [
-                {
-                    "title": query,
-                    "year": 2024,
-                    "type": "movie",
-                    "quality": "4K",
-                    "source": "搜索结果",
-                    "share_link": None,
-                    "poster_url": "https://image.tmdb.org/t/p/w500/placeholder.jpg",
-                    "description": f"正在搜索 '{query}' 的资源，请配置 AI 以获取真实搜索结果"
-                }
-            ]
+        # 1. 首先尝试盘搜 API (不需要代理)
+        try:
+            pan_service = get_pan_search_service()
+            pan_result = pan_service.search(query)
+            
+            if pan_result.get('success') and pan_result.get('data'):
+                results = pan_result.get('data', [])
+                search_source = 'pansou'
+                logger.info(f"盘搜 API 搜索成功，返回 {len(results)} 个结果")
+        except Exception as e:
+            logger.warning(f"盘搜 API 搜索失败: {e}")
+            error_message = f"盘搜服务暂时不可用: {str(e)}"
+        
+        # 2. 如果盘搜没有结果或用户要求，尝试 AI 辅助搜索
+        ai_results = []
+        ai_enabled = False
+        
+        if use_ai or (len(results) == 0):
+            ai_config = _get_ai_config()
+            if ai_config:
+                ai_enabled = True
+                try:
+                    ai_result = _call_ai_search(query, ai_config)
+                    if ai_result.get('success') and ai_result.get('data'):
+                        ai_results = ai_result.get('data', [])
+                        if search_source == 'none':
+                            search_source = 'ai'
+                        else:
+                            search_source = 'pansou+ai'
+                        logger.info(f"AI 搜索成功，返回 {len(ai_results)} 个结果")
+                except Exception as e:
+                    logger.warning(f"AI 搜索失败: {e}")
+        
+        # 3. 合并结果 (盘搜结果优先)
+        all_results = results + ai_results
+        
+        # 4. 如果都没有结果，返回友好提示
+        if not all_results:
             return jsonify({
                 'success': True,
-                'data': mock_results,
-                'ai_enabled': False,
-                'message': 'AI 未配置，显示示例结果。请在网盘整理页面配置 AI 设置。'
+                'data': [],
+                'message': error_message or f"未找到 '{query}' 相关资源，请尝试其他关键词",
+                'source': search_source,
+                'ai_enabled': ai_enabled
             })
-        
-        # Perform AI search
-        search_result = _call_ai_search(query, ai_config)
-        
-        if not search_result.get('success'):
-            # AI 调用失败，返回错误信息
-            error_msg = search_result.get('error', '未知错误')
-            logger.error(f"AI 搜索失败: {error_msg}")
-            return jsonify({
-                'success': False,
-                'error': error_msg,
-                'ai_enabled': True
-            }), 400
         
         return jsonify({
             'success': True,
-            'data': search_result.get('data', []),
-            'ai_enabled': True,
-            'message': search_result.get('message')
+            'data': all_results,
+            'source': search_source,
+            'ai_enabled': ai_enabled,
+            'total': len(all_results)
         })
         
     except Exception as e:
-        logger.error(f"AI 搜索失败: {e}")
+        logger.error(f"资源搜索失败: {e}")
         return jsonify({
             'success': False,
             'error': f'搜索失败: {str(e)}'
