@@ -21,6 +21,11 @@ services:
       - PGID=1000
       # 设置加密密钥 (如果不设置会自动生成)
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+      # 代理配置 (通过宿主机 Clash 访问外部网络)
+      # Windows Docker Desktop 使用 host.docker.internal 访问宿主机
+      - HTTP_PROXY=http://host.docker.internal:7890
+      - HTTPS_PROXY=http://host.docker.internal:7890
+      - NO_PROXY=localhost,127.0.0.1
     # 资源限制建议 (可选)
     # deploy:
     #   resources:

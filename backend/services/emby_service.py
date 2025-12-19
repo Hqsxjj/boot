@@ -30,6 +30,58 @@ class EmbyService:
         except Exception:
             return {}
     
+    def _get_proxy_config(self) -> Dict[str, str]:
+        """
+        获取代理配置。
+        优先级：
+        1. 环境变量 (HTTP_PROXY, HTTPS_PROXY) - 用于 Docker 容器
+        2. 配置文件中的代理设置
+        返回 requests 库使用的 proxies 字典格式。
+        """
+        import os
+        
+        # 首先检查环境变量（Docker 容器场景）
+        http_proxy = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+        https_proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
+        
+        if http_proxy or https_proxy:
+            proxies = {}
+            if http_proxy:
+                proxies['http'] = http_proxy
+            if https_proxy:
+                proxies['https'] = https_proxy
+            return proxies
+        
+        # 然后检查配置文件中的代理设置
+        try:
+            config = self.store.get_config()
+            proxy_config = config.get('proxy', {})
+            
+            if not proxy_config.get('enabled', False):
+                return {}
+            
+            proxy_type = proxy_config.get('type', 'http').lower()
+            host = proxy_config.get('host', '').strip()
+            port = proxy_config.get('port', '').strip()
+            username = proxy_config.get('username', '').strip()
+            password = proxy_config.get('password', '').strip()
+            
+            if not host or not port:
+                return {}
+            
+            # 构建代理 URL
+            if username and password:
+                proxy_url = f"{proxy_type}://{username}:{password}@{host}:{port}"
+            else:
+                proxy_url = f"{proxy_type}://{host}:{port}"
+            
+            return {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+        except Exception:
+            return {}
+    
     def _should_verify_ssl(self, url: str) -> bool:
         """
         判断是否需要验证 SSL。
@@ -39,8 +91,8 @@ class EmbyService:
     
     def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
         """
-        统一的请求方法，自动处理 SSL 验证和默认请求头。
-        支持通过反代访问 Emby 服务器。
+        统一的请求方法，自动处理 SSL 验证、代理和默认请求头。
+        支持通过反代或代理访问 Emby 服务器。
         """
         # 对 https 连接跳过 SSL 验证（支持自签名证书和反代）
         if 'verify' not in kwargs:
@@ -48,6 +100,12 @@ class EmbyService:
         
         if 'timeout' not in kwargs:
             kwargs['timeout'] = self.timeout
+        
+        # 应用代理配置（如果启用）
+        if 'proxies' not in kwargs:
+            proxies = self._get_proxy_config()
+            if proxies:
+                kwargs['proxies'] = proxies
         
         # 合并默认请求头（支持反代检测）
         headers = kwargs.get('headers', {})
