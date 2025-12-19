@@ -2,7 +2,7 @@
 import logging
 from flask import Blueprint, jsonify, request
 from services.subscription_service import SubscriptionService
-from auth.auth import require_auth
+from middleware.auth import require_auth
 from typing import Optional
 
 logger = logging.getLogger(__name__)
