@@ -107,14 +107,15 @@ DEFAULT_TV_CATEGORY = '其他剧集'
 # ==================== 默认模板 ====================
 
 # 默认重命名模板
-DEFAULT_MOVIE_TEMPLATE = "{{title}}{% if year %} ({{year}}){% endif %}"
-DEFAULT_TV_TEMPLATE = "{{title}}{% if year %} ({{year}}){% endif %}/Season {{season_num}}/{{title}} - {{season}}{{episode}}"
+# 默认重命名模板
+DEFAULT_MOVIE_TEMPLATE = "{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}"
+DEFAULT_TV_TEMPLATE = "{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}"
 
-# 带二级分类的目录模板
-DEFAULT_MOVIE_DIR_TEMPLATE = "电影/{{category}}/{{title}}{% if year %} ({{year}}){% endif %}"
-DEFAULT_TV_DIR_TEMPLATE = "电视剧/{{category}}/{{title}}{% if year %} ({{year}}){% endif %}/Season {{season_num}}"
+# 带二级分类的目录模板 (matches user request structure)
+DEFAULT_MOVIE_DIR_TEMPLATE = "{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}"
+DEFAULT_TV_DIR_TEMPLATE = "{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}/Season {{season}}"
 
-# 无二级分类的简单模板
+# 无二级分类的简单模板 (fallback)
 SIMPLE_MOVIE_DIR_TEMPLATE = "电影/{{title}}{% if year %} ({{year}}){% endif %}"
 SIMPLE_TV_DIR_TEMPLATE = "电视剧/{{title}}{% if year %} ({{year}}){% endif %}/Season {{season_num}}"
 
@@ -174,7 +175,7 @@ class MediaOrganizer:
                     template = templates.get('movie', {}).get('filename', DEFAULT_MOVIE_TEMPLATE)
         
         # 构建模板变量
-        variables = self._build_template_variables(media_info, tmdb_info)
+        variables = self._build_template_variables(media_info, tmdb_info, original_extension)
         
         try:
             # 渲染模板
@@ -184,9 +185,10 @@ class MediaOrganizer:
             # 清理文件名中的非法字符
             new_name = self._sanitize_filename(new_name)
             
-            # 添加扩展名
+            # 添加扩展名 (如果模板中包含了扩展名，则不重复添加)
             if include_extension:
-                new_name += original_extension
+                if not new_name.lower().endswith(original_extension.lower()):
+                    new_name += original_extension
             
             return new_name
             
@@ -205,14 +207,26 @@ class MediaOrganizer:
         生成目标目录路径
         """
         if not dir_template:
-            # ConfigStore doesn't strictly have dir templates in the simplify UI yet, 
-            # but we should check if they were added or fallback to YAML
-            templates = get_rename_templates()
-            # 优先使用配置中的目录模板
-            if media_info.type == MediaType.TV:
-                dir_template = templates.get('tv', {}).get('directory', DEFAULT_TV_DIR_TEMPLATE)
-            else:
-                dir_template = templates.get('movie', {}).get('directory', DEFAULT_MOVIE_DIR_TEMPLATE)
+            # 1. 尝试从 ConfigStore 获取 (新增支持)
+            if self.config_store:
+                try:
+                    config = self.config_store.get_config()
+                    rename_config = config.get('organize', {}).get('rename', {})
+                    if media_info.type == MediaType.TV:
+                        dir_template = rename_config.get('seriesDirTemplate')
+                    else:
+                        dir_template = rename_config.get('movieDirTemplate')
+                except Exception as e:
+                    logger.warning(f"Failed to get dir template from config store: {e}")
+
+            # 2. Fallback to YAML/Defaults if still no template
+            if not dir_template:
+                templates = get_rename_templates()
+                # 优先使用配置中的目录模板
+                if media_info.type == MediaType.TV:
+                    dir_template = templates.get('tv', {}).get('directory', DEFAULT_TV_DIR_TEMPLATE)
+                else:
+                    dir_template = templates.get('movie', {}).get('directory', DEFAULT_MOVIE_DIR_TEMPLATE)
         
         variables = self._build_template_variables(media_info, tmdb_info)
         
@@ -242,7 +256,7 @@ class MediaOrganizer:
             logger.error(f"Generate target path failed: {e}")
             return base_dir
     
-    def _build_template_variables(self, media_info: MediaInfo, tmdb_info: Optional[Dict] = None) -> Dict[str, Any]:
+    def _build_template_variables(self, media_info: MediaInfo, tmdb_info: Optional[Dict] = None, original_extension: str = "") -> Dict[str, Any]:
         """构建模板变量"""
         # 基础变量来自解析结果
         variables = {
@@ -253,6 +267,7 @@ class MediaOrganizer:
             'season_num': media_info.season or 1,
             'episode': media_info.episode_str,
             'episode_num': media_info.episode,
+            'season_episode': f"S{media_info.season_str}E{media_info.episode_str}",
             'part': media_info.part or '',
             'resource_type': media_info.resource_type or '',
             'resolution': media_info.resolution or '',
@@ -260,7 +275,10 @@ class MediaOrganizer:
             'audio_codec': media_info.audio_codec or '',
             'release_group': media_info.release_group or '',
             'tmdb_id': media_info.tmdb_id,
+            'tmdbid': media_info.tmdb_id,  # Alias
             'category': DEFAULT_MOVIE_CATEGORY if media_info.type != MediaType.TV else DEFAULT_TV_CATEGORY,
+            'version': '', # Placeholder
+            'fileExt': original_extension, 
         }
         
         # 如果有 TMDB 信息，覆盖标题和年份，并计算二级分类
@@ -269,6 +287,7 @@ class MediaOrganizer:
             variables['original_title'] = tmdb_info.get('original_title') or variables['original_title']
             variables['year'] = tmdb_info.get('year') or variables['year']
             variables['tmdb_id'] = tmdb_info.get('id') or variables['tmdb_id']
+            variables['tmdbid'] = variables['tmdb_id'] # Sync alias
             variables['overview'] = tmdb_info.get('overview', '')
             
             genres = tmdb_info.get('genres', [])

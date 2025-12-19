@@ -136,6 +136,8 @@ export interface RenameRule {
   enabled: boolean;
   movieTemplate: string;
   seriesTemplate: string;
+  movieDirTemplate?: string;
+  seriesDirTemplate?: string;
   addTmdbIdToFolder: boolean;
 }
 

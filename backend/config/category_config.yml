@@ -80,50 +80,13 @@ advanced_rules:
     # --- 特殊分类 (优先) ---
     动画电影:
       genre_ids: '16'
-    纪录片:
-      genre_ids: '99'
-    电视电影:
-      genre_ids: '10770'
     
     # --- 按语种/地区 ---
     华语电影:
       original_language: 'zh,cn,bo,za'
-      origin_country: 'CN,HK,TW,MO'
-    
-    # --- 按类型 (Genre IDs) ---
-    科幻电影:
-      genre_ids: '878'
-    动作电影:
-      genre_ids: '28'
-    喜剧电影:
-      genre_ids: '35'
-    犯罪电影:
-      genre_ids: '80'
-    恐怖电影:
-      genre_ids: '27'
-    爱情电影:
-      genre_ids: '10749'
-    战争电影:
-      genre_ids: '10752'
-    惊悚电影:
-      genre_ids: '53'
-    奇幻电影:
-      genre_ids: '14'
-    音乐电影:
-      genre_ids: '10402'
-    历史电影:
-      genre_ids: '36'
-    西部电影:
-      genre_ids: '37'
-    家庭电影:
-      genre_ids: '10751'
-    冒险电影:
-      genre_ids: '12'
-    剧情电影:
-      genre_ids: '18'
-    悬疑电影:
-      genre_ids: '9648'
-    
+      # Wiki 默认并不强制 origin_country，但为了准确性通常加上
+      # origin_country: 'CN,HK,TW,MO' 
+      
     # --- 默认兜底 ---
     外语电影:
       default: true
@@ -137,50 +100,28 @@ advanced_rules:
     日番:
       genre_ids: '16'
       origin_country: 'JP'
-    欧美动漫:
-      genre_ids: '16'
-      origin_country: 'US,CA,GB,FR,DE,IT,ES,AU,NZ'
-    # 其他地区的动漫归为普通动漫或默认
-    动漫:
-      genre_ids: '16'
     
+    # Wiki 默认没有"欧美动漫"分类，通常会落入"儿童"或"欧美剧"
+    # 或者如果 genre_ids=16 但不是 CN/JP，会落入下面的分类
+      
     # --- 特殊类型 ---
     纪录片:
       genre_ids: '99'
     儿童:
       genre_ids: '10762'
     综艺:
-      # 10764: 真人秀, 10767: 脱口秀
       genre_ids: '10764,10767'
     
-    # --- 剧集类型细分 ---
-    科幻奇幻剧:
-      genre_ids: '10765'
-    动作冒险剧:
-      genre_ids: '10759'
-    战争政治剧:
-      genre_ids: '10768'
-    犯罪剧:
-      genre_ids: '80'
-    肥皂剧:
-      genre_ids: '10766'
-    喜剧:
-      genre_ids: '35'
-    剧情:
-      genre_ids: '18'
-    
-    # --- 按地区分类 (兜底策略) ---
+    # --- 按地区分类 ---
     国产剧:
-      origin_country: 'CN'
-    港台剧:
-      origin_country: 'HK,TW,MO'
-    日韩剧:
-      origin_country: 'JP,KP,KR,TH,VN,SG,IN'
+      origin_country: 'CN,HK,TW,MO'  # Wiki 默认将港台包含在国产剧 (或视具体配置而定，此处按 Wiki "国产剧" 涵盖范围)
     欧美剧:
-      origin_country: 'US,CA,GB,FR,DE,IT,ES,RU,AU,NZ,SE,NO,FI,DK,NL,IE,CH,AT,BE,PL'
-    
+      origin_country: 'US,CA,GB,FR,DE,IT,ES,PT,RU,UK,NL' # 常见欧美国家
+    日韩剧:
+      origin_country: 'JP,KP,KR,TH,IN,SG'
+      
     # --- 默认兜底 ---
-    其他剧集:
+    未分类:
       default: true
 
 
@@ -253,8 +194,8 @@ anime_region_categories:
 
 # -------------------- 默认分类 --------------------
 defaults:
-  movie: 其他电影
-  tv: 其他剧集
+  movie: 外语电影
+  tv: 未分类
 
 
 # ==============================================================================

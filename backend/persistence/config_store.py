@@ -131,8 +131,10 @@ class ConfigStore:
                 },
                 'rename': {
                     'enabled': True,
-                    'movieTemplate': '{title} ({year})',
-                    'seriesTemplate': '{title} - S{season}E{episode}',
+                    'movieTemplate': '{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}',
+                    'seriesTemplate': '{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}',
+                    'movieDirTemplate': '{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}',
+                    'seriesDirTemplate': '{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}/Season {{season}}',
                     'addTmdbIdToFolder': True
                 },
                 'movieRules': [],
