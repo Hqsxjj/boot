@@ -153,23 +153,25 @@ def create_app(config=None):
         task_poller.start()
     
     # Blueprints
-    init_auth_blueprint(secret_store, secrets_session_factory)
+    init_auth_blueprint(store)
     init_config_blueprint(store, secret_store)
-    init_cloud115_blueprint(store, secret_store)
-    init_cloud123_blueprint(store, secret_store)
-    init_offline_blueprint(offline_task_service, store)
+    init_cloud115_blueprint(secret_store)
+    init_cloud123_blueprint(secret_store)
+    init_offline_blueprint(offline_task_service)
     init_logs_blueprint()
     
-    from blueprints.keywords import init_keywords_blueprint
-    init_keywords_blueprint(store)
+    from blueprints.keywords import set_keyword_store
+    from services.keyword_store import KeywordStore
+    keyword_store_instance = KeywordStore(store)
+    set_keyword_store(keyword_store_instance)
 
     telegram_bot_service = init_bot_blueprint(store, secret_store)
     init_resource_search_blueprint(store)
     
-    init_strm_blueprint(store, cloud115_service, cloud123_service)
+    init_strm_blueprint(store)
     
     # 注入 TelegramBotService 到 EmbyService (用于 Webhook 通知)
-    telegram_service = TelegramBotService(secret_store, store)
+    telegram_service = TelegramBotService(secret_store)
     init_emby_blueprint(store)
     from blueprints.emby import set_telegram_service
     set_telegram_service(telegram_service)
