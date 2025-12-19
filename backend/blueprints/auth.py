@@ -303,10 +303,10 @@ def update_password():
 
     if existing_hash and current_password:
         if not check_password_hash(existing_hash, current_password):
-        return jsonify({
-            'success': False,
-            'error': '当前密码错误'
-        }), 401
+            return jsonify({
+                'success': False,
+                'error': '当前密码错误'
+            }), 401
 
     password_hash = generate_password_hash(new_password)
     auth_bp.store.update_admin_password(password_hash)

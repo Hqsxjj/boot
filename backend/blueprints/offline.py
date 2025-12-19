@@ -30,11 +30,13 @@ def create_task():
         requested_by = data.get('requestedBy') or data.get('requested_by') or username
         requested_chat = data.get('requestedChat') or data.get('requested_chat') or ''
         
+        if not source_url:
             return jsonify({
                 'success': False,
                 'error': 'sourceUrl 不能为空'
             }), 400
         
+        if not save_cid:
             return jsonify({
                 'success': False,
                 'error': 'saveCid 不能为空'
@@ -75,6 +77,7 @@ def list_tasks():
         # Refresh from 115 if requested
         if refresh:
             sync_result = _offline_task_service.sync_all()
+            if not sync_result.get('success'):
                 return jsonify({
                     'success': False,
                     'error': f'刷新 115 任务失败: {sync_result.get("error")}'
@@ -112,6 +115,7 @@ def get_task(task_id: str):
     try:
         task = _offline_task_service.get_task(task_id)
         
+        if not task:
             return jsonify({
                 'success': False,
                 'error': '未找到任务'

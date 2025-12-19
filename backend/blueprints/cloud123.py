@@ -58,6 +58,7 @@ def oauth_login():
         client_id = data.get('clientId')
         client_secret = data.get('clientSecret')
         
+        if not client_id or not client_secret:
             return jsonify({
                 'success': False,
                 'error': 'clientId 和 clientSecret 不能为空'
@@ -125,6 +126,7 @@ def ingest_cookies():
     try:
         data = request.get_json()
         
+        if not data or 'cookies' not in data:
             return jsonify({
                 'success': False,
                 'error': 'Cookies 不能为空'
@@ -241,6 +243,7 @@ def rename_file():
                 'error': 'fileId 不能为空'
             }), 400
         
+        if not new_name:
             return jsonify({
                 'success': False,
                 'error': 'newName 不能为空'
@@ -276,6 +279,7 @@ def move_file():
                 'error': 'fileId 不能为空'
             }), 400
         
+        if not target_dir_id:
             return jsonify({
                 'success': False,
                 'error': 'targetDirId 不能为空'
@@ -335,11 +339,13 @@ def create_offline_task():
         source_url = data.get('sourceUrl') or data.get('source_url')
         save_dir_id = data.get('saveDirId') or data.get('save_dir_id')
         
+        if not source_url:
             return jsonify({
                 'success': False,
                 'error': 'sourceUrl 不能为空'
             }), 400
         
+        if not save_dir_id:
             return jsonify({
                 'success': False,
                 'error': 'saveDirId 不能为空'

@@ -40,12 +40,14 @@ def start_qr_login():
         logger.info(f"start_qr_login called: login_app={login_app}, login_method={login_method}, app_id={app_id}, raw_data={data}")
         
         # 验证登录方式
+        if login_method not in ['qrcode', 'cookie', 'open_app']:
             return jsonify({
                 'success': False,
                 'error': '无效的登录方式。请使用 qrcode, cookie 或 open_app'
             }), 400
         
         # open_app 模式必须提供 appId
+        if login_method == 'open_app' and not app_id:
             return jsonify({
                 'success': False,
                 'error': 'open_app 登录方式必须提供 appId'
@@ -58,6 +60,7 @@ def start_qr_login():
             app_id=app_id  # 传递第三方 App ID
         )
         
+        if 'error' in result and result.get('success') == False:
             return jsonify({
                 'success': False,
                 'error': result.get('error', '启动二维码登录失败')
