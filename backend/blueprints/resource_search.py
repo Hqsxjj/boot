@@ -55,13 +55,13 @@ def _get_ai_config():
     return ai_config if ai_config.get('enabled') and ai_config.get('apiKey') else None
 
 
-def _call_ai_search(query: str, ai_config: dict) -> list:
+def _call_ai_search(query: str, ai_config: dict) -> dict:
     """
     Call AI API to search for 115 share links.
-    Returns list of resource objects.
+    Returns dict with success status and results or error.
     """
     if not ai_config:
-        return []
+        return {'success': False, 'error': 'AI 配置为空', 'data': []}
     
     provider = ai_config.get('provider', 'openai')
     base_url = ai_config.get('baseUrl', 'https://api.openai.com/v1')
@@ -70,7 +70,11 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
     
     if not api_key:
         logger.warning("未配置 AI API Key")
-        return []
+        return {'success': False, 'error': '未配置 AI API Key', 'data': []}
+    
+    if not base_url:
+        logger.warning("未配置 AI Base URL")
+        return {'success': False, 'error': '未配置 AI Base URL', 'data': []}
     
     # Construct the search prompt
     system_prompt = """你是一个专业的影视资源搜索助手。用户会给你一个电影或电视剧的名称，你需要：
@@ -104,6 +108,8 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
         base_url = base_url.rstrip('/')
         endpoint = f"{base_url}/chat/completions"
         
+        logger.info(f"AI 搜索请求: provider={provider}, model={model}, endpoint={endpoint}")
+        
         payload = {
             'model': model,
             'messages': [
@@ -114,10 +120,26 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
             'max_tokens': 2000
         }
         
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=60)
+        
+        # 检查响应状态
+        if response.status_code != 200:
+            error_detail = response.text[:500] if response.text else '无响应内容'
+            logger.error(f"AI API 返回错误: HTTP {response.status_code}, {error_detail}")
+            return {
+                'success': False, 
+                'error': f'AI API 返回 HTTP {response.status_code}: {error_detail[:200]}',
+                'data': []
+            }
         
         result = response.json()
+        
+        # 检查是否有错误响应
+        if 'error' in result:
+            error_msg = result['error'].get('message', str(result['error']))
+            logger.error(f"AI API 返回错误: {error_msg}")
+            return {'success': False, 'error': f'AI API 错误: {error_msg}', 'data': []}
+        
         content = result.get('choices', [{}])[0].get('message', {}).get('content', '[]')
         
         # Parse JSON from response
@@ -125,19 +147,33 @@ def _call_ai_search(query: str, ai_config: dict) -> list:
         json_match = re.search(r'\[.*\]', content, re.DOTALL)
         if json_match:
             resources = json.loads(json_match.group())
-            return resources
+            logger.info(f"AI 搜索成功，返回 {len(resources)} 个结果")
+            return {'success': True, 'data': resources}
         else:
-            return []
+            logger.warning(f"AI 响应无法解析为 JSON: {content[:200]}")
+            return {'success': True, 'data': [], 'message': '未找到匹配资源'}
             
+    except requests.exceptions.Timeout:
+        logger.error("AI API 请求超时")
+        return {'success': False, 'error': 'AI API 请求超时 (60秒)，请检查网络或尝试其他服务商', 'data': []}
+    except requests.exceptions.ConnectionError as e:
+        error_str = str(e)
+        logger.error(f"AI API 连接失败: {error_str}")
+        if 'NameResolutionError' in error_str or 'getaddrinfo' in error_str:
+            return {'success': False, 'error': f'无法解析域名，请检查 Base URL 是否正确: {base_url}', 'data': []}
+        elif 'Connection refused' in error_str:
+            return {'success': False, 'error': f'连接被拒绝，请检查 Base URL 是否正确: {base_url}', 'data': []}
+        else:
+            return {'success': False, 'error': f'网络连接错误: {error_str[:200]}', 'data': []}
     except requests.exceptions.RequestException as e:
-        logger.error(f"AI API request failed: {e}")
-        return []
+        logger.error(f"AI API 请求失败: {e}")
+        return {'success': False, 'error': f'请求失败: {str(e)[:200]}', 'data': []}
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse AI response: {e}")
-        return []
+        return {'success': False, 'error': f'AI 响应解析失败: {str(e)}', 'data': []}
     except Exception as e:
         logger.error(f"Unexpected error in AI search: {e}")
-        return []
+        return {'success': False, 'error': f'未知错误: {str(e)[:200]}', 'data': []}
 
 
 def _get_trending_from_tmdb() -> list:
@@ -289,12 +325,23 @@ def search_resources():
             })
         
         # Perform AI search
-        results = _call_ai_search(query, ai_config)
+        search_result = _call_ai_search(query, ai_config)
+        
+        if not search_result.get('success'):
+            # AI 调用失败，返回错误信息
+            error_msg = search_result.get('error', '未知错误')
+            logger.error(f"AI 搜索失败: {error_msg}")
+            return jsonify({
+                'success': False,
+                'error': error_msg,
+                'ai_enabled': True
+            }), 400
         
         return jsonify({
             'success': True,
-            'data': results,
-            'ai_enabled': True
+            'data': search_result.get('data', []),
+            'ai_enabled': True,
+            'message': search_result.get('message')
         })
         
     except Exception as e:
