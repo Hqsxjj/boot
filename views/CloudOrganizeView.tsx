@@ -233,6 +233,24 @@ export const CloudOrganizeView: React.FC = () => {
       }
    };
 
+   const handleRestoreRenameTemplates = () => {
+      if (confirm('确定要恢复默认重命名模板吗？这将覆盖当前的模板设置。')) {
+         if (!config) return;
+         setConfig(prev => prev ? ({
+            ...prev,
+            organize: {
+               ...prev.organize,
+               rename: {
+                  ...prev.organize.rename,
+                  movieTemplate: `{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}`,
+                  seriesTemplate: `{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}`
+               }
+            }
+         }) : null);
+         setToast('已恢复默认重命名模板');
+      }
+   };
+
    const toggleTempCondition = (type: MatchConditionType, value: string) => {
       if (!tempRule) return;
       let currentVal = tempRule.conditions[type] || '';
@@ -960,6 +978,16 @@ export const CloudOrganizeView: React.FC = () => {
                                  onChange={(e) => updateRenameRule('addTmdbIdToFolder', e.target.checked)}
                                  className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                               />
+                           </div>
+
+                           <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                              <label className="text-sm font-bold text-slate-600 dark:text-slate-400">重命名模板配置</label>
+                              <button
+                                 onClick={handleRestoreRenameTemplates}
+                                 className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                              >
+                                 <RotateCcw size={12} /> 恢复预设模板
+                              </button>
                            </div>
 
                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
