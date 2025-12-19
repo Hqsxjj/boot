@@ -8,6 +8,7 @@ import re
 from flask import Blueprint, request, jsonify
 from middleware.auth import require_auth
 from persistence.store import DataStore
+from services.pan_search_service import get_pan_search_service
 
 logger = logging.getLogger(__name__)
 
@@ -402,3 +403,83 @@ def get_resource_detail(resource_id: str):
             'error': str(e)
         }), 500
 
+
+@resource_search_bp.route('/pan', methods=['GET', 'POST'])
+@require_auth
+def search_pan_resources():
+    """
+    Search for cloud drive resources via pan.jivon.de API.
+    
+    GET params or POST body:
+    {
+        "keyword": "搜索关键词",
+        "cloud_types": ["115", "123", "aliyun"] // 可选，筛选网盘类型
+    }
+    """
+    try:
+        # 支持 GET 和 POST 请求
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            keyword = data.get('keyword', '').strip()
+            cloud_types = data.get('cloud_types')
+        else:
+            keyword = request.args.get('kw', '').strip() or request.args.get('keyword', '').strip()
+            cloud_types_str = request.args.get('cloud_types', '')
+            cloud_types = cloud_types_str.split(',') if cloud_types_str else None
+        
+        if not keyword:
+            return jsonify({
+                'success': False,
+                'error': '请输入搜索关键词'
+            }), 400
+        
+        # 调用网盘搜索服务
+        pan_service = get_pan_search_service()
+        result = pan_service.search(keyword, cloud_types=cloud_types)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'data': result.get('data', []),
+                'total': result.get('total', 0),
+                'source': 'pansou',
+                'keyword': keyword
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', '搜索失败')
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"网盘搜索失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'搜索失败: {str(e)}'
+        }), 500
+
+
+@resource_search_bp.route('/pan/115', methods=['GET'])
+@require_auth
+def search_115_resources():
+    """Search only 115 cloud resources."""
+    keyword = request.args.get('kw', '').strip()
+    if not keyword:
+        return jsonify({'success': False, 'error': '请输入搜索关键词'}), 400
+    
+    pan_service = get_pan_search_service()
+    result = pan_service.search_115(keyword)
+    return jsonify(result)
+
+
+@resource_search_bp.route('/pan/123', methods=['GET'])
+@require_auth
+def search_123_resources():
+    """Search only 123 cloud resources."""
+    keyword = request.args.get('kw', '').strip()
+    if not keyword:
+        return jsonify({'success': False, 'error': '请输入搜索关键词'}), 400
+    
+    pan_service = get_pan_search_service()
+    result = pan_service.search_123(keyword)
+    return jsonify(result)
