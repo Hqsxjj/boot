@@ -570,6 +570,14 @@ class P115Service:
             
             try:
                 status_result = p115client.P115Client.login_qrcode_scan_status(payload)
+                logger.info(f'QR status API response: {status_result}')
+                
+                # 状态码说明：
+                # 0 = 等待扫码
+                # 1 = 已扫码，等待确认
+                # 2 = 已确认，可以获取cookies
+                # -1 或 -2 = 二维码已过期
+                # 其他 = 未知状态
                 status_code = status_result.get('data', {}).get('status', 0)
                 
                 if status_code == 0:
@@ -616,9 +624,15 @@ class P115Service:
                             'error': f'Failed to complete login: {str(e)}',
                             'success': False
                         }
-                else:
+                elif status_code in [-1, -2]:
+                    # 二维码已过期
+                    logger.info(f'QR code expired, status_code={status_code}')
                     session_info['status'] = 'expired'
                     return {'status': 'expired', 'success': False}
+                else:
+                    # 其他未知状态码 - 继续等待，不要刷新
+                    logger.warning(f'Unknown QR status code: {status_code}, continuing to wait')
+                    return {'status': 'waiting', 'success': True}
             except Exception as e:
                 logger.warning(f'QR scan status API call failed: {str(e)}')
                 return {
