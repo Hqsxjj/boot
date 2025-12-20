@@ -160,10 +160,40 @@ export const EmbyView: React.FC = () => {
         updateNested('emby', 'serverUrl', `http://${window.location.hostname}:8096`);
     };
 
-    const copyWebhook = () => {
+    const copyWebhook = async () => {
         const port = window.location.port || '18080';
-        navigator.clipboard.writeText(`http://${window.location.hostname}:${port}/api/emby/webhook`);
-        setToast('Emby Webhook 地址已复制');
+        const webhookUrl = `http://${window.location.hostname}:${port}/api/emby/webhook`;
+
+        try {
+            // 尝试使用现代 Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(webhookUrl);
+                setToast('Emby Webhook 地址已复制');
+            } else {
+                // Fallback: 使用 execCommand
+                const textArea = document.createElement('textarea');
+                textArea.value = webhookUrl;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                const success = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (success) {
+                    setToast('Emby Webhook 地址已复制');
+                } else {
+                    setToast('复制失败，请手动复制');
+                }
+            }
+        } catch (err) {
+            console.error('复制失败:', err);
+            // 最终 fallback: 显示提示让用户手动复制
+            setToast('请手动复制上方地址');
+        }
         setTimeout(() => setToast(null), 2000);
     };
 
