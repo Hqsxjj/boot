@@ -1170,6 +1170,7 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {subscriptions.map(sub => (
                         <div key={sub.id} className={`${glassCardClass} p-5 group flex flex-col h-full bg-white/40 dark:bg-slate-900/40`}>
+                            {/* 标题栏 */}
                             <div className="flex justify-between items-start mb-3">
                                 <div className="flex items-center gap-2">
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white font-mono ${sub.cloud_type === '115' ? 'bg-orange-500' : 'bg-blue-500'}`}>
@@ -1177,53 +1178,99 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                     </span>
                                     <h4 className="font-bold text-slate-800 dark:text-white text-lg">{sub.keyword}</h4>
                                 </div>
-                                <button
-                                    onClick={() => handleDelete(sub.id)}
-                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-
-                            <div className="space-y-2 mb-4 flex-1">
-                                <div className="flex flex-wrap gap-2 text-xs">
-                                    {(sub.filter_config?.include || []).map((tag: string, i: number) => (
-                                        <span key={`inc-${i}`} className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-200 dark:border-green-800/50">
-                                            +{tag}
-                                        </span>
-                                    ))}
-                                    {(sub.filter_config?.exclude || []).map((tag: string, i: number) => (
-                                        <span key={`exc-${i}`} className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded border border-red-200 dark:border-red-800/50">
-                                            -{tag}
-                                        </span>
-                                    ))}
-                                    {(!sub.filter_config?.include?.length && !sub.filter_config?.exclude?.length) && (
-                                        <span className="text-slate-400 italic">无过滤规则</span>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/50">
-                                    <span className="text-xs text-slate-500">当前进度:</span>
+                                <div className="flex items-center gap-1">
                                     <button
                                         onClick={() => setEditingSub(sub)}
-                                        className="text-xs font-mono font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2 py-0.5 rounded border border-brand-200 dark:border-brand-800/50 hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-colors flex items-center gap-1"
-                                        title="点击修改进度"
+                                        className="p-1.5 text-slate-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                        title="编辑订阅"
                                     >
-                                        <span className="opacity-50">S</span>{(sub.current_season || 0).toString().padStart(2, '0')}
-                                        <span className="opacity-50 ml-1">E</span>{(sub.current_episode || 0).toString().padStart(2, '0')}
+                                        <Settings size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(sub.id)}
+                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                        title="删除订阅"
+                                    >
+                                        <Trash2 size={16} />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 text-xs text-slate-500 flex justify-between items-center">
-                                <span>上次检查: {sub.last_check ? new Date(sub.last_check).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '从未'}</span>
-                                <button
-                                    onClick={() => handleOpenHistory(sub)}
-                                    className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
-                                >
-                                    <History size={12} />
-                                    历史与检查
-                                </button>
+                            <div className="space-y-3 mb-4 flex-1">
+                                {/* 包含规则展示 */}
+                                <div>
+                                    <div className="text-xs text-slate-500 mb-1">包含规则</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(sub.filter_config?.resolutions || []).map((tag: string, i: number) => (
+                                            <span key={`res-${i}`} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                        {(sub.filter_config?.video_versions || []).map((tag: string, i: number) => (
+                                            <span key={`ver-${i}`} className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                        {(sub.filter_config?.file_formats || []).map((tag: string, i: number) => (
+                                            <span key={`fmt-${i}`} className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-xs">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                        {(sub.filter_config?.include || []).map((tag: string, i: number) => (
+                                            <span key={`inc-${i}`} className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs">
+                                                +{tag}
+                                            </span>
+                                        ))}
+                                        {!(sub.filter_config?.resolutions?.length || sub.filter_config?.video_versions?.length || sub.filter_config?.file_formats?.length || sub.filter_config?.include?.length) && (
+                                            <span className="text-slate-400 italic text-xs">不限</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* 排除规则展示 */}
+                                {sub.filter_config?.exclude?.length > 0 && (
+                                    <div>
+                                        <div className="text-xs text-slate-500 mb-1">排除规则</div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(sub.filter_config?.exclude || []).map((tag: string, i: number) => (
+                                                <span key={`exc-${i}`} className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded text-xs">
+                                                    -{tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 最新剧集进度 */}
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-500">当前进度:</span>
+                                        <span className="text-sm font-mono font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2 py-0.5 rounded">
+                                            S{(sub.current_season || 1).toString().padStart(2, '0')}E{(sub.current_episode || 0).toString().padStart(2, '0')}
+                                        </span>
+                                    </div>
+                                    {sub.latest_filename && (
+                                        <div className="text-xs text-slate-400 max-w-[150px] truncate" title={sub.latest_filename}>
+                                            📁 {sub.latest_filename}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 底部操作栏 */}
+                            <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-between items-center gap-2">
+                                <span className="text-xs text-slate-500">
+                                    {sub.last_check ? new Date(sub.last_check).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '从未检查'}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handleOpenHistory(sub)}
+                                        className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs"
+                                    >
+                                        <History size={12} />
+                                        历史
+                                    </button>
+                                </div>
                             </div>
                             {sub.last_message && (
                                 <div className="mt-2 text-xs text-slate-500 truncate" title={sub.last_message}>
@@ -1368,10 +1415,10 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">分辨率</label>
                                         <div className="flex flex-wrap gap-2">
-                                            {['4K', '2160p', '1080p', '720p', '480p'].map(res => (
+                                            {['4K', '2160p', '1080p', '720p'].map(res => (
                                                 <label key={res} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.resolutions.includes(res)
-                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
-                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
                                                     }`}>
                                                     <input
                                                         type="checkbox"
@@ -1407,8 +1454,8 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                                 { value: 'ATMOS', label: 'ATMOS' },
                                             ].map(opt => (
                                                 <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.video_versions.includes(opt.value)
-                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
-                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
                                                     }`}>
                                                     <input
                                                         type="checkbox"
@@ -1437,13 +1484,12 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                                 { value: 'mkv', label: 'MKV' },
                                                 { value: 'mp4', label: 'MP4' },
                                                 { value: 'ts', label: 'TS' },
-                                                { value: 'avi', label: 'AVI' },
                                                 { value: 'iso', label: 'ISO 原盘' },
                                                 { value: 'rmvb', label: 'RMVB' },
                                             ].map(opt => (
                                                 <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.file_formats.includes(opt.value)
-                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
-                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
                                                     }`}>
                                                     <input
                                                         type="checkbox"
