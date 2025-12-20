@@ -68,10 +68,18 @@ class MediaChecker:
         # 去掉结尾斜杠
         url = url.rstrip('/')
         
+        # 判断是否需要跳过 SSL 验证（HTTPS 自签名证书）
+        verify_ssl = not url.startswith('https://')
+        
         try:
             start_time = time.time()
-            # 请求 Emby 系统信息接口
-            resp = requests.get(f"{url}/emby/System/Info", params={"api_key": api_key}, timeout=5)
+            # 请求 Emby 系统信息接口，跳过 SSL 验证以支持自签名证书
+            resp = requests.get(
+                f"{url}/emby/System/Info", 
+                params={"api_key": api_key}, 
+                timeout=10,
+                verify=verify_ssl
+            )
             latency = int((time.time() - start_time) * 1000)
             
             if resp.status_code == 200:
@@ -80,8 +88,13 @@ class MediaChecker:
                 return {"success": False, "latency": latency, "msg": "API Key 无效"}
             else:
                 return {"success": False, "latency": latency, "msg": f"HTTP {resp.status_code}"}
+        except requests.Timeout:
+            return {"success": False, "latency": 0, "msg": "连接超时"}
         except Exception as e:
-            return {"success": False, "latency": 0, "msg": "无法连接服务器"}
+            error_str = str(e).lower()
+            if 'ssl' in error_str or 'certificate' in error_str:
+                return {"success": False, "latency": 0, "msg": "SSL 证书错误"}
+            return {"success": False, "latency": 0, "msg": f"连接失败: {str(e)[:50]}"}
 
     def get_missing_episodes(self):
         """(模拟) 缺集检测逻辑"""
