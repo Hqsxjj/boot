@@ -359,7 +359,7 @@ export const CloudOrganizeView: React.FC = () => {
                         // 计算距离上次生成的间隔
                         const now = Date.now();
                         const timeElapsed = now - lastQrGenTimeRef.current;
-                        const cooldownPeriod = 60 * 1000; // 1 minute cooldown
+                        const cooldownPeriod = 120 * 1000; // 2 minute cooldown (用户要求)
 
                         setQrState('loading');
 
