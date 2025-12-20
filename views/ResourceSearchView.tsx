@@ -158,9 +158,9 @@ export const ResourceSearchView: React.FC = () => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
-        // Simple parsing for 115 links
-        // Format: https://115.com/s/sw3xxxx?password=yyyy
-        const match = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+        // Simple parsing for 115 links - supports both 115.com and 115cdn.com
+        // Format: https://115.com/s/sw3xxxx?password=yyyy or https://115cdn.com/s/sw3xxxx?password=yyyy
+        const match = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
         if (!match) {
             setToast('不支持的链接格式');
             setTimeout(() => setToast(null), 3000);
@@ -282,8 +282,8 @@ export const ResourceSearchView: React.FC = () => {
         try {
             let response;
 
-            // Check for 115 link
-            const match115 = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+            // Check for 115 link - supports both 115.com and 115cdn.com
+            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
             // Check for 123 link - format: https://www.123pan.com/s/xxxx or https://www.123pan.cn/s/xxxx
             const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
 
@@ -375,8 +375,8 @@ export const ResourceSearchView: React.FC = () => {
         try {
             let response;
 
-            // Check for 115 link
-            const match115 = link.match(/115\.com\/s\/([a-z0-9]+)/i);
+            // Check for 115 link - supports both 115.com and 115cdn.com
+            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
             // Check for 123 link
             const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
 
@@ -1446,8 +1446,8 @@ const ResourceCard: React.FC<{
                                     onToggleExpand?.(resource);
                                 }}
                                 className={`mt-2 w-full py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-all ${isExpanded
-                                        ? 'bg-brand-500 text-white hover:bg-brand-600'
-                                        : 'bg-white/10 text-white/80 hover:bg-white/20'
+                                    ? 'bg-brand-500 text-white hover:bg-brand-600'
+                                    : 'bg-white/10 text-white/80 hover:bg-white/20'
                                     }`}
                             >
                                 <FileText size={12} />
@@ -1511,8 +1511,8 @@ const ResourceCard: React.FC<{
                                             key={file.id}
                                             onClick={() => onToggleFileSelection?.(file.id)}
                                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${selectedFileIds?.has(file.id)
-                                                    ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
-                                                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+                                                ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
+                                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
                                                 }`}
                                         >
                                             <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
@@ -1548,8 +1548,8 @@ const ResourceCard: React.FC<{
                                     onClick={handleSaveClick}
                                     disabled={!selectedFileIds || selectedFileIds.size === 0 || isSaving}
                                     className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${resource.cloud_type === '115'
-                                            ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
                                         }`}
                                 >
                                     {isSaving ? (
