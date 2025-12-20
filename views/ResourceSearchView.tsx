@@ -97,12 +97,27 @@ export const ResourceSearchView: React.FC = () => {
         fetchTrending();
     }, []);
 
+    // Filter function to remove resources without valid share links
+    const hasValidShareLink = (resource: Resource): boolean => {
+        // Check if has direct share_link
+        if (resource.share_link && resource.share_link.trim() !== '') {
+            return true;
+        }
+        // Check if has share_links array with at least one valid link
+        if (resource.share_links && resource.share_links.length > 0) {
+            return resource.share_links.some(link => link.link && link.link.trim() !== '');
+        }
+        return false;
+    };
+
     const fetchTrending = async () => {
         setIsLoadingTrending(true);
         try {
             const response = await api.getTrendingResources();
             if (response.success) {
-                setTrendingResources(response.data || []);
+                // Filter out resources without valid share links
+                const validResources = (response.data || []).filter(hasValidShareLink);
+                setTrendingResources(validResources);
             }
         } catch (e) {
             console.error('Failed to fetch trending:', e);
@@ -122,7 +137,9 @@ export const ResourceSearchView: React.FC = () => {
         try {
             const response = await api.searchResources(searchQuery);
             if (response.success) {
-                setSearchResults(response.data || []);
+                // Filter out resources without valid share links
+                const validResources = (response.data || []).filter(hasValidShareLink);
+                setSearchResults(validResources);
                 setAiEnabled((response as any).ai_enabled);
                 if ((response as any).message) {
                     setSearchMessage((response as any).message);
