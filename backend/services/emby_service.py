@@ -285,36 +285,86 @@ class EmbyService:
         full_config = self.store.get_config()
         tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
         tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
-        tmdb_domain = full_config.get('tmdb', {}).get('domain', 'api.themoviedb.org').rstrip('/')
+        user_tmdb_domain = full_config.get('tmdb', {}).get('domain', '').strip()
+        
+        # 检查 TMDB API Key
+        if not tmdb_api_key:
+            task_log.failure('TMDB API Key 未配置')
+            return {'success': False, 'data': [], 'error': 'TMDB API Key 未配置，请在设置页面配置 TMDB API Key'}
+        
+        task_log.info(f'开始扫描，TMDB 语言: {tmdb_lang}')
+        
+        # TMDB 备用域名列表（按优先级排序）
+        # api.tmdb.org 在国内可能可以无代理访问
+        TMDB_DOMAINS = [
+            'api.tmdb.org',           # 无 "the" 的域名，国内可能可访问
+            'api.themoviedb.org',     # 官方域名
+            'tmdb.org',               # 简短域名
+        ]
+        
+        # 如果用户配置了自定义域名（如代理），优先使用
+        if user_tmdb_domain and user_tmdb_domain not in TMDB_DOMAINS:
+            TMDB_DOMAINS.insert(0, user_tmdb_domain.rstrip('/'))
         
         missing_data = []
         
-        # 定义内部重试函数
+        # 缓存可用的 TMDB 域名，避免重复尝试失败的域名
+        working_tmdb_domain = None
+        
         def _fetch_tmdb_season(series_tmdb_id, season_num):
-            url = f'https://{tmdb_domain}/3/tv/{series_tmdb_id}/season/{season_num}'
+            """
+            获取 TMDB 季度信息，支持多域名回退和智能重试。
+            """
+            nonlocal working_tmdb_domain
+            
             params = {'api_key': tmdb_api_key, 'language': tmdb_lang}
-            
-            # 1. 尝试使用代理 (如果配置了)
             proxies = self._get_proxy_config()
-            if proxies:
-                try:
-                    # task_log.info(f"正在通过代理连接 TMDB...")
-                    resp = requests.get(url, params=params, proxies=proxies, timeout=15)
-                    if resp.status_code == 200:
-                        return resp.json()
-                except Exception as e:
-                    # task_log.warning(f"代理连接失败: {e}，尝试直连...")
-                    pass
             
-            # 2. 尝试直连 (如果代理失败或未配置)
-            try:
-                # task_log.info(f"正在直连 TMDB...")
-                resp = requests.get(url, params=params, timeout=10) # 直连超时短一点
-                if resp.status_code == 200:
-                    return resp.json()
-            except Exception as e:
-                pass
+            # 如果已经找到可用域名，优先使用
+            domains_to_try = [working_tmdb_domain] if working_tmdb_domain else TMDB_DOMAINS.copy()
+            
+            for domain in domains_to_try:
+                if not domain:
+                    continue
+                    
+                url = f'https://{domain}/3/tv/{series_tmdb_id}/season/{season_num}'
                 
+                # 尝试1: 代理请求 (如果配置了)
+                if proxies:
+                    try:
+                        resp = requests.get(url, params=params, proxies=proxies, timeout=15, verify=True)
+                        if resp.status_code == 200:
+                            working_tmdb_domain = domain
+                            return resp.json()
+                        elif resp.status_code == 401:
+                            # API Key 无效，不需要尝试其他域名
+                            return None
+                    except Exception:
+                        pass
+                
+                # 尝试2: 直连请求
+                try:
+                    resp = requests.get(url, params=params, timeout=8, verify=True)
+                    if resp.status_code == 200:
+                        working_tmdb_domain = domain
+                        return resp.json()
+                    elif resp.status_code == 401:
+                        return None
+                except requests.exceptions.SSLError:
+                    # SSL 错误，尝试跳过验证
+                    try:
+                        resp = requests.get(url, params=params, timeout=8, verify=False)
+                        if resp.status_code == 200:
+                            working_tmdb_domain = domain
+                            return resp.json()
+                    except Exception:
+                        pass
+                except requests.exceptions.Timeout:
+                    # 超时，尝试下一个域名
+                    continue
+                except Exception:
+                    continue
+            
             return None
         
         try:
