@@ -63,8 +63,9 @@ export const CloudOrganizeView: React.FC = () => {
    const [qrState, setQrState] = useState<'idle' | 'loading' | 'waiting' | 'scanned' | 'success' | 'expired' | 'error'>('idle');
    const [qrImage, setQrImage] = useState<string>('');
    const [qrSessionId, setQrSessionId] = useState<string>('');
-   const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
+   const qrTimerRef = useRef<any>(null);
    const qrRefreshCountRef = useRef<number>(0);  // 自动刷新计数器，最多刷新10次
+   const lastQrGenTimeRef = useRef<number>(0);   // 上次生成二维码的时间戳
 
    useEffect(() => {
       fetchConfig();
@@ -324,6 +325,7 @@ export const CloudOrganizeView: React.FC = () => {
 
          setQrImage(data.qrcode);
          setQrSessionId(data.sessionId);
+         lastQrGenTimeRef.current = Date.now(); // 记录生成时间
          setQrState('waiting');
 
          qrTimerRef.current = setInterval(async () => {
@@ -348,13 +350,28 @@ export const CloudOrganizeView: React.FC = () => {
                      break;
                   case 'expired':
                      stopQrCheck();
-                     // 自动刷新二维码（循环次数增加到 500 次，确保足够时间）
+                     // 115二维码过期很快(约2-3分钟)，自动刷新
+                     // 用户要求：1分钟内不要去获取二维码第二次
                      if (qrRefreshCountRef.current < 500) {
                         qrRefreshCountRef.current += 1;
                         console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/500)...`);
+
+                        // 计算距离上次生成的间隔
+                        const now = Date.now();
+                        const timeElapsed = now - lastQrGenTimeRef.current;
+                        const cooldownPeriod = 60 * 1000; // 1 minute cooldown
+
                         setQrState('loading');
-                        // 延迟 2000ms 重新获取，避免频繁请求，给用户一点反应时间
-                        setTimeout(() => generateRealQr(), 2000);
+
+                        if (timeElapsed < cooldownPeriod) {
+                           const remainingWaitTime = cooldownPeriod - timeElapsed;
+                           console.log(`QR code expired too quickly, waiting for ${remainingWaitTime / 1000} seconds before refreshing.`);
+                           setToast(`二维码过期，${Math.ceil(remainingWaitTime / 1000)}秒后自动刷新`);
+                           setTimeout(() => generateRealQr(), remainingWaitTime);
+                        } else {
+                           // If enough time has passed, refresh immediately (or with a small delay)
+                           setTimeout(() => generateRealQr(), 5000);
+                        }
                      } else {
                         setQrState('expired');
                         setToast('二维码已多次过期，请手动刷新');
