@@ -18,19 +18,41 @@ class SecretStore:
         logger.info('SecretStore initialized')
     
     def _get_cipher(self) -> Fernet:
-        """Get or create encryption cipher."""
+        """Get or create encryption cipher with persistent key."""
         encryption_key = os.environ.get('SECRETS_ENCRYPTION_KEY')
         
         if not encryption_key:
-            # Generate a default key for development (should be overridden in production)
-            encryption_key = Fernet.generate_key().decode()
+            # 尝试从文件加载持久化的密钥
+            key_file = os.path.join(os.path.dirname(__file__), '..', 'data', '.encryption_key')
+            key_file = os.path.abspath(key_file)
+            
+            # 确保 data 目录存在
+            os.makedirs(os.path.dirname(key_file), exist_ok=True)
+            
+            if os.path.exists(key_file):
+                # 从文件加载已有的密钥
+                try:
+                    with open(key_file, 'r') as f:
+                        encryption_key = f.read().strip()
+                    logger.info('Loaded encryption key from file')
+                except Exception as e:
+                    logger.warning(f'Failed to load encryption key from file: {e}')
+            
+            if not encryption_key:
+                # 生成新密钥并保存到文件
+                encryption_key = Fernet.generate_key().decode()
+                try:
+                    with open(key_file, 'w') as f:
+                        f.write(encryption_key)
+                    logger.info('Generated and saved new encryption key to file')
+                except Exception as e:
+                    logger.warning(f'Failed to save encryption key to file: {e}')
         
         # If it's a string, encode it
         if isinstance(encryption_key, str):
-            # If it's not already a valid base64 key, generate one from the string
+            # Try to verify it's valid base64
             try:
                 encryption_key = encryption_key.encode()
-                # Try to verify it's valid base64
                 Fernet(encryption_key)
             except Exception:
                 # Hash the provided key to create a valid Fernet key
