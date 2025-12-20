@@ -567,11 +567,16 @@ class P115Service:
             time_val = qr_data.get('time', 0)
             sign = qr_data.get('sign', '')
             
+            # 详细日志：记录使用的时间参数
+            import time as time_module
+            current_time = int(time_module.time())
+            logger.info(f'QR check: uid={uid[:16]}..., server_time={time_val}, current_time={current_time}, diff={current_time - time_val}s, sign={sign[:8] if sign else ""}...')
+            
             payload = {'uid': uid, 'time': time_val, 'sign': sign}
             
             try:
                 status_result = p115client.P115Client.login_qrcode_scan_status(payload)
-                logger.info(f'QR status API response: {status_result}')
+                logger.info(f'QR status API raw response: {status_result}')
                 
                 # 状态码说明：
                 # 0 = 等待扫码
