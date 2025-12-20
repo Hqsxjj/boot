@@ -1726,9 +1726,9 @@ const ResourceDetailModal: React.FC<{
                                             <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400">
                                                 <ExternalLink size={16} />
                                             </div>
-                                            <div>
-                                                <div className="font-medium text-sm text-slate-700 dark:text-slate-200">
-                                                    {link.source}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium text-sm text-slate-700 dark:text-slate-200 truncate" title={link.link || ''}>
+                                                    {link.link || '链接不可用'}
                                                 </div>
                                                 {link.code && (
                                                     <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -1765,13 +1765,13 @@ const ResourceDetailModal: React.FC<{
                                 ))
                             ) : resource.share_link ? (
                                 <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border-[0.5px] border-slate-200 dark:border-slate-700">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400">
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                        <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400 shrink-0">
                                             <ExternalLink size={16} />
                                         </div>
-                                        <div>
-                                            <div className="font-medium text-sm text-slate-700 dark:text-slate-200">
-                                                {resource.source || '115 网盘'}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm text-slate-700 dark:text-slate-200 truncate" title={resource.share_link}>
+                                                {resource.share_link}
                                             </div>
                                             {resource.share_code && (
                                                 <div className="text-xs text-slate-500 dark:text-slate-400">
