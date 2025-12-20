@@ -875,7 +875,32 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
     const [isLoading, setIsLoading] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
-    const [newSub, setNewSub] = useState({ keyword: '', cloud_type: '115', include: '', exclude: '' });
+    const [newSub, setNewSub] = useState({
+        // 基础信息
+        keyword: '',           // 关键词（逗号分隔）
+        cloud_type: '115',     // 网盘类型
+
+        // 监控设置
+        monitor_days: '7',     // 监控日期范围（天数）
+        check_times: '4',      // 每天查询次数
+        check_time: '20:00',   // 特定查询时间
+
+        // 包含规则
+        resolution: '',        // 分辨率：4K, 1080p, 720p 等
+        video_version: '',     // 视频版本：HDR, REMUX, 蓝光原盘 等
+        file_format: '',       // 文件后缀：mkv, mp4, ts 等
+        include: '',           // 其他包含规则
+
+        // 排除规则
+        exclude: '',           // 排除规则
+
+        // 剧集追踪
+        start_season: '1',     // 订阅起始季
+        start_episode: '1',    // 订阅起始集
+        current_season: '1',   // 当前季
+        current_episode: '0',  // 当前已有集数
+        tmdb_id: '',           // TMDB ID（可选，用于获取更新进度）
+    });
     const [showAddModal, setShowAddModal] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [editingSub, setEditingSub] = useState<any | null>(null);
@@ -930,7 +955,13 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
             });
 
             setShowAddModal(false);
-            setNewSub({ keyword: '', cloud_type: '115', include: '', exclude: '' });
+            setNewSub({
+                keyword: '', cloud_type: '115',
+                monitor_days: '7', check_times: '4', check_time: '20:00',
+                resolution: '', video_version: '', file_format: '', include: '',
+                exclude: '',
+                start_season: '1', start_episode: '1', current_season: '1', current_episode: '0', tmdb_id: ''
+            });
             showToast('添加订阅成功');
             fetchSubscriptions();
         } catch (e) {
@@ -1195,79 +1226,282 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                 </div>
             )}
 
-            {/* Add Modal */}
+            {/* Add Modal - 全新订阅表单 */}
             {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
-                    <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">新建订阅</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    搜索关键词 <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newSub.keyword}
-                                    onChange={e => setNewSub({ ...newSub, keyword: e.target.value })}
-                                    className={inputClass}
-                                    placeholder="例如：盗梦空间 4K"
-                                    autoFocus
-                                />
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setShowAddModal(false)} />
+                    <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+                        {/* Header */}
+                        <div className="px-6 py-4 bg-gradient-to-r from-brand-500 to-purple-600 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/20 rounded-lg">
+                                    <Bell size={20} className="text-white" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-white">新建订阅</h3>
+                                    <p className="text-sm text-white/70">自动搜索并下载最新资源</p>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    目标网盘
-                                </label>
-                                <select
-                                    value={newSub.cloud_type}
-                                    onChange={e => setNewSub({ ...newSub, cloud_type: e.target.value })}
-                                    className={inputClass}
-                                >
-                                    <option value="115">115 网盘</option>
-                                    <option value="123">123 云盘</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    包含规则 (逗号分隔)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newSub.include}
-                                    onChange={e => setNewSub({ ...newSub, include: e.target.value })}
-                                    className={inputClass}
-                                    placeholder="例如：HDR, 60FPS"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">必须包含所有规则才会被选中</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                    排除规则 (逗号分隔)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newSub.exclude}
-                                    onChange={e => setNewSub({ ...newSub, exclude: e.target.value })}
-                                    className={inputClass}
-                                    placeholder="例如：CAM, TC"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">包含任一规则将被排除</p>
+                            <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
+                                <X size={24} className="text-white" />
+                            </button>
+                        </div>
+
+                        {/* Form Content - 可滚动 */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="space-y-6">
+                                {/* 基础信息区块 */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
+                                        基础信息
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                                搜索关键词 <span className="text-red-500">*</span>
+                                                <span className="text-slate-400 font-normal ml-2">（多个关键词用逗号分隔）</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={newSub.keyword}
+                                                onChange={e => setNewSub({ ...newSub, keyword: e.target.value })}
+                                                className={inputClass}
+                                                placeholder="例如：权力的游戏, 冰与火之歌"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">目标网盘</label>
+                                            <select
+                                                value={newSub.cloud_type}
+                                                onChange={e => setNewSub({ ...newSub, cloud_type: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="115">115 网盘</option>
+                                                <option value="123">123 云盘</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                                TMDB ID <span className="text-slate-400 font-normal">（可选，用于获取剧集更新进度）</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={newSub.tmdb_id}
+                                                onChange={e => setNewSub({ ...newSub, tmdb_id: e.target.value })}
+                                                className={inputClass}
+                                                placeholder="例如：1399"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 监控设置区块 */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                                        监控设置
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">监控日期范围</label>
+                                            <select
+                                                value={newSub.monitor_days}
+                                                onChange={e => setNewSub({ ...newSub, monitor_days: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="1">最近 1 天</option>
+                                                <option value="3">最近 3 天</option>
+                                                <option value="7">最近 7 天</option>
+                                                <option value="14">最近 14 天</option>
+                                                <option value="30">最近 30 天</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">每天查询次数</label>
+                                            <select
+                                                value={newSub.check_times}
+                                                onChange={e => setNewSub({ ...newSub, check_times: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="1">1 次</option>
+                                                <option value="2">2 次</option>
+                                                <option value="4">4 次</option>
+                                                <option value="6">6 次</option>
+                                                <option value="8">8 次</option>
+                                                <option value="12">12 次</option>
+                                                <option value="24">24 次（每小时）</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                                特定查询时间 <span className="text-slate-400 font-normal">（可选）</span>
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={newSub.check_time}
+                                                onChange={e => setNewSub({ ...newSub, check_time: e.target.value })}
+                                                className={inputClass}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 包含规则区块 */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                                        包含规则 <span className="text-slate-400 font-normal text-xs">（必须同时满足）</span>
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">分辨率</label>
+                                            <select
+                                                value={newSub.resolution}
+                                                onChange={e => setNewSub({ ...newSub, resolution: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="">不限</option>
+                                                <option value="4K">4K / 2160p</option>
+                                                <option value="1080p">1080p</option>
+                                                <option value="720p">720p</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">视频版本</label>
+                                            <select
+                                                value={newSub.video_version}
+                                                onChange={e => setNewSub({ ...newSub, video_version: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="">不限</option>
+                                                <option value="REMUX">REMUX 原盘</option>
+                                                <option value="BluRay">BluRay 蓝光</option>
+                                                <option value="WEB-DL">WEB-DL</option>
+                                                <option value="HDR">HDR</option>
+                                                <option value="Dolby Vision">Dolby Vision 杜比视界</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">文件格式</label>
+                                            <select
+                                                value={newSub.file_format}
+                                                onChange={e => setNewSub({ ...newSub, file_format: e.target.value })}
+                                                className={inputClass}
+                                            >
+                                                <option value="">不限</option>
+                                                <option value="mkv">MKV</option>
+                                                <option value="mp4">MP4</option>
+                                                <option value="ts">TS</option>
+                                                <option value="iso">ISO 原盘</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                            其他包含规则 <span className="text-slate-400 font-normal">（逗号分隔）</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newSub.include}
+                                            onChange={e => setNewSub({ ...newSub, include: e.target.value })}
+                                            className={inputClass}
+                                            placeholder="例如：HDR10+, 60FPS, ATMOS"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* 排除规则区块 */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                                        排除规则 <span className="text-slate-400 font-normal text-xs">（包含任一将被排除）</span>
+                                    </h4>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            value={newSub.exclude}
+                                            onChange={e => setNewSub({ ...newSub, exclude: e.target.value })}
+                                            className={inputClass}
+                                            placeholder="例如：CAM, TC, 枪版, 抢先版"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* 剧集追踪区块 */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
+                                        剧集追踪 <span className="text-slate-400 font-normal text-xs">（电视剧适用）</span>
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">订阅起始季</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={newSub.start_season}
+                                                onChange={e => setNewSub({ ...newSub, start_season: e.target.value })}
+                                                className={inputClass}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">订阅起始集</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={newSub.start_episode}
+                                                onChange={e => setNewSub({ ...newSub, start_episode: e.target.value })}
+                                                className={inputClass}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">当前已有季</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={newSub.current_season}
+                                                onChange={e => setNewSub({ ...newSub, current_season: e.target.value })}
+                                                className={inputClass}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">当前已有集</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={newSub.current_episode}
+                                                onChange={e => setNewSub({ ...newSub, current_episode: e.target.value })}
+                                                className={inputClass}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-sm text-slate-600 dark:text-slate-400">
+                                        💡 提示：填写 TMDB ID 后可自动获取剧集更新进度，系统会自动检测并下载最新一集。
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex justify-end gap-3 mt-6">
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-end gap-3 shrink-0">
                             <button
                                 onClick={() => setShowAddModal(false)}
-                                className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                className="px-5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors font-medium"
                             >
                                 取消
                             </button>
                             <button
                                 onClick={handleAdd}
                                 disabled={isAdding || !newSub.keyword.trim()}
-                                className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
+                                className="px-6 py-2.5 bg-gradient-to-r from-brand-500 to-purple-600 text-white rounded-xl font-bold hover:from-brand-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-500/30 flex items-center gap-2"
                             >
-                                {isAdding ? '添加中...' : '确定添加'}
+                                {isAdding ? (
+                                    <><Loader2 size={16} className="animate-spin" /> 添加中...</>
+                                ) : (
+                                    <><Plus size={16} /> 确定添加</>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -1580,8 +1814,8 @@ const ResourceCard: React.FC<{
 
                         {/* Type Badge - 电影/电视剧明显区分 */}
                         <div className={`absolute top-2 right-2 px-2 py-1 rounded-lg flex items-center gap-1 backdrop-blur-sm shadow-lg ${resource.type === 'movie'
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-purple-500/40'
-                                : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/40'
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-purple-500/40'
+                            : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/40'
                             } text-white`}>
                             {resource.type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
                             <span className="text-[10px] font-bold">{resource.type === 'movie' ? '电影' : '剧集'}</span>
