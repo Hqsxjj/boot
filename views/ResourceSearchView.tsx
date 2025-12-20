@@ -885,10 +885,10 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
         check_times: '4',      // 每天查询次数
         check_time: '20:00',   // 特定查询时间
 
-        // 包含规则
-        resolution: '',        // 分辨率：4K, 1080p, 720p 等
-        video_version: '',     // 视频版本：HDR, REMUX, 蓝光原盘 等
-        file_format: '',       // 文件后缀：mkv, mp4, ts 等
+        // 包含规则（多选）
+        resolutions: [] as string[],      // 分辨率：4K, 1080p, 720p 等（多选）
+        video_versions: [] as string[],   // 视频版本：HDR, REMUX, 蓝光原盘 等（多选）
+        file_formats: [] as string[],     // 文件后缀：mkv, mp4, ts 等（多选）
         include: '',           // 其他包含规则
 
         // 排除规则
@@ -900,6 +900,14 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
         current_season: '1',   // 当前季
         current_episode: '0',  // 当前已有集数
         tmdb_id: '',           // TMDB ID（可选，用于获取更新进度）
+
+        // 剧集记录（表格形式）
+        episode_records: [] as Array<{
+            season: number;
+            episode: number;
+            filename: string;
+            saved_at: string;
+        }>,
     });
     const [showAddModal, setShowAddModal] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
@@ -958,9 +966,10 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
             setNewSub({
                 keyword: '', cloud_type: '115',
                 monitor_days: '7', check_times: '4', check_time: '20:00',
-                resolution: '', video_version: '', file_format: '', include: '',
+                resolutions: [], video_versions: [], file_formats: [], include: '',
                 exclude: '',
-                start_season: '1', start_episode: '1', current_season: '1', current_episode: '0', tmdb_id: ''
+                start_season: '1', start_episode: '1', current_season: '1', current_episode: '0', tmdb_id: '',
+                episode_records: []
             });
             showToast('添加订阅成功');
             fetchSubscriptions();
@@ -1348,56 +1357,114 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                     </div>
                                 </div>
 
-                                {/* 包含规则区块 */}
+                                {/* 包含规则区块 - 多选勾选框 */}
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                        包含规则 <span className="text-slate-400 font-normal text-xs">（必须同时满足）</span>
+                                        包含规则 <span className="text-slate-400 font-normal text-xs">（勾选的条件需同时满足）</span>
                                     </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">分辨率</label>
-                                            <select
-                                                value={newSub.resolution}
-                                                onChange={e => setNewSub({ ...newSub, resolution: e.target.value })}
-                                                className={inputClass}
-                                            >
-                                                <option value="">不限</option>
-                                                <option value="4K">4K / 2160p</option>
-                                                <option value="1080p">1080p</option>
-                                                <option value="720p">720p</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">视频版本</label>
-                                            <select
-                                                value={newSub.video_version}
-                                                onChange={e => setNewSub({ ...newSub, video_version: e.target.value })}
-                                                className={inputClass}
-                                            >
-                                                <option value="">不限</option>
-                                                <option value="REMUX">REMUX 原盘</option>
-                                                <option value="BluRay">BluRay 蓝光</option>
-                                                <option value="WEB-DL">WEB-DL</option>
-                                                <option value="HDR">HDR</option>
-                                                <option value="Dolby Vision">Dolby Vision 杜比视界</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">文件格式</label>
-                                            <select
-                                                value={newSub.file_format}
-                                                onChange={e => setNewSub({ ...newSub, file_format: e.target.value })}
-                                                className={inputClass}
-                                            >
-                                                <option value="">不限</option>
-                                                <option value="mkv">MKV</option>
-                                                <option value="mp4">MP4</option>
-                                                <option value="ts">TS</option>
-                                                <option value="iso">ISO 原盘</option>
-                                            </select>
+
+                                    {/* 分辨率多选 */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">分辨率</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['4K', '2160p', '1080p', '720p', '480p'].map(res => (
+                                                <label key={res} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.resolutions.includes(res)
+                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    }`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newSub.resolutions.includes(res)}
+                                                        onChange={e => {
+                                                            if (e.target.checked) {
+                                                                setNewSub({ ...newSub, resolutions: [...newSub.resolutions, res] });
+                                                            } else {
+                                                                setNewSub({ ...newSub, resolutions: newSub.resolutions.filter(r => r !== res) });
+                                                            }
+                                                        }}
+                                                        className="hidden"
+                                                    />
+                                                    {newSub.resolutions.includes(res) ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                    <span className="text-sm font-medium">{res}</span>
+                                                </label>
+                                            ))}
                                         </div>
                                     </div>
+
+                                    {/* 视频版本多选 */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">视频版本</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                { value: 'REMUX', label: 'REMUX 原盘' },
+                                                { value: 'BluRay', label: 'BluRay 蓝光' },
+                                                { value: 'WEB-DL', label: 'WEB-DL' },
+                                                { value: 'WEBRip', label: 'WEBRip' },
+                                                { value: 'HDR', label: 'HDR' },
+                                                { value: 'HDR10+', label: 'HDR10+' },
+                                                { value: 'Dolby Vision', label: '杜比视界' },
+                                                { value: 'ATMOS', label: 'ATMOS' },
+                                            ].map(opt => (
+                                                <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.video_versions.includes(opt.value)
+                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    }`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newSub.video_versions.includes(opt.value)}
+                                                        onChange={e => {
+                                                            if (e.target.checked) {
+                                                                setNewSub({ ...newSub, video_versions: [...newSub.video_versions, opt.value] });
+                                                            } else {
+                                                                setNewSub({ ...newSub, video_versions: newSub.video_versions.filter(v => v !== opt.value) });
+                                                            }
+                                                        }}
+                                                        className="hidden"
+                                                    />
+                                                    {newSub.video_versions.includes(opt.value) ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                    <span className="text-sm font-medium">{opt.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 文件格式多选 */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">文件格式</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {[
+                                                { value: 'mkv', label: 'MKV' },
+                                                { value: 'mp4', label: 'MP4' },
+                                                { value: 'ts', label: 'TS' },
+                                                { value: 'avi', label: 'AVI' },
+                                                { value: 'iso', label: 'ISO 原盘' },
+                                                { value: 'rmvb', label: 'RMVB' },
+                                            ].map(opt => (
+                                                <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${newSub.file_formats.includes(opt.value)
+                                                        ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                                                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                    }`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newSub.file_formats.includes(opt.value)}
+                                                        onChange={e => {
+                                                            if (e.target.checked) {
+                                                                setNewSub({ ...newSub, file_formats: [...newSub.file_formats, opt.value] });
+                                                            } else {
+                                                                setNewSub({ ...newSub, file_formats: newSub.file_formats.filter(f => f !== opt.value) });
+                                                            }
+                                                        }}
+                                                        className="hidden"
+                                                    />
+                                                    {newSub.file_formats.includes(opt.value) ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                    <span className="text-sm font-medium">{opt.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 其他包含规则 */}
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                             其他包含规则 <span className="text-slate-400 font-normal">（逗号分隔）</span>
@@ -1407,7 +1474,7 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                             value={newSub.include}
                                             onChange={e => setNewSub({ ...newSub, include: e.target.value })}
                                             className={inputClass}
-                                            placeholder="例如：HDR10+, 60FPS, ATMOS"
+                                            placeholder="例如：国语, 中字, 特效字幕"
                                         />
                                     </div>
                                 </div>
@@ -1424,17 +1491,19 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                             value={newSub.exclude}
                                             onChange={e => setNewSub({ ...newSub, exclude: e.target.value })}
                                             className={inputClass}
-                                            placeholder="例如：CAM, TC, 枪版, 抢先版"
+                                            placeholder="例如：CAM, TC, 枪版, 抢先版, 韩语"
                                         />
                                     </div>
                                 </div>
 
-                                {/* 剧集追踪区块 */}
+                                {/* 剧集追踪区块 - 表格形式 */}
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
                                         剧集追踪 <span className="text-slate-400 font-normal text-xs">（电视剧适用）</span>
                                     </h4>
+
+                                    {/* 基础设置 */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">订阅起始季</label>
@@ -1477,6 +1546,44 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
                                             />
                                         </div>
                                     </div>
+
+                                    {/* 往期追剧记录表格 */}
+                                    <div className="mt-4">
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                            往期追剧记录 <span className="text-slate-400 font-normal">（已转存的剧集）</span>
+                                        </label>
+                                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-slate-50 dark:bg-slate-800/50">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-400">季</th>
+                                                        <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-400">集</th>
+                                                        <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-400">转存文件名</th>
+                                                        <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-400">转存时间</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {newSub.episode_records.length > 0 ? (
+                                                        newSub.episode_records.map((record, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                                                                <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-mono">S{String(record.season).padStart(2, '0')}</td>
+                                                                <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-mono">E{String(record.episode).padStart(2, '0')}</td>
+                                                                <td className="px-4 py-3 text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={record.filename}>{record.filename}</td>
+                                                                <td className="px-4 py-3 text-slate-500 dark:text-slate-500">{record.saved_at}</td>
+                                                            </tr>
+                                                        ))
+                                                    ) : (
+                                                        <tr>
+                                                            <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                                                                暂无追剧记录，转存后将自动记录
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
                                     <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg text-sm text-slate-600 dark:text-slate-400">
                                         💡 提示：填写 TMDB ID 后可自动获取剧集更新进度，系统会自动检测并下载最新一集。
                                     </div>
