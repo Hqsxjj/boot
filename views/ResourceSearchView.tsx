@@ -298,15 +298,29 @@ export const ResourceSearchView: React.FC = () => {
                 }
                 response = await api.get115ShareFiles(shareCode, accessCode);
             } else if (match123) {
-                const shareCode = match123[1];
-                // 123 cloud access code is usually after '-' in share code or as query param
+                // 123 cloud: share code and access code can be in format /s/shareCode-accessCode
+                // or access code as query param
+                const fullCode = match123[1];
+                let shareCode = fullCode;
                 let accessCode = '';
-                try {
-                    const urlObj = new URL(link);
-                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
-                } catch (e) {
-                    // ignore
+
+                // Check if access code is in the path (format: shareCode-accessCode)
+                if (fullCode.includes('-')) {
+                    const parts = fullCode.split('-');
+                    shareCode = parts[0];
+                    accessCode = parts.slice(1).join('-'); // In case password contains -
                 }
+
+                // Also check query params as backup
+                if (!accessCode) {
+                    try {
+                        const urlObj = new URL(link);
+                        accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+
                 response = await api.get123ShareFiles(shareCode, accessCode);
             } else {
                 setToast('不支持的链接格式');
@@ -396,14 +410,28 @@ export const ResourceSearchView: React.FC = () => {
                     Array.from(selectedIds)
                 );
             } else if (match123) {
-                const shareCode = match123[1];
+                // 123 cloud: share code and access code can be in format /s/shareCode-accessCode
+                const fullCode = match123[1];
+                let shareCode = fullCode;
                 let accessCode = '';
-                try {
-                    const urlObj = new URL(link);
-                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
-                } catch (e) {
-                    // ignore
+
+                // Check if access code is in the path (format: shareCode-accessCode)
+                if (fullCode.includes('-')) {
+                    const parts = fullCode.split('-');
+                    shareCode = parts[0];
+                    accessCode = parts.slice(1).join('-');
                 }
+
+                // Also check query params as backup
+                if (!accessCode) {
+                    try {
+                        const urlObj = new URL(link);
+                        accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+
                 response = await api.save123Share(
                     shareCode,
                     accessCode,
