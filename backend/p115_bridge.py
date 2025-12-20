@@ -787,7 +787,15 @@ class P115Service:
             
             # 获取或创建 client
             if cookies:
-                client = p115client_mod.P115Client(cookies=cookies)
+                # 处理 cookies 格式
+                if isinstance(cookies, str):
+                    try:
+                        cookies_dict = json.loads(cookies)
+                    except json.JSONDecodeError:
+                        cookies_dict = cookies
+                else:
+                    cookies_dict = cookies
+                client = p115client_mod.P115Client(cookies=cookies_dict)
             elif self._client:
                 client = self._client
             else:
@@ -796,27 +804,61 @@ class P115Service:
                     'error': '未登录 115 账号，请先登录'
                 }
             
-            # 使用 share_snap 获取分享快照
-            share_info = client.share_snap({'share_code': share_code, 'receive_code': access_code or ''})
+            # 构造 payload
+            payload = {
+                'share_code': share_code,
+                'receive_code': access_code or '',
+                'cid': 0,
+                'limit': 100,
+                'offset': 0
+            }
             
-            if not share_info or share_info.get('state', True) is False:
+            logger.info(f'调用 share_snap API: share_code={share_code}, receive_code={access_code or "无"}')
+            
+            # 使用 share_snap 获取分享快照
+            share_info = client.share_snap(payload)
+            
+            logger.info(f'share_snap 返回: state={share_info.get("state")}, keys={list(share_info.keys()) if share_info else "None"}')
+            
+            # 检查状态
+            if not share_info:
                 return {
                     'success': False,
-                    'error': share_info.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                    'error': '无法获取分享信息，API 返回空'
                 }
             
-            # 获取分享中的文件列表
-            file_list = share_info.get('data', {}).get('list', [])
+            if share_info.get('state', True) is False:
+                error_msg = share_info.get('error') or share_info.get('message') or '未知错误'
+                return {
+                    'success': False,
+                    'error': f'无法获取分享信息: {error_msg}'
+                }
+            
+            # 获取分享中的文件列表 - 尝试多种可能的数据结构
+            data = share_info.get('data', {})
+            file_list = data.get('list', []) if isinstance(data, dict) else []
+            
+            # 如果 data 本身就是列表
+            if isinstance(data, list):
+                file_list = data
+            
+            logger.info(f'获取到 {len(file_list)} 个文件')
             
             # 格式化输出
             result_list = []
             for f in file_list:
+                file_id = str(f.get('fid') or f.get('file_id') or f.get('id') or f.get('cid') or '')
+                file_name = f.get('n') or f.get('name') or f.get('file_name') or '未知文件'
+                file_size = f.get('s') or f.get('size') or f.get('file_size') or 0
+                is_dir = bool(f.get('fc') or f.get('ico') == 'folder' or (f.get('cid') and not f.get('fid')))
+                file_time = f.get('t') or f.get('time') or f.get('te') or ''
+                
                 result_list.append({
-                    'id': str(f.get('fid') or f.get('file_id') or f.get('id')),
-                    'name': f.get('n') or f.get('name'),
-                    'size': f.get('s') or f.get('size'),
-                    'is_directory': bool(f.get('cid') or f.get('ico') == 'folder'),
-                    'time': f.get('t') or f.get('time')
+                    'id': file_id,
+                    'name': file_name,
+                    'size': file_size,
+                    'is_directory': is_dir,
+                    'time': file_time
                 })
                 
             return {
@@ -825,7 +867,7 @@ class P115Service:
             }
             
         except Exception as e:
-            logger.error(f'获取分享文件列表失败: {str(e)}')
+            logger.error(f'获取分享文件列表失败: {str(e)}', exc_info=True)
             return {
                 'success': False,
                 'error': f'获取文件列表失败: {str(e)}'
