@@ -891,10 +891,21 @@ class P115Service:
             # 格式化输出
             result_list = []
             for f in file_list:
-                file_id = str(f.get('fid') or f.get('file_id') or f.get('id') or f.get('cid') or '')
+                # 判断是否是文件夹 - 多种判断方式
+                # fc 表示子文件数量，有值说明是文件夹
+                # ico == 'folder' 表示文件夹
+                # 有 cid 但没有 fid 也表示是文件夹
+                is_dir = bool(f.get('fc') or f.get('ico') == 'folder' or (f.get('cid') and not f.get('fid')))
+                
+                # 文件夹使用 cid 作为 ID，文件使用 fid 作为 ID
+                # 这样点击文件夹进入时可以正确使用 cid 参数
+                if is_dir:
+                    file_id = str(f.get('cid') or f.get('id') or f.get('fid') or '')
+                else:
+                    file_id = str(f.get('fid') or f.get('file_id') or f.get('id') or f.get('cid') or '')
+                
                 file_name = f.get('n') or f.get('name') or f.get('file_name') or '未知文件'
                 file_size = f.get('s') or f.get('size') or f.get('file_size') or 0
-                is_dir = bool(f.get('fc') or f.get('ico') == 'folder' or (f.get('cid') and not f.get('fid')))
                 file_time = f.get('t') or f.get('time') or f.get('te') or ''
                 
                 result_list.append({

@@ -413,14 +413,58 @@ export const ResourceSearchView: React.FC = () => {
         const currentPath = resourceBreadcrumbs[resourceKey] || [];
 
         if (index < 0) {
-            // Navigate to root
+            // Navigate to root - clear breadcrumbs first, then load
             setResourceBreadcrumbs(prev => ({ ...prev, [resourceKey]: [] }));
-            await loadResourceFiles(resource, resourceKey, '0');
+            // Load root without updating breadcrumbs (already cleared)
+            const link = resource.share_link || resource.share_links?.[0]?.link;
+            if (!link) return;
+
+            const newLoading = new Set(loadingResourceFiles);
+            newLoading.add(resourceKey);
+            setLoadingResourceFiles(newLoading);
+
+            try {
+                const cachedInfo = resourceShareInfo[resourceKey];
+                if (cachedInfo && cachedInfo.cloudType === '115') {
+                    const response = await api.get115ShareFiles(cachedInfo.shareCode, cachedInfo.accessCode, '0');
+                    if (response.success) {
+                        setResourceFiles(prev => ({ ...prev, [resourceKey]: response.data || [] }));
+                        const allIds = new Set((response.data || []).map(f => f.id));
+                        setSelectedResourceFiles(prev => ({ ...prev, [resourceKey]: allIds }));
+                    }
+                }
+            } finally {
+                const newLoading = new Set(loadingResourceFiles);
+                newLoading.delete(resourceKey);
+                setLoadingResourceFiles(newLoading);
+            }
         } else {
-            // Navigate to specific level
+            // Navigate to specific level - update breadcrumbs to that level, then load
             const targetCid = currentPath[index].id;
             setResourceBreadcrumbs(prev => ({ ...prev, [resourceKey]: currentPath.slice(0, index + 1) }));
-            await loadResourceFiles(resource, resourceKey, targetCid);
+
+            const link = resource.share_link || resource.share_links?.[0]?.link;
+            if (!link) return;
+
+            const newLoading = new Set(loadingResourceFiles);
+            newLoading.add(resourceKey);
+            setLoadingResourceFiles(newLoading);
+
+            try {
+                const cachedInfo = resourceShareInfo[resourceKey];
+                if (cachedInfo && cachedInfo.cloudType === '115') {
+                    const response = await api.get115ShareFiles(cachedInfo.shareCode, cachedInfo.accessCode, targetCid);
+                    if (response.success) {
+                        setResourceFiles(prev => ({ ...prev, [resourceKey]: response.data || [] }));
+                        const allIds = new Set((response.data || []).map(f => f.id));
+                        setSelectedResourceFiles(prev => ({ ...prev, [resourceKey]: allIds }));
+                    }
+                }
+            } finally {
+                const newLoading = new Set(loadingResourceFiles);
+                newLoading.delete(resourceKey);
+                setLoadingResourceFiles(newLoading);
+            }
         }
     };
 
