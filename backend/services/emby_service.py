@@ -287,10 +287,13 @@ class EmbyService:
         tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
         user_tmdb_domain = full_config.get('tmdb', {}).get('domain', '').strip()
         
-        # 检查 TMDB API Key
+        # 内置默认 TMDB API Key（用户未配置时使用）
+        # 这是一个通用 Key，供未配置的用户使用
+        DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
+        
         if not tmdb_api_key:
-            task_log.failure('TMDB API Key 未配置')
-            return {'success': False, 'data': [], 'error': 'TMDB API Key 未配置，请在设置页面配置 TMDB API Key'}
+            tmdb_api_key = DEFAULT_TMDB_API_KEY
+            task_log.info('使用内置默认 TMDB API Key')
         
         task_log.info(f'开始扫描，TMDB 语言: {tmdb_lang}')
         
