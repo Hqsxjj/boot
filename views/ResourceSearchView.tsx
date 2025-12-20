@@ -1456,6 +1456,55 @@ const ResourceCard: React.FC<{
                 </div>
             </div>
 
+            {/* Share Link Display - Always Visible */}
+            {(resource.share_link || resource.share_links?.[0]?.link) && (
+                <div className="mt-2 px-2">
+                    <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-lg p-2">
+                        <a
+                            href={resource.share_link || resource.share_links?.[0]?.link || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-1 text-xs text-blue-600 dark:text-blue-400 hover:underline truncate"
+                            title={resource.share_link || resource.share_links?.[0]?.link || ''}
+                        >
+                            {resource.share_link || resource.share_links?.[0]?.link}
+                        </a>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const link = resource.share_link || resource.share_links?.[0]?.link;
+                                if (link) {
+                                    navigator.clipboard.writeText(link);
+                                }
+                            }}
+                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            title="复制链接"
+                        >
+                            <Copy size={14} />
+                        </button>
+                    </div>
+                    {resource.share_code && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                            <span>提取码:</span>
+                            <span className="font-mono font-bold text-orange-500">{resource.share_code}</span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (resource.share_code) {
+                                        navigator.clipboard.writeText(resource.share_code);
+                                    }
+                                }}
+                                className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
+                                title="复制提取码"
+                            >
+                                <Copy size={10} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Expandable File List Section */}
             {hasCloudFiles && (
                 <div className="mt-2">
