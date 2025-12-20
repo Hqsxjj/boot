@@ -699,8 +699,7 @@ export const CloudOrganizeView: React.FC = () => {
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-white/30 dark:bg-slate-800/30 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
                               <div>
                                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">手机号</label>
-                                 <input
-                                    type="text"
+                                 <SensitiveInput
                                     value={config.cloud123.passport || ''}
                                     onChange={(e) => updateNested('cloud123', 'passport', e.target.value)}
                                     placeholder="请输入手机号或邮箱"
