@@ -284,8 +284,8 @@ export const ResourceSearchView: React.FC = () => {
 
             // Check for 115 link - supports both 115.com and 115cdn.com
             const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-            // Check for 123 link - format: https://www.123pan.com/s/xxxx or https://www.123pan.cn/s/xxxx
-            const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
+            // Check for 123 link - supports 123pan.com, 123pan.cn, and 123684.com
+            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
                 const shareCode = match115[1];
@@ -377,8 +377,8 @@ export const ResourceSearchView: React.FC = () => {
 
             // Check for 115 link - supports both 115.com and 115cdn.com
             const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-            // Check for 123 link
-            const match123 = link.match(/123pan\.(?:com|cn)\/s\/([a-zA-Z0-9-]+)/i);
+            // Check for 123 link - supports 123pan.com, 123pan.cn, and 123684.com
+            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
                 const shareCode = match115[1];
