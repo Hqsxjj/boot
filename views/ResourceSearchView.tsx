@@ -92,6 +92,9 @@ export const ResourceSearchView: React.FC = () => {
     const [loadingResourceFiles, setLoadingResourceFiles] = useState<Set<string>>(new Set());
     const [selectedResourceFiles, setSelectedResourceFiles] = useState<Record<string, Set<string>>>({});
     const [resourceAccessCodes, setResourceAccessCodes] = useState<Record<string, string>>({});
+    // Breadcrumb navigation state for folder browsing
+    const [resourceBreadcrumbs, setResourceBreadcrumbs] = useState<Record<string, Array<{ id: string; name: string }>>>({});
+    const [resourceShareInfo, setResourceShareInfo] = useState<Record<string, { shareCode: string; accessCode: string; cloudType: string }>>({});
 
 
     useEffect(() => {
@@ -288,7 +291,7 @@ export const ResourceSearchView: React.FC = () => {
         }
     };
 
-    const loadResourceFiles = async (resource: Resource, resourceKey: string) => {
+    const loadResourceFiles = async (resource: Resource, resourceKey: string, cid: string = '0', folderName?: string) => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
@@ -300,64 +303,87 @@ export const ResourceSearchView: React.FC = () => {
         try {
             let response;
             let shareCode = '';
-            let accessCode = resourceAccessCodes[resourceKey] || '';
+            let accessCode = '';
+            let cloudType = resource.cloud_type || '';
 
-            // Check for 115 link - supports both 115.com and 115cdn.com
-            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-            // Check for 123 link - supports 123pan.com, 123pan.cn, and 123684.com
-            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
+            // Use cached share info if available
+            const cachedInfo = resourceShareInfo[resourceKey];
+            if (cachedInfo) {
+                shareCode = cachedInfo.shareCode;
+                accessCode = cachedInfo.accessCode;
+                cloudType = cachedInfo.cloudType;
+            } else {
+                // Check for 115 link - supports both 115.com and 115cdn.com
+                const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
+                // Check for 123 link - supports 123pan.com, 123pan.cn, and 123684.com
+                const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
-            if (match115) {
-                shareCode = match115[1];
-                // Try to get access code from URL if not provided manually
-                if (!accessCode) {
+                if (match115) {
+                    shareCode = match115[1];
+                    cloudType = '115';
                     try {
                         const urlObj = new URL(link);
                         accessCode = urlObj.searchParams.get('password') || '';
-                    } catch (e) {
-                        // ignore
+                    } catch (e) { /* ignore */ }
+                    if (!accessCode && resourceAccessCodes[resourceKey]) {
+                        accessCode = resourceAccessCodes[resourceKey];
                     }
-                }
-
-                // Try to load files with whatever access code we have (might be empty for public shares)
-                response = await api.get115ShareFiles(shareCode, accessCode);
-            } else if (match123) {
-                const fullCode = match123[1];
-                shareCode = fullCode;
-
-                // Check if access code is in the path (format: shareCode-accessCode)
-                if (!accessCode && fullCode.includes('-')) {
-                    const parts = fullCode.split('-');
-                    shareCode = parts[0];
-                    accessCode = parts.slice(1).join('-');
-                }
-
-                // Also check query params as backup
-                if (!accessCode) {
-                    try {
-                        const urlObj = new URL(link);
-                        accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
-                    } catch (e) {
-                        // ignore
+                } else if (match123) {
+                    const fullCode = match123[1];
+                    shareCode = fullCode;
+                    cloudType = '123';
+                    if (fullCode.includes('-')) {
+                        const parts = fullCode.split('-');
+                        shareCode = parts[0];
+                        accessCode = parts.slice(1).join('-');
                     }
+                    if (!accessCode) {
+                        try {
+                            const urlObj = new URL(link);
+                            accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                        } catch (e) { /* ignore */ }
+                    }
+                    if (!accessCode && resourceAccessCodes[resourceKey]) {
+                        accessCode = resourceAccessCodes[resourceKey];
+                    }
+                } else {
+                    setToast('不支持的链接格式');
+                    setTimeout(() => setToast(null), 3000);
+                    return;
                 }
 
-                // Try to load files with whatever access code we have
+                // Cache share info
+                setResourceShareInfo(prev => ({ ...prev, [resourceKey]: { shareCode, accessCode, cloudType } }));
+            }
+
+            console.log(`Loading files: cloudType=${cloudType}, code=${shareCode}, accessCode=${accessCode}, cid=${cid}`);
+
+            if (cloudType === '115') {
+                response = await api.get115ShareFiles(shareCode, accessCode, cid);
+            } else if (cloudType === '123') {
                 response = await api.get123ShareFiles(shareCode, accessCode);
             } else {
-                setToast('不支持的链接格式');
+                setToast('不支持的网盘类型');
                 setTimeout(() => setToast(null), 3000);
                 return;
             }
 
             if (response.success) {
                 setResourceFiles(prev => ({ ...prev, [resourceKey]: response.data || [] }));
-                // Default select all files for this resource
                 const allIds = new Set((response.data || []).map(f => f.id));
                 setSelectedResourceFiles(prev => ({ ...prev, [resourceKey]: allIds }));
-                // Store the access code for future use
                 if (accessCode) {
                     setResourceAccessCodes(prev => ({ ...prev, [resourceKey]: accessCode }));
+                }
+
+                // Update breadcrumb navigation
+                if (cid !== '0' && folderName) {
+                    setResourceBreadcrumbs(prev => {
+                        const currentPath = prev[resourceKey] || [];
+                        return { ...prev, [resourceKey]: [...currentPath, { id: cid, name: folderName }] };
+                    });
+                } else if (cid === '0') {
+                    setResourceBreadcrumbs(prev => ({ ...prev, [resourceKey]: [] }));
                 }
             } else {
                 setToast(response.error || '获取文件列表失败');
@@ -368,10 +394,33 @@ export const ResourceSearchView: React.FC = () => {
             setToast('获取文件列表失败');
             setTimeout(() => setToast(null), 3000);
         } finally {
-            // Remove from loading state
             const newLoading = new Set(loadingResourceFiles);
             newLoading.delete(resourceKey);
             setLoadingResourceFiles(newLoading);
+        }
+    };
+
+    // Handle folder click to navigate into subdirectory
+    const handleFolderClick = async (resource: Resource, folder: ShareFile) => {
+        if (!folder.is_directory) return;
+        const resourceKey = resource.id || resource.title;
+        await loadResourceFiles(resource, resourceKey, folder.id, folder.name);
+    };
+
+    // Navigate back to a specific breadcrumb level
+    const navigateToBreadcrumb = async (resource: Resource, index: number) => {
+        const resourceKey = resource.id || resource.title;
+        const currentPath = resourceBreadcrumbs[resourceKey] || [];
+
+        if (index < 0) {
+            // Navigate to root
+            setResourceBreadcrumbs(prev => ({ ...prev, [resourceKey]: [] }));
+            await loadResourceFiles(resource, resourceKey, '0');
+        } else {
+            // Navigate to specific level
+            const targetCid = currentPath[index].id;
+            setResourceBreadcrumbs(prev => ({ ...prev, [resourceKey]: currentPath.slice(0, index + 1) }));
+            await loadResourceFiles(resource, resourceKey, targetCid);
         }
     };
 
@@ -616,6 +665,9 @@ export const ResourceSearchView: React.FC = () => {
                                         onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
                                         onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
                                         onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                        breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                        onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                        onBreadcrumbClick={(index) => navigateToBreadcrumb(resource, index)}
                                     />
                                 ))}
                             </div>
@@ -659,6 +711,9 @@ export const ResourceSearchView: React.FC = () => {
                                         onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
                                         onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
                                         onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                        breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                        onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                        onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
                                     />
                                 ))}
                             </div>
@@ -1387,12 +1442,14 @@ const ResourceCard: React.FC<{
     onToggleFileSelection?: (fileId: string) => void;
     onToggleSelectAll?: () => void;
     onSaveFiles?: () => Promise<void>;
-}> = ({ resource, onClick, onPreview, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles }) => {
+    breadcrumbs?: Array<{ id: string; name: string }>;
+    onFolderClick?: (folder: ShareFile) => void;
+    onBreadcrumbClick?: (index: number) => void;
+}> = ({ resource, onClick, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles, breadcrumbs, onFolderClick, onBreadcrumbClick }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    const resourceKey = resource.id || resource.title;
     const hasCloudFiles = (resource.cloud_type === '115' || resource.cloud_type === '123') && onToggleExpand;
     const hasShareLink = resource.share_link || (resource.share_links && resource.share_links[0]?.link);
 
@@ -1544,6 +1601,29 @@ const ResourceCard: React.FC<{
                                 </div>
                             ) : files && files.length > 0 ? (
                                 <div className="space-y-1">
+                                    {/* Breadcrumb Navigation */}
+                                    {breadcrumbs && breadcrumbs.length > 0 && (
+                                        <div className="flex items-center gap-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg mb-2 overflow-x-auto">
+                                            <button
+                                                onClick={() => onBreadcrumbClick?.(-1)}
+                                                className="text-xs text-brand-500 hover:text-brand-600 font-medium shrink-0"
+                                            >
+                                                🏠 根目录
+                                            </button>
+                                            {breadcrumbs.map((crumb, idx) => (
+                                                <React.Fragment key={crumb.id}>
+                                                    <span className="text-slate-400 text-xs">/</span>
+                                                    <button
+                                                        onClick={() => onBreadcrumbClick?.(idx)}
+                                                        className={`text-xs font-medium shrink-0 ${idx === breadcrumbs.length - 1 ? 'text-slate-600 dark:text-slate-300' : 'text-brand-500 hover:text-brand-600'}`}
+                                                    >
+                                                        {crumb.name}
+                                                    </button>
+                                                </React.Fragment>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     {/* Select All */}
                                     <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800">
                                         <button
@@ -1563,18 +1643,36 @@ const ResourceCard: React.FC<{
                                     {files.map(file => (
                                         <div
                                             key={file.id}
-                                            onClick={() => onToggleFileSelection?.(file.id)}
-                                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${selectedFileIds?.has(file.id)
-                                                ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
-                                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+                                            onClick={(e) => {
+                                                if (file.is_directory && onFolderClick) {
+                                                    e.stopPropagation();
+                                                    onFolderClick(file);
+                                                } else {
+                                                    onToggleFileSelection?.(file.id);
+                                                }
+                                            }}
+                                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${file.is_directory
+                                                ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
+                                                : selectedFileIds?.has(file.id)
+                                                    ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
+                                                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
                                                 }`}
                                         >
-                                            <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
-                                                {selectedFileIds?.has(file.id) ? <CheckSquare size={16} /> : <Square size={16} />}
-                                            </div>
+                                            {file.is_directory ? (
+                                                <div className="text-blue-500">
+                                                    <ExternalLink size={16} />
+                                                </div>
+                                            ) : (
+                                                <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
+                                                    {selectedFileIds?.has(file.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                </div>
+                                            )}
                                             <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate" title={file.name}>
+                                                <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate flex items-center gap-1" title={file.name}>
                                                     {file.is_directory ? '📁 ' : '📄 '}{file.name}
+                                                    {file.is_directory && (
+                                                        <span className="text-[10px] text-blue-500 font-bold ml-1">点击进入</span>
+                                                    )}
                                                 </div>
                                                 <div className="text-xs text-slate-500 flex gap-3 mt-0.5">
                                                     {file.size > 0 && <span>{formatFileSize(file.size)}</span>}

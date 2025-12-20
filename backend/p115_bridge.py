@@ -816,9 +816,15 @@ class P115Service:
                 'success': False
             }
     
-    def get_share_files(self, share_code: str, access_code: str = None, cookies: str = None) -> Dict[str, Any]:
+    def get_share_files(self, share_code: str, access_code: str = None, cookies: str = None, cid: str = '0') -> Dict[str, Any]:
         """
         获取分享链接中的文件列表
+        
+        Args:
+            share_code: 分享码
+            access_code: 提取码
+            cookies: Cookie 字符串
+            cid: 子目录 ID，默认为 '0' 表示根目录
         """
         try:
             p115client_mod = self._get_p115client_module()
@@ -842,11 +848,11 @@ class P115Service:
                     'error': '未登录 115 账号，请先登录'
                 }
             
-            # 构造 payload
+            # 构造 payload - 支持子目录 cid
             payload = {
                 'share_code': share_code,
                 'receive_code': access_code or '',
-                'cid': 0,
+                'cid': int(cid) if cid else 0,
                 'limit': 100,
                 'offset': 0
             }

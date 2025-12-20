@@ -187,12 +187,13 @@ export const api = {
 
   // --- 115 Share Interface ---
 
-  get115ShareFiles: async (shareCode: string, accessCode?: string) => {
+  get115ShareFiles: async (shareCode: string, accessCode?: string, cid?: string) => {
     const res = await apiClient.post<ApiResponse<{ id: string; name: string; size: number; is_directory: boolean; time: string }[]>>(
       '/115/share/files',
       {
         shareCode,
         accessCode,
+        cid: cid || '0',
       }
     );
     return res.data;

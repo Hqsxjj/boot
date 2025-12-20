@@ -542,9 +542,14 @@ class Cloud115Service:
                 'error': f'转存失败: {str(e)}'
             }
     
-    def get_share_files(self, share_code: str, access_code: str = None) -> Dict[str, Any]:
+    def get_share_files(self, share_code: str, access_code: str = None, cid: str = '0') -> Dict[str, Any]:
         """
         获取分享链接中的文件列表
+        
+        Args:
+            share_code: 分享码
+            access_code: 提取码
+            cid: 子目录 ID，默认为 '0' 表示根目录
         """
         try:
             from p115_bridge import get_p115_service
@@ -561,7 +566,8 @@ class Cloud115Service:
             result = p115_service.get_share_files(
                 share_code=share_code,
                 access_code=access_code,
-                cookies=cookies_json
+                cookies=cookies_json,
+                cid=cid
             )
             return result
         except Exception as e:

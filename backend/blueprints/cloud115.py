@@ -517,6 +517,7 @@ def get_share_files():
         
         share_code = data.get('shareCode') or data.get('share_code')
         access_code = data.get('accessCode') or data.get('access_code')
+        cid = data.get('cid') or data.get('folder_id') or '0'
         
         if not share_code:
             return jsonify({
@@ -524,7 +525,7 @@ def get_share_files():
                 'error': 'shareCode is required'
             }), 400
         
-        result = _cloud115_service.get_share_files(share_code, access_code)
+        result = _cloud115_service.get_share_files(share_code, access_code, cid)
         
         if result.get('success'):
             return jsonify(result), 200
