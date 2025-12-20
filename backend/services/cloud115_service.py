@@ -86,70 +86,6 @@ class Cloud115Service:
         
         errors = []
         
-        # ==================== 优先从多账号系统获取激活账号 ====================
-        try:
-            from services.cloud_account_service import get_account_service
-            account_service = get_account_service()
-            active_account = account_service.get_active_account('115')
-            
-            if active_account:
-                logger.info(f'使用多账号系统激活账号: {active_account.get("name")} ({active_account.get("account_type")})')
-                
-                # 根据账号类型使用相应凭证
-                if active_account.get('account_type') == '115open':
-                    # 使用 Open API Token
-                    refresh_token = active_account.get('refresh_token')
-                    access_token = active_account.get('access_token')
-                    
-                    if refresh_token and hasattr(self.p115client, 'P115OpenClient'):
-                        try:
-                            client = self.p115client.P115OpenClient(refresh_token)
-                            logger.info('多账号: P115OpenClient 已使用 refresh_token 初始化')
-                            return client
-                        except Exception as e:
-                            errors.append(f'多账号 OpenClient: {e}')
-                    elif access_token:
-                        try:
-                            client = self.p115client.P115OpenClient.__new__(self.p115client.P115OpenClient)
-                            client._access_token = access_token
-                            logger.info('多账号: P115OpenClient 已使用 access_token 初始化')
-                            return client
-                        except Exception as e:
-                            errors.append(f'多账号 OpenClient: {e}')
-                else:
-                    # 使用 Cookie
-                    cookie = active_account.get('cookie')
-                    if cookie:
-                        try:
-                            # 尝试解析为 JSON
-                            try:
-                                cookies = json.loads(cookie)
-                            except json.JSONDecodeError:
-                                # 解析为 cookie 字符串格式
-                                cookies = {}
-                                for part in cookie.replace('\n', ';').split(';'):
-                                    part = part.strip()
-                                    if '=' in part:
-                                        k, v = part.split('=', 1)
-                                        cookies[k.strip()] = v.strip()
-                            
-                            client = self.p115client.P115Client(cookies)
-                            # 验证客户端
-                            try:
-                                client.user_info()
-                                logger.info(f'多账号: P115Client 已使用 Cookie 初始化并验证成功')
-                                return client
-                            except Exception as ve:
-                                errors.append(f'多账号 Cookie 验证失败: {ve}')
-                        except Exception as e:
-                            errors.append(f'多账号 Cookie: {e}')
-                
-                logger.warning(f'多账号凭证初始化失败，回退到 secret_store: {errors}')
-        except Exception as e:
-            logger.debug(f'多账号系统不可用，回退到 secret_store: {e}')
-        
-        # ==================== 回退到原有的 secret_store 方式 ====================
-        
         # 调试：列出所有可用的凭证
         available_keys = []
         for key in ['cloud115_openapp_cookies', 'cloud115_qr_cookies', 'cloud115_manual_cookies', 'cloud115_cookies']:
@@ -163,7 +99,7 @@ class Cloud115Service:
         logger.info(f'115 凭证检查: 可用密钥 = {available_keys}')
         
         if not available_keys:
-            raise ValueError('未找到任何 115 登录凭证，请先登录或在多账号管理中添加账号')
+            raise ValueError('未找到任何 115 登录凭证，请先登录')
         
         # 首先尝试 open_app 模式 (P115OpenClient with access_token)
         open_app_json = self.secret_store.get_secret('cloud115_openapp_cookies')
