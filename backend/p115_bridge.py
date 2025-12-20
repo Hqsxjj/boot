@@ -67,10 +67,11 @@ class P115Service:
         sign = session_info.get('sign', '')
         code_verifier = session_info.get('code_verifier', '')
         
-        max_retries = 150  # 最多轮询约5分钟 (150 * 2秒)
-        retry_count = 0
+        max_wait_time = 360  # 最多等待6分钟
+        elapsed_time = 0
+        scanned = False  # 标记是否已扫描
         
-        while retry_count < max_retries:
+        while elapsed_time < max_wait_time:
             # 检查 session 是否还存在
             if session_id not in self._session_cache:
                 logger.info(f"Session {session_id} 已被清理，停止轮询")
@@ -92,7 +93,10 @@ class P115Service:
                     session_info['error'] = '获取 access_token 失败'
                 break
             elif status_code == 1:
-                # 已扫描，等待确认
+                # 已扫描，等待确认 - 立刻更新状态并切换到快速轮询
+                if not scanned:
+                    scanned = True
+                    logger.info(f"Session {session_id} 已扫描，切换到快速轮询模式")
                 session_info['status'] = 'scanned'
             elif status_code == 0:
                 # 未扫描
@@ -103,11 +107,17 @@ class P115Service:
                 logger.info(f"Session {session_id} 二维码过期")
                 break
             
-            time.sleep(2)  # 每2秒轮询一次
-            retry_count += 1
+            # 动态轮询间隔：未扫描时2分钟，已扫描后1秒快速响应
+            if scanned:
+                sleep_time = 1  # 已扫描后1秒轮询，确保快速响应
+            else:
+                sleep_time = 120  # 未扫描时2分钟轮询
+            
+            time.sleep(sleep_time)
+            elapsed_time += sleep_time
         
         # 超时处理
-        if retry_count >= max_retries and session_info.get('status') not in ['success', 'expired']:
+        if elapsed_time >= max_wait_time and session_info.get('status') not in ['success', 'expired']:
             session_info['status'] = 'expired'
             logger.info(f"Session {session_id} 轮询超时")
     
@@ -575,16 +585,24 @@ class P115Service:
             uid = qr_data.get('uid', '')
             time_val = qr_data.get('time', 0)
             sign = qr_data.get('sign', '')
+            login_app = session_info.get('login_app', 'web')  # 获取登录时使用的 app 类型
             
             # 详细日志：记录使用的时间参数
             import time as time_module
             current_time = int(time_module.time())
-            logger.info(f'QR check: uid={uid[:16]}..., server_time={time_val}, current_time={current_time}, diff={current_time - time_val}s, sign={sign[:8] if sign else ""}...')
+            logger.info(f'QR check: uid={uid[:16]}..., server_time={time_val}, current_time={current_time}, diff={current_time - time_val}s, sign={sign[:8] if sign else ""}..., app={login_app}')
             
             payload = {'uid': uid, 'time': time_val, 'sign': sign}
             
             try:
-                status_result = p115client.P115Client.login_qrcode_scan_status(payload)
+                # 尝试传递 app 参数以确保状态检查使用正确的设备类型
+                try:
+                    status_result = p115client.P115Client.login_qrcode_scan_status(payload, app=login_app)
+                except TypeError:
+                    # p115client 版本不支持 app 参数，使用默认调用
+                    logger.warning('p115client.login_qrcode_scan_status does not support app parameter, using default')
+                    status_result = p115client.P115Client.login_qrcode_scan_status(payload)
+                
                 logger.info(f'QR status API raw response: {status_result}')
                 
                 # 状态码说明：
@@ -602,10 +620,20 @@ class P115Service:
                 elif status_code == 2:
                     # 用户已确认，获取 cookies
                     try:
-                        scan_result = p115client.P115Client.login_qrcode_scan(payload)
+                        # 关键修复：传递 app 参数以获取正确格式的 cookies
+                        logger.info(f'User confirmed, fetching cookies with app={login_app}')
+                        try:
+                            scan_result = p115client.P115Client.login_qrcode_scan(payload, app=login_app)
+                        except TypeError:
+                            # p115client 版本不支持 app 参数
+                            logger.warning('p115client.login_qrcode_scan does not support app parameter, using default')
+                            scan_result = p115client.P115Client.login_qrcode_scan(payload)
+                        
+                        logger.info(f'login_qrcode_scan result: state={scan_result.get("state")}, keys={list(scan_result.keys())}')
                         
                         if scan_result.get('state') == 1:
                             cookie_data = scan_result.get('data', {}).get('cookie', {})
+                            logger.info(f'Raw cookie_data type: {type(cookie_data).__name__}, value preview: {str(cookie_data)[:100]}...')
                             
                             if isinstance(cookie_data, str):
                                 cookies = {}
@@ -618,6 +646,16 @@ class P115Service:
                                 cookies = cookie_data
                             else:
                                 cookies = {}
+                            
+                            logger.info(f'Parsed cookies keys: {list(cookies.keys())}')
+                            
+                            if not cookies:
+                                logger.warning('No cookies parsed from response!')
+                                return {
+                                    'status': 'error',
+                                    'error': 'No cookies in response',
+                                    'success': False
+                                }
                             
                             session_info['status'] = 'success'
                             session_info['cookies'] = cookies
