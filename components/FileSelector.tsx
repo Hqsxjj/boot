@@ -7,7 +7,7 @@ interface FileSelectorProps {
   onClose: () => void;
   onSelect: (cid: string, name: string) => void;
   title?: string;
-  cloudType?: '115' | '123' | 'openlist';  // 新增：云盘类型
+  cloudType?: '115' | '123';  // 云盘类型
 }
 
 interface FileNode {
@@ -44,7 +44,6 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const getInitialDirId = () => {
     switch (cloudType) {
       case '123':
-      case 'openlist':
         return '/';
       default:
         return '0';
@@ -85,12 +84,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           }
           break;
         }
-        case 'openlist': {
-          // OpenList 暂不支持目录浏览，显示提示
-          setError('OpenList 目录选择暂不支持，请手动输入路径');
-          dirs = [];
-          break;
-        }
+
       }
 
       setFiles(dirs);

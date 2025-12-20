@@ -8,7 +8,7 @@ import { SensitiveInput } from '../components/SensitiveInput';
 const DEFAULT_CONFIG: Partial<AppConfig> = {
   cloud115: { loginMethod: 'cookie', loginApp: 'web', cookies: '', userAgent: '', downloadPath: '', downloadDirName: '未连接', autoDeleteMsg: false, qps: 1.0 },
   cloud123: { enabled: false, clientId: '', clientSecret: '', downloadPath: '', downloadDirName: '未连接', qps: 1.0 },
-  openList: { enabled: false, url: '', mountPath: '', username: '', password: '' },
+
   tmdb: { apiKey: '', language: 'zh-CN', includeAdult: false },
   telegram: { botToken: '', adminUserId: '', whitelistMode: true, notificationChannelId: '' },
   proxy: { enabled: false, type: 'http', host: '', port: '', noProxyHosts: '115.com,123pan.com,123pan.cn' },
@@ -181,13 +181,7 @@ export const UserCenterView: React.FC = () => {
       colorClass: 'text-blue-600 dark:text-blue-400',
       bgClass: 'bg-blue-50 dark:bg-blue-900/20'
     },
-    {
-      name: 'OpenList',
-      isConnected: config.openList?.enabled && !!config.openList?.url,
-      icon: Globe,
-      colorClass: 'text-cyan-600 dark:text-cyan-400',
-      bgClass: 'bg-cyan-50 dark:bg-cyan-900/20'
-    },
+
     {
       name: 'TMDB',
       isConnected: !!config.tmdb?.apiKey,
