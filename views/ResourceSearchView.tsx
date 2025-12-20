@@ -92,6 +92,12 @@ export const ResourceSearchView: React.FC = () => {
     const [loadingResourceFiles, setLoadingResourceFiles] = useState<Set<string>>(new Set());
     const [selectedResourceFiles, setSelectedResourceFiles] = useState<Record<string, Set<string>>>({});
 
+    // Manual access code input state
+    const [showAccessCodeModal, setShowAccessCodeModal] = useState(false);
+    const [pendingAccessCodeResource, setPendingAccessCodeResource] = useState<Resource | null>(null);
+    const [manualAccessCode, setManualAccessCode] = useState('');
+    const [resourceAccessCodes, setResourceAccessCodes] = useState<Record<string, string>>({});
+
 
     useEffect(() => {
         fetchTrending();
@@ -287,7 +293,7 @@ export const ResourceSearchView: React.FC = () => {
         }
     };
 
-    const loadResourceFiles = async (resource: Resource, resourceKey: string) => {
+    const loadResourceFiles = async (resource: Resource, resourceKey: string, manualCode?: string) => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
@@ -298,6 +304,8 @@ export const ResourceSearchView: React.FC = () => {
 
         try {
             let response;
+            let shareCode = '';
+            let accessCode = manualCode || resourceAccessCodes[resourceKey] || '';
 
             // Check for 115 link - supports both 115.com and 115cdn.com
             const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
@@ -305,27 +313,39 @@ export const ResourceSearchView: React.FC = () => {
             const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
-                const shareCode = match115[1];
-                let accessCode = '';
-                try {
-                    const urlObj = new URL(link);
-                    accessCode = urlObj.searchParams.get('password') || '';
-                } catch (e) {
-                    // ignore
+                shareCode = match115[1];
+                // Try to get access code from URL if not provided manually
+                if (!accessCode) {
+                    try {
+                        const urlObj = new URL(link);
+                        accessCode = urlObj.searchParams.get('password') || '';
+                    } catch (e) {
+                        // ignore
+                    }
                 }
+
+                // If still no access code, prompt user
+                if (!accessCode && !manualCode) {
+                    setPendingAccessCodeResource(resource);
+                    setManualAccessCode('');
+                    setShowAccessCodeModal(true);
+                    // Remove from loading state since we're waiting for user input
+                    const newLoading = new Set(loadingResourceFiles);
+                    newLoading.delete(resourceKey);
+                    setLoadingResourceFiles(newLoading);
+                    return;
+                }
+
                 response = await api.get115ShareFiles(shareCode, accessCode);
             } else if (match123) {
-                // 123 cloud: share code and access code can be in format /s/shareCode-accessCode
-                // or access code as query param
                 const fullCode = match123[1];
-                let shareCode = fullCode;
-                let accessCode = '';
+                shareCode = fullCode;
 
                 // Check if access code is in the path (format: shareCode-accessCode)
-                if (fullCode.includes('-')) {
+                if (!accessCode && fullCode.includes('-')) {
                     const parts = fullCode.split('-');
                     shareCode = parts[0];
-                    accessCode = parts.slice(1).join('-'); // In case password contains -
+                    accessCode = parts.slice(1).join('-');
                 }
 
                 // Also check query params as backup
@@ -336,6 +356,18 @@ export const ResourceSearchView: React.FC = () => {
                     } catch (e) {
                         // ignore
                     }
+                }
+
+                // If still no access code, prompt user
+                if (!accessCode && !manualCode) {
+                    setPendingAccessCodeResource(resource);
+                    setManualAccessCode('');
+                    setShowAccessCodeModal(true);
+                    // Remove from loading state
+                    const newLoading = new Set(loadingResourceFiles);
+                    newLoading.delete(resourceKey);
+                    setLoadingResourceFiles(newLoading);
+                    return;
                 }
 
                 response = await api.get123ShareFiles(shareCode, accessCode);
@@ -350,9 +382,21 @@ export const ResourceSearchView: React.FC = () => {
                 // Default select all files for this resource
                 const allIds = new Set((response.data || []).map(f => f.id));
                 setSelectedResourceFiles(prev => ({ ...prev, [resourceKey]: allIds }));
+                // Store the access code for future use
+                if (accessCode) {
+                    setResourceAccessCodes(prev => ({ ...prev, [resourceKey]: accessCode }));
+                }
             } else {
-                setToast(response.error || '获取文件列表失败');
-                setTimeout(() => setToast(null), 3000);
+                // If failed due to wrong password, prompt for manual input
+                const errorMsg = response.error || '';
+                if (errorMsg.includes('密码') || errorMsg.includes('password') || errorMsg.includes('提取码')) {
+                    setPendingAccessCodeResource(resource);
+                    setManualAccessCode('');
+                    setShowAccessCodeModal(true);
+                } else {
+                    setToast(response.error || '获取文件列表失败');
+                    setTimeout(() => setToast(null), 3000);
+                }
             }
         } catch (e) {
             console.error(e);
@@ -364,6 +408,28 @@ export const ResourceSearchView: React.FC = () => {
             newLoading.delete(resourceKey);
             setLoadingResourceFiles(newLoading);
         }
+    };
+
+    // Handle manual access code submission
+    const handleAccessCodeSubmit = async () => {
+        if (!pendingAccessCodeResource || !manualAccessCode.trim()) return;
+
+        const resourceKey = pendingAccessCodeResource.id || pendingAccessCodeResource.title;
+
+        // Close modal first
+        setShowAccessCodeModal(false);
+
+        // Expand the resource
+        const newExpanded = new Set(expandedResources);
+        newExpanded.add(resourceKey);
+        setExpandedResources(newExpanded);
+
+        // Load files with manual access code
+        await loadResourceFiles(pendingAccessCodeResource, resourceKey, manualAccessCode.trim());
+
+        // Clear pending state
+        setPendingAccessCodeResource(null);
+        setManualAccessCode('');
     };
 
     const toggleResourceFileSelection = (resourceKey: string, fileId: string) => {
@@ -742,6 +808,70 @@ export const ResourceSearchView: React.FC = () => {
                                     >
                                         <Save size={18} />
                                         转存选中 ({selectedFileIds.size})
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Access Code Input Modal */}
+                    {showAccessCodeModal && pendingAccessCodeResource && (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => {
+                                setShowAccessCodeModal(false);
+                                setPendingAccessCodeResource(null);
+                            }} />
+                            <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                        🔐 输入提取码
+                                    </h3>
+                                    <button
+                                        onClick={() => {
+                                            setShowAccessCodeModal(false);
+                                            setPendingAccessCodeResource(null);
+                                        }}
+                                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                    >
+                                        <X size={24} />
+                                    </button>
+                                </div>
+
+                                <div className="mb-4">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                                        请输入 <span className="font-bold text-slate-800 dark:text-white">{pendingAccessCodeResource.title}</span> 的提取码：
+                                    </p>
+                                    <input
+                                        type="text"
+                                        value={manualAccessCode}
+                                        onChange={(e) => setManualAccessCode(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleAccessCodeSubmit();
+                                            }
+                                        }}
+                                        placeholder="请输入提取码..."
+                                        className={inputClass}
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setShowAccessCodeModal(false);
+                                            setPendingAccessCodeResource(null);
+                                        }}
+                                        className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        onClick={handleAccessCodeSubmit}
+                                        disabled={!manualAccessCode.trim()}
+                                        className="px-6 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        确认
                                     </button>
                                 </div>
                             </div>
