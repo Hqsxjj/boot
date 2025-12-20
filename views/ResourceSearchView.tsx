@@ -29,7 +29,13 @@ import {
     History,
     CheckCircle,
     Clock,
-    RotateCcw
+    RotateCcw,
+    Folder,
+    FileVideo,
+    FileAudio,
+    FileArchive,
+    FileImage,
+    File
 } from 'lucide-react';
 
 
@@ -1727,10 +1733,27 @@ const ResourceCard: React.FC<{
                                                 {/* Icon / Checkbox */}
                                                 <div className="pt-0.5 shrink-0">
                                                     {file.is_directory ? (
-                                                        <div className="text-blue-500 text-2xl">📁</div>
+                                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                                                            <Folder size={22} className="text-white" fill="white" fillOpacity={0.3} />
+                                                        </div>
                                                     ) : (
-                                                        <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
-                                                            {selectedFileIds?.has(file.id) ? <CheckSquare size={20} /> : <Square size={20} />}
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
+                                                                {selectedFileIds?.has(file.id) ? <CheckSquare size={20} /> : <Square size={20} />}
+                                                            </div>
+                                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center">
+                                                                {file.name.match(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb)$/i) ? (
+                                                                    <FileVideo size={16} className="text-purple-500" />
+                                                                ) : file.name.match(/\.(mp3|flac|wav|aac|ogg|wma|m4a)$/i) ? (
+                                                                    <FileAudio size={16} className="text-pink-500" />
+                                                                ) : file.name.match(/\.(zip|rar|7z|tar|gz|bz2)$/i) ? (
+                                                                    <FileArchive size={16} className="text-amber-500" />
+                                                                ) : file.name.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico)$/i) ? (
+                                                                    <FileImage size={16} className="text-green-500" />
+                                                                ) : (
+                                                                    <File size={16} className="text-slate-500" />
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
