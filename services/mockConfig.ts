@@ -9,99 +9,99 @@ const STORAGE_KEY = '115_BOT_CONFIG';
 
 // DEFAULT PRESETS - MOVIES
 export const DEFAULT_MOVIE_RULES: ClassificationRule[] = [
-  { 
-    id: 'm_anim', 
-    name: '动画电影', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '16' 
-    } 
+  {
+    id: 'm_anim',
+    name: '动画电影',
+    targetCid: '',
+    conditions: {
+      genre_ids: '16'
+    }
   },
-  { 
-    id: 'm_cn', 
-    name: '华语电影', 
-    targetCid: '', 
-    conditions: { 
-      origin_country: 'CN,TW,HK' 
-    } 
+  {
+    id: 'm_cn',
+    name: '华语电影',
+    targetCid: '',
+    conditions: {
+      origin_country: 'CN,TW,HK'
+    }
   },
-  { 
-    id: 'm_foreign', 
-    name: '外语电影', 
-    targetCid: '', 
-    conditions: { 
-      origin_country: '!CN,TW,HK' 
-    } 
+  {
+    id: 'm_foreign',
+    name: '外语电影',
+    targetCid: '',
+    conditions: {
+      origin_country: '!CN,TW,HK'
+    }
   },
 ];
 
 // DEFAULT PRESETS - TV SHOWS
 export const DEFAULT_TV_RULES: ClassificationRule[] = [
-  { 
-    id: 't_cn', 
-    name: '华语剧集', 
-    targetCid: '', 
-    conditions: { 
-      origin_country: 'CN,TW,HK' 
-    } 
+  {
+    id: 't_cn',
+    name: '华语剧集',
+    targetCid: '',
+    conditions: {
+      origin_country: 'CN,TW,HK'
+    }
   },
-  { 
-    id: 't_western', 
-    name: '欧美剧集', 
-    targetCid: '', 
-    conditions: { 
+  {
+    id: 't_western',
+    name: '欧美剧集',
+    targetCid: '',
+    conditions: {
       origin_country: '!CN,TW,HK,JP,KR'
-    } 
+    }
   },
-  { 
-    id: 't_asia', 
-    name: '日韩剧集', 
-    targetCid: '', 
-    conditions: { 
-      origin_country: 'JP,KR' 
-    } 
+  {
+    id: 't_asia',
+    name: '日韩剧集',
+    targetCid: '',
+    conditions: {
+      origin_country: 'JP,KR'
+    }
   },
-  { 
-    id: 't_cn_anim', 
-    name: '国漫', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '16', 
-      origin_country: 'CN,TW,HK' 
-    } 
+  {
+    id: 't_cn_anim',
+    name: '国漫',
+    targetCid: '',
+    conditions: {
+      genre_ids: '16',
+      origin_country: 'CN,TW,HK'
+    }
   },
-  { 
-    id: 't_jp_anim', 
-    name: '日漫', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '16', 
-      origin_country: 'JP' 
-    } 
+  {
+    id: 't_jp_anim',
+    name: '日漫',
+    targetCid: '',
+    conditions: {
+      genre_ids: '16',
+      origin_country: 'JP'
+    }
   },
-  { 
-    id: 't_doc', 
-    name: '纪录片', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '99' 
-    } 
+  {
+    id: 't_doc',
+    name: '纪录片',
+    targetCid: '',
+    conditions: {
+      genre_ids: '99'
+    }
   },
-  { 
-    id: 't_show', 
-    name: '综艺', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '10764,10767' 
-    } 
+  {
+    id: 't_show',
+    name: '综艺',
+    targetCid: '',
+    conditions: {
+      genre_ids: '10764,10767'
+    }
   },
-  { 
-    id: 't_kids', 
-    name: '儿童', 
-    targetCid: '', 
-    conditions: { 
-      genre_ids: '10762' 
-    } 
+  {
+    id: 't_kids',
+    name: '儿童',
+    targetCid: '',
+    conditions: {
+      genre_ids: '10762'
+    }
   },
 ];
 
@@ -159,10 +159,10 @@ const DEFAULT_CONFIG: AppConfig = {
     apiKey: '',
     refreshAfterOrganize: true,
     notifications: {
-        enabled: true,
-        forwardToTelegram: true,
-        includePosters: true,
-        playbackReportingFreq: 'weekly'
+      enabled: true,
+      forwardToTelegram: true,
+      includePosters: true,
+      playbackReportingFreq: 'weekly'
     },
     missingEpisodes: {
       enabled: false,
@@ -179,15 +179,15 @@ const DEFAULT_CONFIG: AppConfig = {
     sourcePathOpenList: '/',
     urlPrefixOpenList: 'http://127.0.0.1:5244/d',
     webdav: {
-        enabled: false,
-        port: '5005',
-        username: 'admin',
-        password: 'password',
-        readOnly: true
+      enabled: false,
+      port: '5005',
+      username: 'admin',
+      password: 'password',
+      readOnly: true
     }
   },
   organize: {
-    enabled: false,
+    enabled: true,
     sourceCid: '0',
     sourceDirName: '根目录',
     targetCid: '0',
@@ -228,24 +228,24 @@ const mergeWithDefaults = (parsed: any): AppConfig => {
     openList: { ...DEFAULT_CONFIG.openList, ...(parsed.openList || {}) },
     proxy: { ...DEFAULT_CONFIG.proxy, ...(parsed.proxy || {}) },
     tmdb: { ...DEFAULT_CONFIG.tmdb, ...(parsed.tmdb || {}) },
-    emby: { 
-        ...DEFAULT_CONFIG.emby, 
-        ...(parsed.emby || {}),
-        notifications: { ...DEFAULT_CONFIG.emby.notifications, ...(parsed.emby?.notifications || {}) },
-        missingEpisodes: { ...DEFAULT_CONFIG.emby.missingEpisodes, ...(parsed.emby?.missingEpisodes || {}) }
+    emby: {
+      ...DEFAULT_CONFIG.emby,
+      ...(parsed.emby || {}),
+      notifications: { ...DEFAULT_CONFIG.emby.notifications, ...(parsed.emby?.notifications || {}) },
+      missingEpisodes: { ...DEFAULT_CONFIG.emby.missingEpisodes, ...(parsed.emby?.missingEpisodes || {}) }
     },
-    organize: { 
-        ...DEFAULT_CONFIG.organize, 
-        ...(parsed.organize || {}),
-        ai: { ...DEFAULT_CONFIG.organize.ai, ...(parsed.organize?.ai || {}) },
-        rename: { ...DEFAULT_CONFIG.organize.rename, ...(parsed.organize?.rename || {}) },
-        movieRules: parsed.organize?.movieRules || DEFAULT_CONFIG.organize.movieRules,
-        tvRules: parsed.organize?.tvRules || DEFAULT_CONFIG.organize.tvRules,
+    organize: {
+      ...DEFAULT_CONFIG.organize,
+      ...(parsed.organize || {}),
+      ai: { ...DEFAULT_CONFIG.organize.ai, ...(parsed.organize?.ai || {}) },
+      rename: { ...DEFAULT_CONFIG.organize.rename, ...(parsed.organize?.rename || {}) },
+      movieRules: parsed.organize?.movieRules || DEFAULT_CONFIG.organize.movieRules,
+      tvRules: parsed.organize?.tvRules || DEFAULT_CONFIG.organize.tvRules,
     },
-    strm: { 
-        ...DEFAULT_CONFIG.strm, 
-        ...(parsed.strm || {}),
-        webdav: { ...DEFAULT_CONFIG.strm.webdav, ...(parsed.strm?.webdav || {}) }
+    strm: {
+      ...DEFAULT_CONFIG.strm,
+      ...(parsed.strm || {}),
+      webdav: { ...DEFAULT_CONFIG.strm.webdav, ...(parsed.strm?.webdav || {}) }
     }
   };
 };
@@ -275,7 +275,7 @@ export const loadConfig = (): AppConfig => {
 export const saveConfig = async (config: AppConfig): Promise<void> => {
   // Save to local
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  
+
   // Save to backend using the real API service
   try {
     await api.saveConfig(config);
@@ -293,7 +293,7 @@ export const saveConfig = async (config: AppConfig): Promise<void> => {
 export const syncConfig = async (): Promise<AppConfig | null> => {
   try {
     const remoteConfig = await api.getConfig(); // 使用 api.ts 中封装好的方法
-    
+
     if (remoteConfig && Object.keys(remoteConfig).length > 0) {
       const merged = mergeWithDefaults(remoteConfig);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
