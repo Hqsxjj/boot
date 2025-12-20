@@ -676,8 +676,8 @@ class Cloud123Service:
                 'limit': 100
             }
             
-            logger.info(f'123云盘 REST API 请求: /api/v2/file/list, params={params}')
-            result = self._make_api_request('GET', '/api/v2/file/list', params=params)
+            logger.info(f'123云盘 REST API 请求: /api/v1/file/list, params={params}')
+            result = self._make_api_request('GET', '/api/v1/file/list', params=params)
             
             if not result.get('success'):
                 return result
