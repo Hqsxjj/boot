@@ -72,6 +72,15 @@ export const api = {
   // --- 115 网盘相关接口 ---
 
   /**
+   * 获取 115 支持的登录终端列表
+   * 参考 EmbyNginxDK 项目的 /v1/get_115_clients
+   */
+  get115LoginApps: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ key: string; ssoent: string; name: string }>>>('/115/login/apps');
+    return res.data.data;
+  },
+
+  /**
    * 获取 115 登录二维码
    * @param appType 模拟的终端类型 (如 android, ios, tv 等)
    * @param loginMethod 登录方式 ('qrcode' 或 'open_app')
@@ -361,12 +370,6 @@ export const api = {
     const params: any = { limit };
     if (since) params.since = since;
     const res = await apiClient.get<ApiResponse<any[]>>('/logs', { params });
-    return res.data.data;
-  },
-
-  // --- 辅助接口 ---
-  get115LoginApps: async () => {
-    const res = await apiClient.get<ApiResponse<{ key: string; appId: number }[]>>('/115/login/apps');
     return res.data.data;
   },
 

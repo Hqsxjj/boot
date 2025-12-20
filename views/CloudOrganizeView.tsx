@@ -67,10 +67,37 @@ export const CloudOrganizeView: React.FC = () => {
    const qrRefreshCountRef = useRef<number>(0);  // 自动刷新计数器，最多刷新10次
    const lastQrGenTimeRef = useRef<number>(0);   // 上次生成二维码的时间戳
 
+   // 动态获取的登录终端列表（参照 EmbyNginxDK）
+   const [loginApps, setLoginApps] = useState<Array<{ key: string; ssoent: string; name: string }>>([]);
+
    useEffect(() => {
       fetchConfig();
+      fetchLoginApps();
       return () => stopQrCheck();
    }, []);
+
+   // 获取 115 登录终端列表（参照 EmbyNginxDK 的 /v1/get_115_clients）
+   const fetchLoginApps = async () => {
+      try {
+         const apps = await api.get115LoginApps();
+         if (apps && apps.length > 0) {
+            setLoginApps(apps);
+         }
+      } catch (e) {
+         console.warn('加载登录终端列表失败，使用默认列表');
+         // 加载失败时使用默认列表
+         setLoginApps([
+            { key: 'android', ssoent: 'A1', name: '安卓' },
+            { key: 'ios', ssoent: 'D1', name: 'iOS' },
+            { key: 'ipad', ssoent: 'D2', name: 'iPad' },
+            { key: '115android', ssoent: 'A2', name: '115安卓' },
+            { key: '115ios', ssoent: 'D3', name: '115 iOS' },
+            { key: 'tv', ssoent: 'T1', name: '电视端' },
+            { key: 'qandroid', ssoent: 'Q1', name: '轻量版安卓' },
+            { key: 'harmony', ssoent: 'S1', name: '鸿蒙' },
+         ]);
+      }
+   };
 
    const fetchConfig = async () => {
       setLoading(true);
@@ -548,14 +575,17 @@ export const CloudOrganizeView: React.FC = () => {
                                        onChange={(e) => updateNested('cloud115', 'loginApp', e.target.value)}
                                        className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-brand-500 outline-none backdrop-blur-sm"
                                     >
-                                       <option value="android">安卓</option>
-                                       <option value="ios">iOS</option>
-                                       <option value="ipad">iPad</option>
-                                       <option value="115android">115安卓</option>
-                                       <option value="115ios">115 iOS</option>
-                                       <option value="tv">电视端</option>
-                                       <option value="qandroid">轻量版安卓</option>
-                                       <option value="harmony">鸿蒙</option>
+                                       {loginApps.length > 0 ? (
+                                          loginApps.map(app => (
+                                             <option key={app.key} value={app.key}>{app.name}</option>
+                                          ))
+                                       ) : (
+                                          <>
+                                             <option value="android">安卓</option>
+                                             <option value="ios">iOS</option>
+                                             <option value="tv">电视端</option>
+                                          </>
+                                       )}
                                     </select>
                                  </div>
                               )}
