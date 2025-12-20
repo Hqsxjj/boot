@@ -89,9 +89,17 @@ class Cloud115Service:
         # 调试：列出所有可用的凭证
         available_keys = []
         for key in ['cloud115_openapp_cookies', 'cloud115_qr_cookies', 'cloud115_manual_cookies', 'cloud115_cookies']:
-            if self.secret_store.get_secret(key):
+            secret_val = self.secret_store.get_secret(key)
+            if secret_val:
                 available_keys.append(key)
+                # 显示部分内容用于调试
+                preview = secret_val[:80] + '...' if len(secret_val) > 80 else secret_val
+                logger.info(f'115 凭证 {key}: 长度={len(secret_val)}, 预览={preview}')
+        
         logger.info(f'115 凭证检查: 可用密钥 = {available_keys}')
+        
+        if not available_keys:
+            raise ValueError('未找到任何 115 登录凭证，请先登录')
         
         # 首先尝试 open_app 模式 (P115OpenClient with access_token)
         open_app_json = self.secret_store.get_secret('cloud115_openapp_cookies')
@@ -131,7 +139,19 @@ class Cloud115Service:
             cookies_json = self.secret_store.get_secret(secret_key)
             if cookies_json:
                 try:
-                    cookies = json.loads(cookies_json)
+                    # 尝试解析 JSON
+                    try:
+                        cookies = json.loads(cookies_json)
+                    except json.JSONDecodeError:
+                        # 如果不是 JSON，尝试解析为 cookie 字符串格式
+                        logger.warning(f'{secret_key} 不是 JSON 格式，尝试解析为 cookie 字符串')
+                        cookies = {}
+                        for part in cookies_json.replace('\n', ';').split(';'):
+                            part = part.strip()
+                            if '=' in part:
+                                k, v = part.split('=', 1)
+                                cookies[k.strip()] = v.strip()
+                    
                     # 如果是 token 格式，跳过
                     if 'access_token' in cookies or 'refresh_token' in cookies:
                         logger.debug(f'{secret_key} 是 token 格式，跳过')
@@ -139,13 +159,29 @@ class Cloud115Service:
                     
                     logger.info(f'尝试使用 {source_name} ({secret_key}) 初始化 P115Client，Cookie 键: {list(cookies.keys())}')
                     
+                    if not cookies:
+                        logger.warning(f'{secret_key} 解析后为空，跳过')
+                        continue
+                    
                     if hasattr(self.p115client, 'P115Client'):
+                        # 尝试创建客户端
                         client = self.p115client.P115Client(cookies=cookies)
-                        logger.info(f'p115client 已使用 {source_name} 凭证初始化成功')
+                        
+                        # 验证客户端可以工作（尝试简单调用）
+                        try:
+                            # 尝试获取用户信息来验证
+                            if hasattr(client, 'user_id'):
+                                uid = client.user_id
+                                logger.info(f'p115client 已使用 {source_name} 凭证初始化成功，用户ID: {uid}')
+                            else:
+                                logger.info(f'p115client 已使用 {source_name} 凭证初始化成功（无法验证用户ID）')
+                        except Exception as ve:
+                            logger.warning(f'{source_name} 初始化后验证失败（继续使用）: {ve}')
+                        
                         return client
                 except Exception as e:
                     errors.append(f'{source_name}: {e}')
-                    logger.warning(f'使用 {source_name} 初始化 p115client 失败: {e}')
+                    logger.warning(f'使用 {source_name} 初始化 p115client 失败: {e}', exc_info=True)
         
         if errors:
             error_msg = f'所有 115 登录方式均失败: {errors}'

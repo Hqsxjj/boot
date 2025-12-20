@@ -431,35 +431,49 @@ class P115Service:
                 }
             else:
                 # 普通扫码模式：使用 login_qrcode_token
-                # p115client.login_qrcode_token 支持 app 参数 (string)
-                # Frontend passes 'web', 'ios', 'android', etc. which p115client recognizes
-                
                 logger.info(f"Starting QR login: login_app={login_app}, login_method={login_method}")
                 
-                try:
-                    # 添加时间戳防止缓存
-                    import time
-                    timestamp = int(time.time() * 1000)
-                    qr_token_result = p115client.P115Client.login_qrcode_token(
-                        app=login_app, 
-                        params={'_t': timestamp}
-                    )
-                except TypeError:
-                    # Fallback if p115client version doesn't support 'app' or 'params'
-                    logger.warning("p115client.login_qrcode_token does not support 'app' or 'params', using default")
-                    qr_token_result = p115client.P115Client.login_qrcode_token()
-                except Exception as e:
-                    # General fallback for other issues
-                    logger.warning(f"Failed to get QR token with specific app/params, falling back: {e}")
-                    qr_token_result = p115client.P115Client.login_qrcode_token()
+                qr_token_result = None
+                last_error = None
                 
-                logger.debug(f"QR token result: {qr_token_result}")
+                # 尝试多种调用方式以适配不同版本的 p115client
+                try:
+                    # 方式1: 不带任何参数（最兼容）
+                    qr_token_result = p115client.P115Client.login_qrcode_token()
+                    logger.info(f"QR token obtained without params: state={qr_token_result.get('state')}")
+                except Exception as e1:
+                    last_error = e1
+                    logger.warning(f"Method 1 (no params) failed: {e1}")
+                    
+                    try:
+                        # 方式2: 尝试只传 app 参数
+                        qr_token_result = p115client.P115Client.login_qrcode_token(login_app)
+                        logger.info(f"QR token obtained with app param: state={qr_token_result.get('state')}")
+                    except Exception as e2:
+                        last_error = e2
+                        logger.warning(f"Method 2 (app param) failed: {e2}")
+                        
+                        try:
+                            # 方式3: 尝试 app= 关键字参数
+                            qr_token_result = p115client.P115Client.login_qrcode_token(app=login_app)
+                            logger.info(f"QR token obtained with app=: state={qr_token_result.get('state')}")
+                        except Exception as e3:
+                            last_error = e3
+                            logger.error(f"All QR token methods failed. Last error: {e3}")
+                
+                if qr_token_result is None:
+                    return {
+                        'error': f'获取二维码失败: {str(last_error)}',
+                        'success': False
+                    }
+                
+                logger.info(f"QR token result keys: {list(qr_token_result.keys())}")
                 
                 if qr_token_result.get('state') != 1:
-                    error_msg = qr_token_result.get('message') or qr_token_result.get('error') or 'Unknown error'
-                    logger.error(f"Failed to get QR token: {error_msg}")
+                    error_msg = qr_token_result.get('message') or qr_token_result.get('error') or f'状态码: {qr_token_result.get("state")}'
+                    logger.error(f"Failed to get QR token: {error_msg}, full response: {qr_token_result}")
                     return {
-                        'error': f"Failed to get QR token: {error_msg}",
+                        'error': f"获取二维码失败: {error_msg}",
                         'success': False
                     }
                 
