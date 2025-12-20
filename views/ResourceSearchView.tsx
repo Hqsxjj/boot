@@ -1578,9 +1578,13 @@ const ResourceCard: React.FC<{
                             {resource.cloud_type === '115' ? '115网盘' : resource.cloud_type === '123' ? '123网盘' : resource.cloud_type || '未知'}
                         </div>
 
-                        {/* Type Badge */}
-                        <div className={`absolute top-2 right-2 p-1.5 rounded-full ${resource.type === 'movie' ? 'bg-purple-500' : 'bg-blue-500'} text-white`}>
+                        {/* Type Badge - 电影/电视剧明显区分 */}
+                        <div className={`absolute top-2 right-2 px-2 py-1 rounded-lg flex items-center gap-1 backdrop-blur-sm shadow-lg ${resource.type === 'movie'
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-purple-500/40'
+                                : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/40'
+                            } text-white`}>
                             {resource.type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
+                            <span className="text-[10px] font-bold">{resource.type === 'movie' ? '电影' : '剧集'}</span>
                         </div>
 
                         {resource.rating && (
