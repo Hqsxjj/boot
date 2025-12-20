@@ -377,32 +377,9 @@ export const CloudOrganizeView: React.FC = () => {
                      break;
                   case 'expired':
                      stopQrCheck();
-                     // 115二维码过期很快(约2-3分钟)，自动刷新
-                     // 用户要求：1分钟内不要去获取二维码第二次
-                     if (qrRefreshCountRef.current < 500) {
-                        qrRefreshCountRef.current += 1;
-                        console.log(`QR code expired, auto-refreshing (${qrRefreshCountRef.current}/500)...`);
-
-                        // 计算距离上次生成的间隔
-                        const now = Date.now();
-                        const timeElapsed = now - lastQrGenTimeRef.current;
-                        const cooldownPeriod = 120 * 1000; // 2 minute cooldown (用户要求)
-
-                        setQrState('loading');
-
-                        if (timeElapsed < cooldownPeriod) {
-                           const remainingWaitTime = cooldownPeriod - timeElapsed;
-                           console.log(`QR code expired too quickly, waiting for ${remainingWaitTime / 1000} seconds before refreshing.`);
-                           setToast(`二维码过期，${Math.ceil(remainingWaitTime / 1000)}秒后自动刷新`);
-                           setTimeout(() => generateRealQr(), remainingWaitTime);
-                        } else {
-                           // If enough time has passed, refresh immediately (or with a small delay)
-                           setTimeout(() => generateRealQr(), 5000);
-                        }
-                     } else {
-                        setQrState('expired');
-                        setToast('二维码已多次过期，请手动刷新');
-                     }
+                     // 不自动刷新，保持二维码显示，用户手动点击刷新
+                     setQrState('expired');
+                     setToast('二维码已过期，请点击刷新');
                      break;
                   case 'error':
                      stopQrCheck();
