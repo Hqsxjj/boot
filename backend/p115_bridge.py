@@ -427,11 +427,20 @@ class P115Service:
                 logger.info(f"Starting QR login: login_app={login_app}, login_method={login_method}")
                 
                 try:
-                    # Pass the app parameter
-                    qr_token_result = p115client.P115Client.login_qrcode_token(app=login_app)
+                    # 添加时间戳防止缓存
+                    import time
+                    timestamp = int(time.time() * 1000)
+                    qr_token_result = p115client.P115Client.login_qrcode_token(
+                        app=login_app, 
+                        params={'_t': timestamp}
+                    )
                 except TypeError:
-                    # Fallback if p115client version doesn't support 'app' param
-                    logger.warning("p115client.login_qrcode_token does not support 'app' param, using default")
+                    # Fallback if p115client version doesn't support 'app' or 'params'
+                    logger.warning("p115client.login_qrcode_token does not support 'app' or 'params', using default")
+                    qr_token_result = p115client.P115Client.login_qrcode_token()
+                except Exception as e:
+                    # General fallback for other issues
+                    logger.warning(f"Failed to get QR token with specific app/params, falling back: {e}")
                     qr_token_result = p115client.P115Client.login_qrcode_token()
                 
                 logger.debug(f"QR token result: {qr_token_result}")
