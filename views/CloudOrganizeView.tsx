@@ -99,6 +99,110 @@ export const CloudOrganizeView: React.FC = () => {
       }
    };
 
+   // ==================== 多账号管理状态 (参照 EmbyNginxDK) ====================
+   interface CloudAccountUI {
+      id: string;
+      name: string;
+      account_type: string;
+      client?: string;
+      app_id?: string;
+      is_active: boolean;
+      has_cookie: boolean;
+      has_token: boolean;
+      created_at?: string;
+   }
+
+   const [cloudAccounts, setCloudAccounts] = useState<CloudAccountUI[]>([]);
+   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+   const [newAccountData, setNewAccountData] = useState({
+      name: '',
+      account_type: '115',
+      client: 'android',
+      app_id: '',
+      cookie: '',
+      passport: '',
+      password: '',
+   });
+   const [accountLoading, setAccountLoading] = useState(false);
+
+   // 获取账号列表
+   const fetchCloudAccounts = async () => {
+      try {
+         const res = await api.getCloudAccounts();
+         if (res.success && res.data) {
+            setCloudAccounts(res.data);
+         }
+      } catch (e) {
+         console.warn('加载账号列表失败');
+      }
+   };
+
+   // 添加账号
+   const handleAddAccount = async () => {
+      if (!newAccountData.name) {
+         setToast('请输入账号名称');
+         setTimeout(() => setToast(null), 3000);
+         return;
+      }
+
+      setAccountLoading(true);
+      try {
+         const res = await api.addCloudAccount(newAccountData);
+         if (res.success) {
+            setToast('账号添加成功');
+            setShowAddAccountModal(false);
+            setNewAccountData({ name: '', account_type: '115', client: 'android', app_id: '', cookie: '', passport: '', password: '' });
+            fetchCloudAccounts();
+         } else {
+            setToast(res.error || '添加失败');
+         }
+      } catch (e) {
+         setToast('添加失败');
+      } finally {
+         setAccountLoading(false);
+         setTimeout(() => setToast(null), 3000);
+      }
+   };
+
+   // 删除账号
+   const handleDeleteAccount = async (accountId: string) => {
+      if (!confirm('确定删除此账号？')) return;
+
+      try {
+         const res = await api.deleteCloudAccount(accountId);
+         if (res.success) {
+            setToast('账号已删除');
+            fetchCloudAccounts();
+         } else {
+            setToast(res.error || '删除失败');
+         }
+      } catch (e) {
+         setToast('删除失败');
+      }
+      setTimeout(() => setToast(null), 3000);
+   };
+
+   // 激活账号
+   const handleActivateAccount = async (accountId: string) => {
+      try {
+         const res = await api.activateCloudAccount(accountId);
+         if (res.success) {
+            setToast('账号已激活');
+            fetchCloudAccounts();
+         } else {
+            setToast(res.error || '激活失败');
+         }
+      } catch (e) {
+         setToast('激活失败');
+      }
+      setTimeout(() => setToast(null), 3000);
+   };
+
+   // 页面加载时获取账号列表
+   useEffect(() => {
+      fetchCloudAccounts();
+   }, []);
+
    const fetchConfig = async () => {
       setLoading(true);
       try {
@@ -507,6 +611,86 @@ export const CloudOrganizeView: React.FC = () => {
                   {/* 115 Settings */}
                   {activeTab === '115' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
+
+                        {/* ==================== 多账号管理卡片区域 ==================== */}
+                        <div className="mb-6">
+                           <div className="flex items-center justify-between mb-4">
+                              <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                 <Cloud size={16} /> 已保存的账号
+                              </h4>
+                              <button
+                                 onClick={() => setShowAddAccountModal(true)}
+                                 className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-lg hover:bg-brand-700 transition-colors"
+                              >
+                                 <Plus size={14} /> 添加账号
+                              </button>
+                           </div>
+
+                           {/* 账号卡片网格 */}
+                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {cloudAccounts.filter(acc => acc.account_type.startsWith('115')).map((account) => (
+                                 <div
+                                    key={account.id}
+                                    className={`relative p-4 rounded-xl border-[0.5px] transition-all ${account.is_active
+                                       ? 'bg-brand-50/50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-700 ring-2 ring-brand-500/20'
+                                       : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 hover:border-brand-300'
+                                       }`}
+                                 >
+                                    {account.is_active && (
+                                       <div className="absolute top-2 right-2 px-2 py-0.5 bg-brand-500 text-white text-[10px] font-bold rounded-full">
+                                          当前使用
+                                       </div>
+                                    )}
+                                    <div className="flex items-start gap-3">
+                                       <div className={`p-2 rounded-lg ${account.is_active ? 'bg-brand-100 text-brand-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                                          {account.account_type === '115open' ? <Smartphone size={20} /> : <Cookie size={20} />}
+                                       </div>
+                                       <div className="flex-1 min-w-0">
+                                          <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{account.name}</h5>
+                                          <p className="text-[10px] text-slate-500 mt-0.5">
+                                             {account.account_type === '115open' ? '115 Open API' : '115 Cookie'}
+                                             {account.client && ` · ${account.client}`}
+                                          </p>
+                                          <div className="flex items-center gap-1 mt-1">
+                                             <span className={`w-1.5 h-1.5 rounded-full ${account.has_cookie || account.has_token ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                                             <span className="text-[10px] text-slate-400">
+                                                {account.has_cookie || account.has_token ? '凭证有效' : '无凭证'}
+                                             </span>
+                                          </div>
+                                       </div>
+                                    </div>
+                                    <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                                       {!account.is_active && (
+                                          <button
+                                             onClick={() => handleActivateAccount(account.id)}
+                                             className="flex-1 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors"
+                                          >
+                                             激活
+                                          </button>
+                                       )}
+                                       <button
+                                          onClick={() => handleDeleteAccount(account.id)}
+                                          className="px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                       >
+                                          <Trash2 size={12} />
+                                       </button>
+                                    </div>
+                                 </div>
+                              ))}
+
+                              {cloudAccounts.filter(acc => acc.account_type.startsWith('115')).length === 0 && (
+                                 <div className="col-span-full text-center py-8 text-slate-400">
+                                    <Cloud size={32} className="mx-auto mb-2 opacity-30" />
+                                    <p className="text-sm">暂无 115 账号，点击上方按钮添加</p>
+                                 </div>
+                              )}
+                           </div>
+                        </div>
+
+                        {/* 分隔线 */}
+                        <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                           <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4">快速登录</h4>
+                        </div>
                         <div className="flex flex-wrap gap-3 mb-6">
                            {[
                               { id: 'cookie', label: 'Cookie 导入', icon: Cookie },
@@ -1256,6 +1440,151 @@ export const CloudOrganizeView: React.FC = () => {
             title={`选择 ${selectorTarget === 'target' ? '存放目录' : selectorTarget === 'source' ? '源目录' : '下载目录'}`}
             cloudType={selectorTarget === 'download123' ? '123' : '115'}
          />
+
+         {/* ==================== 添加账号弹窗 ==================== */}
+         {showAddAccountModal && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700">
+                  {/* Header */}
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                     <div className="flex items-center gap-2">
+                        <Plus size={18} className="text-brand-600" />
+                        <h3 className="font-bold text-slate-700 dark:text-slate-200">添加云盘账号</h3>
+                     </div>
+                     <button
+                        onClick={() => setShowAddAccountModal(false)}
+                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
+                     >
+                        <X size={20} className="text-slate-400" />
+                     </button>
+                  </div>
+
+                  {/* Form */}
+                  <div className="p-6 space-y-5">
+                     {/* 账号名称 */}
+                     <div>
+                        <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">账号名称</label>
+                        <input
+                           type="text"
+                           value={newAccountData.name}
+                           onChange={(e) => setNewAccountData(prev => ({ ...prev, name: e.target.value }))}
+                           placeholder="例如：我的主账号"
+                           className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                        />
+                     </div>
+
+                     {/* 账号类型 */}
+                     <div>
+                        <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">账号类型</label>
+                        <div className="grid grid-cols-2 gap-2">
+                           {[
+                              { id: '115', label: '115 Cookie', icon: Cookie },
+                              { id: '115open', label: '115 Open API', icon: Smartphone },
+                              { id: '123', label: '123 云盘', icon: Cloud },
+                              { id: '123open', label: '123 Open API', icon: Globe },
+                           ].map((type) => (
+                              <button
+                                 key={type.id}
+                                 onClick={() => setNewAccountData(prev => ({ ...prev, account_type: type.id }))}
+                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-[0.5px] transition-all ${newAccountData.account_type === type.id
+                                       ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-900/20 dark:border-brand-800'
+                                       : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50'
+                                    }`}
+                              >
+                                 <type.icon size={14} /> {type.label}
+                              </button>
+                           ))}
+                        </div>
+                     </div>
+
+                     {/* 根据类型显示不同字段 */}
+                     {(newAccountData.account_type === '115' || newAccountData.account_type === '115open') && (
+                        <div>
+                           <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">登录终端</label>
+                           <select
+                              value={newAccountData.client}
+                              onChange={(e) => setNewAccountData(prev => ({ ...prev, client: e.target.value }))}
+                              className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-sm"
+                           >
+                              {loginApps.map(app => (
+                                 <option key={app.key} value={app.key}>{app.name}</option>
+                              ))}
+                           </select>
+                        </div>
+                     )}
+
+                     {newAccountData.account_type === '115open' && (
+                        <div>
+                           <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">第三方 App ID</label>
+                           <input
+                              type="text"
+                              value={newAccountData.app_id}
+                              onChange={(e) => setNewAccountData(prev => ({ ...prev, app_id: e.target.value }))}
+                              placeholder="输入第三方 App ID"
+                              className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-sm"
+                           />
+                        </div>
+                     )}
+
+                     {newAccountData.account_type === '115' && (
+                        <div>
+                           <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">Cookie 字符串 (可选，稍后扫码获取)</label>
+                           <textarea
+                              value={newAccountData.cookie}
+                              onChange={(e) => setNewAccountData(prev => ({ ...prev, cookie: e.target.value }))}
+                              placeholder="UID=...; CID=...; SEID=..."
+                              rows={3}
+                              className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-sm font-mono"
+                           />
+                        </div>
+                     )}
+
+                     {(newAccountData.account_type === '123' || newAccountData.account_type === '123open') && (
+                        <>
+                           <div>
+                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">账号 (手机号/邮箱)</label>
+                              <input
+                                 type="text"
+                                 value={newAccountData.passport}
+                                 onChange={(e) => setNewAccountData(prev => ({ ...prev, passport: e.target.value }))}
+                                 placeholder="输入手机号或邮箱"
+                                 className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-sm"
+                              />
+                           </div>
+                           <div>
+                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">密码</label>
+                              <input
+                                 type="password"
+                                 value={newAccountData.password}
+                                 onChange={(e) => setNewAccountData(prev => ({ ...prev, password: e.target.value }))}
+                                 placeholder="输入密码"
+                                 className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-sm"
+                              />
+                           </div>
+                        </>
+                     )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-900/30">
+                     <button
+                        onClick={() => setShowAddAccountModal(false)}
+                        className="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-medium"
+                     >
+                        取消
+                     </button>
+                     <button
+                        onClick={handleAddAccount}
+                        disabled={accountLoading || !newAccountData.name}
+                        className="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                     >
+                        {accountLoading ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+                        添加账号
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
       </div>
    );
 };

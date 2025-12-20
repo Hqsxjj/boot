@@ -80,6 +80,77 @@ export const api = {
     return res.data.data;
   },
 
+  // --- 多账号管理接口 (参照 EmbyNginxDK) ---
+
+  /**
+   * 获取所有云盘账号列表
+   */
+  getCloudAccounts: async (type?: string) => {
+    const params = type ? { type } : {};
+    const res = await apiClient.get<ApiResponse<any[]>>('/115/accounts', { params });
+    return res.data;
+  },
+
+  /**
+   * 获取账号摘要（按类型分组）
+   */
+  getAccountSummary: async () => {
+    const res = await apiClient.get<ApiResponse<any>>('/115/accounts/summary');
+    return res.data;
+  },
+
+  /**
+   * 添加新账号
+   */
+  addCloudAccount: async (data: {
+    name: string;
+    account_type: string;
+    cookie?: string;
+    client?: string;
+    access_token?: string;
+    refresh_token?: string;
+    app_id?: string;
+    client_id?: string;
+    client_secret?: string;
+    passport?: string;
+    password?: string;
+  }) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/accounts', data);
+    return res.data;
+  },
+
+  /**
+   * 更新账号
+   */
+  updateCloudAccount: async (accountId: string, data: any) => {
+    const res = await apiClient.put<ApiResponse<any>>(`/115/accounts/${accountId}`, data);
+    return res.data;
+  },
+
+  /**
+   * 删除账号
+   */
+  deleteCloudAccount: async (accountId: string) => {
+    const res = await apiClient.delete<ApiResponse<any>>(`/115/accounts/${accountId}`);
+    return res.data;
+  },
+
+  /**
+   * 激活账号（设为当前使用）
+   */
+  activateCloudAccount: async (accountId: string) => {
+    const res = await apiClient.post<ApiResponse<any>>(`/115/accounts/${accountId}/activate`);
+    return res.data;
+  },
+
+  /**
+   * 获取单个账号详情
+   */
+  getCloudAccount: async (accountId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/115/accounts/${accountId}`);
+    return res.data;
+  },
+
   /**
    * 获取 115 登录二维码
    * @param appType 模拟的终端类型 (如 android, ios, tv 等)

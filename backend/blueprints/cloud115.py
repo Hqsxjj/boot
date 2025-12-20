@@ -598,3 +598,134 @@ def list_login_apps():
             "success": False,
             "error": f"Failed to list login apps: {str(e)}"
         }), 500
+
+
+# ============================================================
+# 🚀 多账号管理接口 (参照 EmbyNginxDK)
+# ============================================================
+
+from services.cloud_account_service import get_account_service
+
+@cloud115_bp.route('/accounts', methods=['GET'])
+@require_auth
+def list_accounts():
+    """Get all cloud accounts."""
+    try:
+        account_type = request.args.get('type')  # 可选过滤
+        service = get_account_service()
+        
+        if account_type:
+            accounts = service.get_accounts_by_type(account_type)
+        else:
+            accounts = service.get_all_accounts()
+        
+        return jsonify({
+            'success': True,
+            'data': accounts
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to list accounts: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts/summary', methods=['GET'])
+@require_auth
+def get_account_summary():
+    """Get account summary by type (like EmbyNginxDK's get_115_cookie_names)."""
+    try:
+        service = get_account_service()
+        result = service.get_account_summary()
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get summary: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts', methods=['POST'])
+@require_auth
+def add_account():
+    """Add a new cloud account."""
+    try:
+        data = request.get_json() or {}
+        service = get_account_service()
+        result = service.add_account(data)
+        return jsonify(result), 201 if result.get('success') else 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to add account: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts/<account_id>', methods=['PUT'])
+@require_auth
+def update_account(account_id: str):
+    """Update an existing account."""
+    try:
+        data = request.get_json() or {}
+        service = get_account_service()
+        result = service.update_account(account_id, data)
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to update account: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts/<account_id>', methods=['DELETE'])
+@require_auth
+def delete_account(account_id: str):
+    """Delete an account."""
+    try:
+        service = get_account_service()
+        result = service.delete_account(account_id)
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to delete account: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts/<account_id>/activate', methods=['POST'])
+@require_auth
+def activate_account(account_id: str):
+    """Set an account as active."""
+    try:
+        service = get_account_service()
+        result = service.activate_account(account_id)
+        return jsonify(result), 200 if result.get('success') else 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to activate account: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/accounts/<account_id>', methods=['GET'])
+@require_auth
+def get_account(account_id: str):
+    """Get a single account by ID."""
+    try:
+        service = get_account_service()
+        account = service.get_account(account_id)
+        if account:
+            return jsonify({
+                'success': True,
+                'data': account
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': '账号不存在'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get account: {str(e)}'
+        }), 500
