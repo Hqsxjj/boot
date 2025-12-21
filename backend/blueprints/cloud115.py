@@ -18,7 +18,7 @@ def init_cloud115_blueprint(secret_store: SecretStore):
     """Initialize cloud115 blueprint with secret store."""
     global _secret_store, _p115_service, _cloud115_service
     _secret_store = secret_store
-    _p115_service = get_p115_service()
+    _p115_service = get_p115_service(secret_store)  # 传入 secret_store 以便保存/加载 cookies
     _cloud115_service = Cloud115Service(secret_store)
     return cloud115_bp
 

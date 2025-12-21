@@ -560,7 +560,7 @@ class Cloud115Service:
                     'error': '未登录 115 账号，请先登录'
                 }
             
-            p115_service = get_p115_service()
+            p115_service = get_p115_service(self.secret_store)
             result = p115_service.save_share(
                 share_code=share_code,
                 access_code=access_code,
@@ -598,7 +598,7 @@ class Cloud115Service:
                     'error': '未登录 115 账号'
                 }
             
-            p115_service = get_p115_service()
+            p115_service = get_p115_service(self.secret_store)
             result = p115_service.get_share_files(
                 share_code=share_code,
                 access_code=access_code,

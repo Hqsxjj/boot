@@ -89,7 +89,13 @@ class OpenAppClientHolder:
                     try:
                         if qr_url:
                             img_resp = requests.get(qr_url, headers=self.headers, timeout=10)
-                            b64_img = base64.b64encode(img_resp.content).decode('utf-8')
+                            raw_b64 = base64.b64encode(img_resp.content).decode('utf-8')
+                            # 添加 Data URL 前缀以便前端 <img> 标签正确显示
+                            content_type = img_resp.headers.get('content-type', 'image/png')
+                            mime_type = content_type.split(';')[0] if content_type else 'image/png'
+                            if not mime_type.startswith('image/'):
+                                mime_type = 'image/png'
+                            b64_img = f"data:{mime_type};base64,{raw_b64}"
                     except Exception as e:
                         logger.error(f"OpenID QR 图片下载失败: {e}")
 
@@ -271,7 +277,11 @@ class StandardClientHolder:
                             # 验证返回的是图片而非错误页面
                             if 'image' in content_type or len(img_resp.content) > 100:
                                 b64_img = base64.b64encode(img_resp.content).decode('utf-8')
-                                self._qr_token["qrcode"] = b64_img
+                                # 添加 Data URL 前缀以便前端 <img> 标签正确显示
+                                mime_type = content_type.split(';')[0] if content_type else 'image/png'
+                                if not mime_type.startswith('image/'):
+                                    mime_type = 'image/png'
+                                self._qr_token["qrcode"] = f"data:{mime_type};base64,{b64_img}"
                                 logger.info(f"[115 QR] 二维码下载成功, 大小: {len(b64_img)} bytes")
                             else:
                                 logger.error(f"[115 QR] 返回内容不是图片: {img_resp.content[:200]}")
@@ -651,6 +661,12 @@ def get_p115_service(secret_store=None) -> P115Service:
     global _p115_service
     if _p115_service is None:
         _p115_service = P115Service(secret_store)
+    elif secret_store is not None and _p115_service._secret_store is None:
+        # 如果已存在但没有 secret_store，更新它
+        _p115_service._secret_store = secret_store
+        # 同时更新已存在的 holder
+        if _p115_service._standard_holder:
+            _p115_service._standard_holder._secret_store = secret_store
     return _p115_service
 
 

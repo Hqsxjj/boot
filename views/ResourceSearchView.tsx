@@ -38,7 +38,9 @@ import {
     FileArchive,
     FileImage,
     File,
-    FolderPlus
+    FolderPlus,
+    LayoutGrid,
+    List
 } from 'lucide-react';
 
 
@@ -85,6 +87,7 @@ export const ResourceSearchView: React.FC = () => {
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [searchMessage, setSearchMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'search' | 'subscription' | 'sources'>('search');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');  // 视图模式：grid 或 list
 
     // 来源管理状态
     const [sources, setSources] = useState<Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>>([]);
@@ -805,12 +808,30 @@ export const ResourceSearchView: React.FC = () => {
                     {/* Search Results */}
                     {searchResults.length > 0 && (
                         <section className="space-y-4">
-                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                                <Search size={20} />
-                                搜索结果
-                                <span className="text-sm font-normal text-slate-500">({searchResults.length} 条结果)</span>
-                            </h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                    <Search size={20} />
+                                    搜索结果
+                                    <span className="text-sm font-normal text-slate-500">({searchResults.length} 条结果)</span>
+                                </h3>
+                                <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setViewMode('grid')}
+                                        className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 shadow-sm text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        title="网格视图"
+                                    >
+                                        <LayoutGrid size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 shadow-sm text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        title="列表视图"
+                                    >
+                                        <List size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
                                 {searchResults.map((resource, index) => (
                                     <ResourceCard
                                         key={`search-${index}`}
@@ -828,6 +849,7 @@ export const ResourceSearchView: React.FC = () => {
                                         breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
                                         onFolderClick={(folder) => handleFolderClick(resource, folder)}
                                         onBreadcrumbClick={(index) => navigateToBreadcrumb(resource, index)}
+                                        viewMode={viewMode}
                                     />
                                 ))}
                             </div>
@@ -841,14 +863,32 @@ export const ResourceSearchView: React.FC = () => {
                                 <TrendingUp size={20} className="text-pink-500" />
                                 热门资源
                             </h3>
-                            <button
-                                onClick={fetchTrending}
-                                disabled={isLoadingTrending}
-                                className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 transition-colors"
-                            >
-                                <RefreshCw size={14} className={isLoadingTrending ? 'animate-spin' : ''} />
-                                刷新
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setViewMode('grid')}
+                                        className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white dark:bg-slate-700 shadow-sm text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        title="网格视图"
+                                    >
+                                        <LayoutGrid size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 shadow-sm text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        title="列表视图"
+                                    >
+                                        <List size={16} />
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={fetchTrending}
+                                    disabled={isLoadingTrending}
+                                    className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 transition-colors"
+                                >
+                                    <RefreshCw size={14} className={isLoadingTrending ? 'animate-spin' : ''} />
+                                    刷新
+                                </button>
+                            </div>
                         </div>
 
                         {isLoadingTrending ? (
@@ -856,7 +896,7 @@ export const ResourceSearchView: React.FC = () => {
                                 <Loader2 className="animate-spin text-brand-500" size={32} />
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                            <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
                                 {trendingResources.map((resource) => (
                                     <ResourceCard
                                         key={resource.id}
@@ -874,6 +914,7 @@ export const ResourceSearchView: React.FC = () => {
                                         breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
                                         onFolderClick={(folder) => handleFolderClick(resource, folder)}
                                         onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                        viewMode={viewMode}
                                     />
                                 ))}
                             </div>
@@ -2254,7 +2295,8 @@ const ResourceCard: React.FC<{
     breadcrumbs?: Array<{ id: string; name: string }>;
     onFolderClick?: (folder: ShareFile) => void;
     onBreadcrumbClick?: (index: number) => void;
-}> = ({ resource, onClick, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles, onSaveSingleFile, breadcrumbs, onFolderClick, onBreadcrumbClick }) => {
+    viewMode?: 'grid' | 'list';
+}> = ({ resource, onClick, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles, onSaveSingleFile, breadcrumbs, onFolderClick, onBreadcrumbClick, viewMode = 'grid' }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -2289,22 +2331,17 @@ const ResourceCard: React.FC<{
 
     return (
         <div className={`group relative rounded-xl overflow-visible ${isExpanded ? 'col-span-full' : ''}`}>
-            <div className={`${isExpanded ? 'flex gap-4' : ''}`}>
-                {/* Card Section */}
+            {/* List View */}
+            {viewMode === 'list' && !isExpanded ? (
                 <div
-                    className={`cursor-pointer transform transition-all duration-300 rounded-xl overflow-hidden ${isExpanded ? 'w-48 shrink-0' : 'hover:scale-105 hover:shadow-2xl hover:shadow-black/20'}`}
+                    className="flex items-center gap-4 p-3 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-sm hover:shadow-lg transition-all cursor-pointer group"
+                    onClick={onClick}
                 >
-                    {/* Poster */}
-                    <div className="aspect-[2/3] relative bg-slate-200 dark:bg-slate-800" onClick={onClick}>
-                        {!imageLoaded && !imageError && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <Loader2 className="animate-spin text-slate-400" size={24} />
-                            </div>
-                        )}
+                    {/* Small Poster */}
+                    <div className="w-16 h-24 shrink-0 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-700">
                         {imageError ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-700 to-slate-900 text-slate-400">
-                                <Film size={32} />
-                                <span className="text-xs mt-2">暂无海报</span>
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-600 to-slate-800 text-slate-400">
+                                <Film size={20} />
                             </div>
                         ) : (
                             <img
@@ -2312,295 +2349,381 @@ const ResourceCard: React.FC<{
                                 alt={resource.title}
                                 onLoad={() => setImageLoaded(true)}
                                 onError={() => setImageError(true)}
-                                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                                className={`w-full h-full object-cover ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                             />
-                        )}
-
-                        {/* Overlay on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 gap-2">
-                            {hasShareLink && (
-                                <div className="flex gap-2 w-full">
-                                    <a
-                                        href={resource.share_link || resource.share_links?.[0]?.link || '#'}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={`py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg w-full ${resource.cloud_type === '115' ? 'bg-orange-500/90 hover:bg-orange-600' : 'bg-brand-500/90 hover:bg-brand-600'}`}
-                                    >
-                                        <ExternalLink size={14} />
-                                        打开链接
-                                    </a>
-                                </div>
-                            )}
-
-                            <button className="w-full py-2 bg-white/20 backdrop-blur-sm rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 hover:bg-white/30 transition-colors">
-                                <Info size={14} />
-                                查看详情
-                            </button>
-                        </div>
-
-                        {/* Cloud Type Badge (Top-Left) */}
-                        <div className={`absolute top-2 left-2 px-2 py-0.5 backdrop-blur-sm rounded text-[10px] font-bold text-white font-mono ${resource.cloud_type === '115' ? 'bg-orange-500/90' : resource.cloud_type === '123' ? 'bg-blue-500/90' : 'bg-slate-600/90'}`}>
-                            {resource.cloud_type === '115' ? '115网盘' : resource.cloud_type === '123' ? '123网盘' : resource.cloud_type || '未知'}
-                        </div>
-
-                        {/* Type Badge removed per user request */}
-
-                        {resource.rating && (
-                            <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[10px] font-bold text-amber-400">
-                                <Star size={10} fill="currentColor" />
-                                {resource.rating.toFixed(1)}
-                            </div>
                         )}
                     </div>
 
-                    {/* Title and Expand Button */}
-                    <div className="bg-gradient-to-t from-black/90 via-black/70 to-black/50 p-3">
-                        <h4 className="font-bold text-white text-sm truncate">{resource.title}</h4>
-                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
-                            <Calendar size={10} />
-                            {resource.year}
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${resource.cloud_type === '115' ? 'bg-orange-500' : resource.cloud_type === '123' ? 'bg-blue-500' : 'bg-slate-500'}`}>
+                                {resource.cloud_type === '115' ? '115' : resource.cloud_type === '123' ? '123' : resource.cloud_type || '?'}
+                            </span>
+                            <h4 className="font-bold text-slate-800 dark:text-white text-sm truncate">{resource.title}</h4>
                         </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                            <span className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {resource.year}
+                            </span>
+                            {resource.rating && (
+                                <span className="flex items-center gap-1 text-amber-500">
+                                    <Star size={12} fill="currentColor" />
+                                    {resource.rating.toFixed(1)}
+                                </span>
+                            )}
+                            {resource.quality && (
+                                <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px]">
+                                    {resource.quality}
+                                </span>
+                            )}
+                        </div>
+                    </div>
 
-                        {/* Expand/Collapse Button */}
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {hasShareLink && (
+                            <a
+                                href={resource.share_link || resource.share_links?.[0]?.link || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1 transition-colors ${resource.cloud_type === '115' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-brand-500 hover:bg-brand-600'}`}
+                            >
+                                <ExternalLink size={12} />
+                                打开
+                            </a>
+                        )}
                         {hasCloudFiles && hasShareLink && (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onToggleExpand?.(resource);
                                 }}
-                                className={`mt-2 w-full py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-all ${isExpanded
-                                    ? 'bg-brand-500 text-white hover:bg-brand-600'
-                                    : 'bg-white/10 text-white/80 hover:bg-white/20'
-                                    }`}
+                                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1 transition-colors"
                             >
                                 <FileText size={12} />
-                                {isExpanded ? '收起文件' : '浏览文件'}
+                                文件
                             </button>
                         )}
                     </div>
                 </div>
-
-                {/* Fullscreen File Browser Modal */}
-                {isExpanded && (
+            ) : (
+                /* Grid View */
+                <div className={`${isExpanded ? 'flex gap-4' : ''}`}>
+                    {/* Card Section */}
                     <div
-                        className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
-                        onClick={(e) => e.stopPropagation()}
+                        className={`cursor-pointer transform transition-all duration-300 rounded-xl overflow-hidden ${isExpanded ? 'w-48 shrink-0' : 'hover:scale-105 hover:shadow-2xl hover:shadow-black/20'}`}
                     >
-                        {/* Backdrop */}
-                        <div
-                            className="absolute inset-0 bg-black/70 backdrop-blur-md"
-                            onClick={() => onToggleExpand?.(resource)}
-                        />
-
-                        {/* Modal Content - 全屏弹窗 */}
-                        <div className="relative w-full max-w-5xl h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
-                            {/* Header */}
-                            <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/50 border-b border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between shrink-0">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${resource.cloud_type === '115' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'}`}>
-                                        <FileText size={20} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-slate-800 dark:text-white">
-                                            {resource.title}
-                                        </h3>
-                                        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${resource.cloud_type === '115' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                                                {resource.cloud_type === '115' ? '115网盘' : '123网盘'}
-                                            </span>
-                                            {files && files.length > 0 && (
-                                                <span>{files.length} 个项目</span>
-                                            )}
-                                        </div>
-                                    </div>
+                        {/* Poster */}
+                        <div className="aspect-[2/3] relative bg-slate-200 dark:bg-slate-800" onClick={onClick}>
+                            {!imageLoaded && !imageError && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Loader2 className="animate-spin text-slate-400" size={24} />
                                 </div>
+                            )}
+                            {imageError ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-700 to-slate-900 text-slate-400">
+                                    <Film size={32} />
+                                    <span className="text-xs mt-2">暂无海报</span>
+                                </div>
+                            ) : (
+                                <img
+                                    src={resource.poster_url}
+                                    alt={resource.title}
+                                    onLoad={() => setImageLoaded(true)}
+                                    onError={() => setImageError(true)}
+                                    className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                                />
+                            )}
 
-                                {/* 右上角关闭按钮 */}
-                                <button
-                                    onClick={() => onToggleExpand?.(resource)}
-                                    className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
-                                >
-                                    <X size={24} className="text-slate-500" />
+                            {/* Overlay on hover */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 gap-2">
+                                {hasShareLink && (
+                                    <div className="flex gap-2 w-full">
+                                        <a
+                                            href={resource.share_link || resource.share_links?.[0]?.link || '#'}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className={`py-2 backdrop-blur-sm rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-lg w-full ${resource.cloud_type === '115' ? 'bg-orange-500/90 hover:bg-orange-600' : 'bg-brand-500/90 hover:bg-brand-600'}`}
+                                        >
+                                            <ExternalLink size={14} />
+                                            打开链接
+                                        </a>
+                                    </div>
+                                )}
+
+                                <button className="w-full py-2 bg-white/20 backdrop-blur-sm rounded-lg text-white text-xs font-medium flex items-center justify-center gap-1 hover:bg-white/30 transition-colors">
+                                    <Info size={14} />
+                                    查看详情
                                 </button>
                             </div>
 
-                            {/* Breadcrumb Navigation */}
-                            {breadcrumbs && breadcrumbs.length > 0 && (
-                                <div className="px-6 py-3 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-700/50 shrink-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <button
-                                            onClick={() => onBreadcrumbClick?.(-1)}
-                                            className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
-                                        >
-                                            🏠 根目录
-                                        </button>
-                                        {breadcrumbs.map((crumb, idx) => (
-                                            <React.Fragment key={crumb.id}>
-                                                <span className="text-slate-400">/</span>
-                                                <button
-                                                    onClick={() => onBreadcrumbClick?.(idx)}
-                                                    className={`text-sm font-medium ${idx === breadcrumbs.length - 1 ? 'text-slate-600 dark:text-slate-300' : 'text-brand-600 hover:text-brand-700'}`}
-                                                >
-                                                    {crumb.name}
-                                                </button>
-                                            </React.Fragment>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* File List - 可滚动区域 */}
-                            <div className="flex-1 overflow-y-auto p-4">
-                                {isLoadingFiles ? (
-                                    <div className="flex items-center justify-center h-full">
-                                        <Loader2 className="animate-spin text-brand-500" size={32} />
-                                        <span className="ml-3 text-slate-500">加载文件列表中...</span>
-                                    </div>
-                                ) : files && files.length > 0 ? (
-                                    <div className="space-y-1">
-                                        {/* Select All Header */}
-                                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl mb-3">
-                                            <button
-                                                onClick={onToggleSelectAll}
-                                                className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-brand-500 transition-colors"
-                                            >
-                                                {selectedFileIds?.size === files.filter(f => !f.is_directory).length ? (
-                                                    <CheckSquare size={18} className="text-brand-500" />
-                                                ) : (
-                                                    <Square size={18} />
-                                                )}
-                                                全选文件 ({selectedFileIds?.size || 0}/{files.filter(f => !f.is_directory).length})
-                                            </button>
-                                        </div>
-
-                                        {/* File Items - 文件名完整显示 */}
-                                        {files.map(file => (
-                                            <div
-                                                key={file.id}
-                                                onClick={(e) => {
-                                                    // 视频文件扩展名列表
-                                                    const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.rmvb', '.rm', '.3gp', '.mpg', '.mpeg'];
-                                                    const fileName = file.name?.toLowerCase() || '';
-                                                    const isVideoFile = videoExtensions.some(ext => fileName.endsWith(ext));
-
-                                                    if (file.is_directory && !isVideoFile && onFolderClick) {
-                                                        e.stopPropagation();
-                                                        onFolderClick(file);
-                                                    } else {
-                                                        // 视频文件和其他非目录文件只能选择，不能进入
-                                                        onToggleFileSelection?.(file.id);
-                                                    }
-                                                }}
-                                                className={`flex items-start gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all ${isRealFolder(file)
-                                                    ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
-                                                    : selectedFileIds?.has(file.id)
-                                                        ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
-                                                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
-                                                    }`}
-                                            >
-                                                {/* Icon / Checkbox */}
-                                                <div className="pt-0.5 shrink-0">
-                                                    {isRealFolder(file) ? (
-                                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
-                                                            <Folder size={22} className="text-white" fill="white" fillOpacity={0.3} />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
-                                                                {selectedFileIds?.has(file.id) ? <CheckSquare size={20} /> : <Square size={20} />}
-                                                            </div>
-                                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center">
-                                                                {file.name.match(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb)$/i) ? (
-                                                                    <FileVideo size={16} className="text-purple-500" />
-                                                                ) : file.name.match(/\.(mp3|flac|wav|aac|ogg|wma|m4a)$/i) ? (
-                                                                    <FileAudio size={16} className="text-pink-500" />
-                                                                ) : file.name.match(/\.(zip|rar|7z|tar|gz|bz2)$/i) ? (
-                                                                    <FileArchive size={16} className="text-amber-500" />
-                                                                ) : file.name.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico)$/i) ? (
-                                                                    <FileImage size={16} className="text-green-500" />
-                                                                ) : (
-                                                                    <File size={16} className="text-slate-500" />
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* File Info - 文件名完整显示，不截断 */}
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-xs font-light text-slate-700 dark:text-slate-200 break-all leading-relaxed">
-                                                        {file.name}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-1 text-[10px] font-light text-slate-500">
-                                                        {file.size > 0 && <span className="font-mono">{formatFileSize(file.size)}</span>}
-                                                        {file.time && <span>{new Date(file.time).toLocaleDateString()}</span>}
-                                                    </div>
-                                                </div>
-
-                                                {/* Folder Enter Button - 右侧明显的进入按钮 */}
-                                                {isRealFolder(file) ? (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onFolderClick?.(file);
-                                                        }}
-                                                        className="shrink-0 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
-                                                    >
-                                                        <ExternalLink size={14} />
-                                                        进入
-                                                    </button>
-                                                ) : onSaveSingleFile && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onSaveSingleFile(file.id, file.name);
-                                                        }}
-                                                        className="shrink-0 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
-                                                    >
-                                                        <FolderPlus size={12} />
-                                                        转存
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                                        <AlertCircle size={48} className="mb-4 text-slate-300" />
-                                        <span className="text-lg">暂无文件或获取失败</span>
-                                        <span className="text-sm mt-1">请检查分享链接是否有效</span>
-                                    </div>
-                                )}
+                            {/* Cloud Type Badge (Top-Left) */}
+                            <div className={`absolute top-2 left-2 px-2 py-0.5 backdrop-blur-sm rounded text-[10px] font-bold text-white font-mono ${resource.cloud_type === '115' ? 'bg-orange-500/90' : resource.cloud_type === '123' ? 'bg-blue-500/90' : 'bg-slate-600/90'}`}>
+                                {resource.cloud_type === '115' ? '115网盘' : resource.cloud_type === '123' ? '123网盘' : resource.cloud_type || '未知'}
                             </div>
 
-                            {/* Footer Actions */}
-                            {files && files.length > 0 && (
-                                <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/50 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between shrink-0">
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">
-                                        已选择 <span className="font-bold text-brand-600">{selectedFileIds?.size || 0}</span> 个文件
-                                    </span>
-                                    <button
-                                        onClick={handleSaveClick}
-                                        disabled={!selectedFileIds || selectedFileIds.size === 0 || isSaving}
-                                        className={`px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg ${resource.cloud_type === '115'
-                                            ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
-                                            : 'bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30'
-                                            }`}
-                                    >
-                                        {isSaving ? (
-                                            <Loader2 size={14} className="animate-spin" />
-                                        ) : (
-                                            <Save size={14} />
-                                        )}
-                                        转存选中文件
-                                    </button>
+                            {/* Type Badge removed per user request */}
+
+                            {resource.rating && (
+                                <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[10px] font-bold text-amber-400">
+                                    <Star size={10} fill="currentColor" />
+                                    {resource.rating.toFixed(1)}
                                 </div>
                             )}
                         </div>
+
+                        {/* Title and Expand Button */}
+                        <div className="bg-gradient-to-t from-black/90 via-black/70 to-black/50 p-3">
+                            <h4 className="font-bold text-white text-sm truncate">{resource.title}</h4>
+                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                                <Calendar size={10} />
+                                {resource.year}
+                            </div>
+
+                            {/* Expand/Collapse Button */}
+                            {hasCloudFiles && hasShareLink && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleExpand?.(resource);
+                                    }}
+                                    className={`mt-2 w-full py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-all ${isExpanded
+                                        ? 'bg-brand-500 text-white hover:bg-brand-600'
+                                        : 'bg-white/10 text-white/80 hover:bg-white/20'
+                                        }`}
+                                >
+                                    <FileText size={12} />
+                                    {isExpanded ? '收起文件' : '浏览文件'}
+                                </button>
+                            )}
+                        </div>
                     </div>
-                )}
-            </div>
+
+                    {/* Fullscreen File Browser Modal */}
+                    {isExpanded && (
+                        <div
+                            className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Backdrop */}
+                            <div
+                                className="absolute inset-0 bg-black/70 backdrop-blur-md"
+                                onClick={() => onToggleExpand?.(resource)}
+                            />
+
+                            {/* Modal Content - 全屏弹窗 */}
+                            <div className="relative w-full max-w-5xl h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+                                {/* Header */}
+                                <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/50 border-b border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${resource.cloud_type === '115' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'}`}>
+                                            <FileText size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-lg text-slate-800 dark:text-white">
+                                                {resource.title}
+                                            </h3>
+                                            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${resource.cloud_type === '115' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                                    {resource.cloud_type === '115' ? '115网盘' : '123网盘'}
+                                                </span>
+                                                {files && files.length > 0 && (
+                                                    <span>{files.length} 个项目</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 右上角关闭按钮 */}
+                                    <button
+                                        onClick={() => onToggleExpand?.(resource)}
+                                        className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                                    >
+                                        <X size={24} className="text-slate-500" />
+                                    </button>
+                                </div>
+
+                                {/* Breadcrumb Navigation */}
+                                {breadcrumbs && breadcrumbs.length > 0 && (
+                                    <div className="px-6 py-3 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200/50 dark:border-slate-700/50 shrink-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                onClick={() => onBreadcrumbClick?.(-1)}
+                                                className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+                                            >
+                                                🏠 根目录
+                                            </button>
+                                            {breadcrumbs.map((crumb, idx) => (
+                                                <React.Fragment key={crumb.id}>
+                                                    <span className="text-slate-400">/</span>
+                                                    <button
+                                                        onClick={() => onBreadcrumbClick?.(idx)}
+                                                        className={`text-sm font-medium ${idx === breadcrumbs.length - 1 ? 'text-slate-600 dark:text-slate-300' : 'text-brand-600 hover:text-brand-700'}`}
+                                                    >
+                                                        {crumb.name}
+                                                    </button>
+                                                </React.Fragment>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* File List - 可滚动区域 */}
+                                <div className="flex-1 overflow-y-auto p-4">
+                                    {isLoadingFiles ? (
+                                        <div className="flex items-center justify-center h-full">
+                                            <Loader2 className="animate-spin text-brand-500" size={32} />
+                                            <span className="ml-3 text-slate-500">加载文件列表中...</span>
+                                        </div>
+                                    ) : files && files.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {/* Select All Header */}
+                                            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl mb-3">
+                                                <button
+                                                    onClick={onToggleSelectAll}
+                                                    className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-brand-500 transition-colors"
+                                                >
+                                                    {selectedFileIds?.size === files.filter(f => !f.is_directory).length ? (
+                                                        <CheckSquare size={18} className="text-brand-500" />
+                                                    ) : (
+                                                        <Square size={18} />
+                                                    )}
+                                                    全选文件 ({selectedFileIds?.size || 0}/{files.filter(f => !f.is_directory).length})
+                                                </button>
+                                            </div>
+
+                                            {/* File Items - 文件名完整显示 */}
+                                            {files.map(file => (
+                                                <div
+                                                    key={file.id}
+                                                    onClick={(e) => {
+                                                        // 视频文件扩展名列表
+                                                        const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.rmvb', '.rm', '.3gp', '.mpg', '.mpeg'];
+                                                        const fileName = file.name?.toLowerCase() || '';
+                                                        const isVideoFile = videoExtensions.some(ext => fileName.endsWith(ext));
+
+                                                        if (file.is_directory && !isVideoFile && onFolderClick) {
+                                                            e.stopPropagation();
+                                                            onFolderClick(file);
+                                                        } else {
+                                                            // 视频文件和其他非目录文件只能选择，不能进入
+                                                            onToggleFileSelection?.(file.id);
+                                                        }
+                                                    }}
+                                                    className={`flex items-start gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all ${isRealFolder(file)
+                                                        ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
+                                                        : selectedFileIds?.has(file.id)
+                                                            ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
+                                                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+                                                        }`}
+                                                >
+                                                    {/* Icon / Checkbox */}
+                                                    <div className="pt-0.5 shrink-0">
+                                                        {isRealFolder(file) ? (
+                                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                                                                <Folder size={22} className="text-white" fill="white" fillOpacity={0.3} />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={`transition-colors ${selectedFileIds?.has(file.id) ? 'text-brand-500' : 'text-slate-400'}`}>
+                                                                    {selectedFileIds?.has(file.id) ? <CheckSquare size={20} /> : <Square size={20} />}
+                                                                </div>
+                                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center">
+                                                                    {file.name.match(/\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb)$/i) ? (
+                                                                        <FileVideo size={16} className="text-purple-500" />
+                                                                    ) : file.name.match(/\.(mp3|flac|wav|aac|ogg|wma|m4a)$/i) ? (
+                                                                        <FileAudio size={16} className="text-pink-500" />
+                                                                    ) : file.name.match(/\.(zip|rar|7z|tar|gz|bz2)$/i) ? (
+                                                                        <FileArchive size={16} className="text-amber-500" />
+                                                                    ) : file.name.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg|ico)$/i) ? (
+                                                                        <FileImage size={16} className="text-green-500" />
+                                                                    ) : (
+                                                                        <File size={16} className="text-slate-500" />
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* File Info - 文件名完整显示，不截断 */}
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-xs font-light text-slate-700 dark:text-slate-200 break-all leading-relaxed">
+                                                            {file.name}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1 text-[10px] font-light text-slate-500">
+                                                            {file.size > 0 && <span className="font-mono">{formatFileSize(file.size)}</span>}
+                                                            {file.time && <span>{new Date(file.time).toLocaleDateString()}</span>}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Folder Enter Button - 右侧明显的进入按钮 */}
+                                                    {isRealFolder(file) ? (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onFolderClick?.(file);
+                                                            }}
+                                                            className="shrink-0 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                                                        >
+                                                            <ExternalLink size={14} />
+                                                            进入
+                                                        </button>
+                                                    ) : onSaveSingleFile && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onSaveSingleFile(file.id, file.name);
+                                                            }}
+                                                            className="shrink-0 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                                                        >
+                                                            <FolderPlus size={12} />
+                                                            转存
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                                            <AlertCircle size={48} className="mb-4 text-slate-300" />
+                                            <span className="text-lg">暂无文件或获取失败</span>
+                                            <span className="text-sm mt-1">请检查分享链接是否有效</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Footer Actions */}
+                                {files && files.length > 0 && (
+                                    <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/50 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+                                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                                            已选择 <span className="font-bold text-brand-600">{selectedFileIds?.size || 0}</span> 个文件
+                                        </span>
+                                        <button
+                                            onClick={handleSaveClick}
+                                            disabled={!selectedFileIds || selectedFileIds.size === 0 || isSaving}
+                                            className={`px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg ${resource.cloud_type === '115'
+                                                ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
+                                                : 'bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30'
+                                                }`}
+                                        >
+                                            {isSaving ? (
+                                                <Loader2 size={14} className="animate-spin" />
+                                            ) : (
+                                                <Save size={14} />
+                                            )}
+                                            转存选中文件
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
