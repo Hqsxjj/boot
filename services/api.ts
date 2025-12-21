@@ -311,59 +311,7 @@ export const api = {
     return res.data.data;
   },
 
-  // Emby Cover Generator (Legacy removed, using the one below)
 
-  saveBotConfig: async (config: any) => {
-    const res = await apiClient.post<ApiResponse<any>>('/bot/config', config);
-    return res.data;
-  },
-
-  // Emby Cover Generator
-  getCoverThemes: async () => {
-    const res = await apiClient.get<ApiResponse<any[]>>('/emby/cover-themes');
-    return res.data;
-  },
-
-  getEmbyLibraries: async () => {
-    const res = await apiClient.get<ApiResponse<any[]>>('/emby/libraries');
-    return res.data;
-  },
-
-  generateCover: async (options: {
-    libraryId?: string;
-    posters?: string[]; // base64
-    config: any;
-  }) => {
-    // 如果传了 libraryId，后端会自己去取海报
-    const res = await apiClient.post<ApiResponse<{ image: string }>>('/emby/generate-cover', options);
-    return res.data;
-  },
-
-  batchApplyCovers: async (libraryIds: string[], config: any) => {
-    const res = await apiClient.post<ApiResponse<any>>('/emby/apply_covers', {
-      library_ids: libraryIds,
-      config
-    });
-    return res.data;
-  },
-
-  getBotCommands: async () => {
-    const res = await apiClient.get<ApiResponse<any[]>>('/bot/commands');
-    return res.data.data;
-  },
-
-  putBotCommands: async (commands: any[]) => {
-    const res = await apiClient.put<ApiResponse<any[]>>('/bot/commands', { commands });
-    return res.data;
-  },
-
-  testBotMessage: async (targetType: string = 'admin', targetId?: string) => {
-    const res = await apiClient.post<ApiResponse<any>>('/bot/test-message', {
-      target_type: targetType,
-      target_id: targetId,
-    });
-    return res.data;
-  },
 
   // --- Emby 接口 ---
 
@@ -618,17 +566,63 @@ export const api = {
     return res.data;
   },
 
+  // --- Emby Cover Generator ---
 
-  subtitle: string;
-  themeIndex: number;
-  format: 'png' | 'gif';
-  titleSize?: number;
-  offsetX?: number;
-  posterScale?: number;
-  vAlign?: number;
-}) => {
-  const res = await apiClient.post<ApiResponse<{ image: string; format: string }>>('/emby/cover/generate', options);
-  return res.data;
-},
+  getCoverThemes: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ index: number; name: string; colors: string[] }>>>('/emby/cover/themes');
+    return res.data;
+  },
+
+  getEmbyLibraries: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ id: string; name: string; type: string; path: string }>>>('/emby/cover/libraries');
+    return res.data;
+  },
+
+  getLibraryPosters: async (libraryId: string, limit: number = 10) => {
+    const res = await apiClient.get<ApiResponse<string[]>>(`/emby/cover/posters/${libraryId}`, { params: { limit } });
+    return res.data;
+  },
+
+  generateCover: async (options: {
+    libraryId?: string;
+    posters?: string[];
+    config: any;
+  }) => {
+    const res = await apiClient.post<ApiResponse<{ image: string }>>('/emby/generate-cover', options);
+    return res.data;
+  },
+
+  batchApplyCovers: async (libraryIds: string[], config: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/apply_covers', {
+      library_ids: libraryIds,
+      config
+    });
+    return res.data;
+  },
+
+  saveBotConfig: async (config: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/bot/config', config);
+    return res.data;
+  },
+
+  getBotCommands: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/bot/commands');
+    return res.data.data;
+  },
+
+  putBotCommands: async (commands: any[]) => {
+    const res = await apiClient.put<ApiResponse<any[]>>('/bot/commands', { commands });
+    return res.data;
+  },
+
+  testBotMessage: async (targetType: string = 'admin', targetId?: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/bot/test-message', {
+      target_type: targetType,
+      target_id: targetId,
+    });
+    return res.data;
+  }
 };
+
+
 
