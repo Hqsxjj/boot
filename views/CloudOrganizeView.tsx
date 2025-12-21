@@ -362,7 +362,8 @@ export const CloudOrganizeView: React.FC = () => {
                   0,
                   ''
                );
-               const status = statusRes.data.status;
+               // 兼容两种响应格式：{ data: { status } } 和 { status }
+               const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
 
                // 使用 switch 处理状态
                switch (status) {
@@ -384,12 +385,19 @@ export const CloudOrganizeView: React.FC = () => {
                   case 'error':
                      stopQrCheck();
                      setQrState('error');
+                     setToast((statusRes as any).error || '登录失败');
+                     break;
+                  case 'waiting':
+                     // 继续等待，不做任何操作
                      break;
                   default:
+                     // 未知状态，继续轮询
+                     console.log('Unknown QR status:', status);
                      break;
                }
             } catch (err) {
                console.error('QR Poll failed', err);
+               // 网络错误时不停止轮询，继续尝试
             }
          }, 3000);  // 3秒轮询状态，避免请求过快
       } catch (e: any) {
