@@ -182,9 +182,31 @@ export const ResourceSearchView: React.FC = () => {
         }
     };
 
-    const copyToClipboard = (text: string, label: string = '链接') => {
-        navigator.clipboard.writeText(text);
-        setToast(`${label}已复制到剪贴板`);
+    const copyToClipboard = async (text: string, label: string = '链接') => {
+        if (!text) {
+            setToast('没有可复制的内容');
+            setTimeout(() => setToast(null), 2000);
+            return;
+        }
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                // 回退方案：创建临时文本框
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+            setToast(`${label}已复制到剪贴板`);
+        } catch (e) {
+            console.error('复制失败:', e);
+            setToast('复制失败，请手动复制');
+        }
         setTimeout(() => setToast(null), 2000);
     };
 
@@ -860,10 +882,10 @@ export const ResourceSearchView: React.FC = () => {
                                                         {selectedFileIds.has(file.id) ? <CheckSquare size={18} /> : <Square size={18} />}
                                                     </div>
                                                     <div className="flex-1 overflow-hidden">
-                                                        <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate" title={file.name}>
+                                                        <div className="text-xs font-light text-slate-700 dark:text-slate-200 truncate" title={file.name}>
                                                             {file.name}
                                                         </div>
-                                                        <div className="text-xs text-slate-500 flex gap-3 mt-0.5">
+                                                        <div className="text-[10px] font-light text-slate-500 flex gap-2 mt-0.5">
                                                             <span>{file.is_directory ? '文件夹' : '文件'}</span>
                                                             {file.size > 0 && <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>}
                                                             <span>{file.time ? new Date(file.time).toLocaleDateString() : ''}</span>
@@ -2451,10 +2473,10 @@ const ResourceCard: React.FC<{
 
                                                 {/* File Info - 文件名完整显示，不截断 */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200 break-all leading-relaxed">
+                                                    <div className="text-xs font-light text-slate-700 dark:text-slate-200 break-all leading-relaxed">
                                                         {file.name}
                                                     </div>
-                                                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                                                    <div className="flex items-center gap-2 mt-1 text-[10px] font-light text-slate-500">
                                                         {file.size > 0 && <span className="font-mono">{formatFileSize(file.size)}</span>}
                                                         {file.time && <span>{new Date(file.time).toLocaleDateString()}</span>}
                                                     </div>
