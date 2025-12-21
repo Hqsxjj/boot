@@ -921,9 +921,12 @@ const SourceManager: React.FC<{
     setToast: React.Dispatch<React.SetStateAction<string | null>>;
 }> = ({ glassCardClass, inputClass, sources, setSources, isLoadingSources, setIsLoadingSources, newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl, newSourceName, setNewSourceName, setToast }) => {
     const [isAdding, setIsAdding] = useState(false);
+    const [isCrawling, setIsCrawling] = useState(false);
+    const [crawlResult, setCrawlResult] = useState<{ total_resources?: number; last_crawl?: string } | null>(null);
 
     useEffect(() => {
         loadSources();
+        loadCrawlStatus();
     }, []);
 
     const loadSources = async () => {
@@ -937,6 +940,36 @@ const SourceManager: React.FC<{
             console.error(e);
         } finally {
             setIsLoadingSources(false);
+        }
+    };
+
+    const loadCrawlStatus = async () => {
+        try {
+            const res = await api.getCrawlResults() as any;
+            if (res.success) {
+                setCrawlResult({ total_resources: res.total, last_crawl: res.last_crawl });
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleCrawl = async () => {
+        setIsCrawling(true);
+        try {
+            const res = await api.crawlSources() as any;
+            if (res.success) {
+                setCrawlResult({ total_resources: res.total_resources, last_crawl: res.last_crawl });
+                setToast(`爬取完成，共获取 ${res.total_resources} 个资源链接`);
+            } else {
+                setToast(res.error || '爬取失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            setToast('爬取失败');
+            setTimeout(() => setToast(null), 3000);
+        } finally {
+            setIsCrawling(false);
         }
     };
 
@@ -996,14 +1029,42 @@ const SourceManager: React.FC<{
 
     return (
         <section className={`${glassCardClass} p-6 space-y-6`}>
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    <Globe size={20} className="text-brand-500" />
-                    来源管理
-                </h3>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                    添加 TG 频道或网站作为资源搜索来源
-                </span>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <Globe size={20} className="text-brand-500" />
+                        来源管理
+                    </h3>
+                    {crawlResult && (
+                        <div className="flex items-center gap-2 text-sm">
+                            <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-bold">
+                                {crawlResult.total_resources || 0} 个资源
+                            </span>
+                            {crawlResult.last_crawl && (
+                                <span className="text-slate-500 dark:text-slate-400">
+                                    上次: {new Date(crawlResult.last_crawl).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+                <button
+                    onClick={handleCrawl}
+                    disabled={isCrawling || sources.length === 0}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-bold transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-500/20"
+                >
+                    {isCrawling ? (
+                        <>
+                            <Loader2 size={16} className="animate-spin" />
+                            爬取中...
+                        </>
+                    ) : (
+                        <>
+                            <RefreshCw size={16} />
+                            爬取资源
+                        </>
+                    )}
+                </button>
             </div>
 
             {/* Add Source Form */}

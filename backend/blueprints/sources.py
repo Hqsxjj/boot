@@ -175,3 +175,50 @@ def update_source(source_id):
                 return jsonify({'success': False, 'error': '保存失败'}), 500
     
     return jsonify({'success': False, 'error': '来源不存在'}), 404
+
+
+@sources_bp.route('/api/sources/crawl', methods=['POST'])
+def crawl_sources():
+    """手动触发爬取所有启用的来源"""
+    try:
+        from services.source_crawler_service import get_crawler_service
+        crawler = get_crawler_service()
+        result = crawler.crawl_all_enabled_sources()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"爬取失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@sources_bp.route('/api/sources/crawl/<source_id>', methods=['POST'])
+def crawl_single_source(source_id):
+    """爬取单个来源"""
+    try:
+        from services.source_crawler_service import get_crawler_service
+        crawler = get_crawler_service()
+        
+        sources = load_sources()
+        source = next((s for s in sources if s.get('id') == source_id), None)
+        
+        if not source:
+            return jsonify({'success': False, 'error': '来源不存在'}), 404
+        
+        result = crawler.crawl_source(source)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"爬取失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@sources_bp.route('/api/sources/results', methods=['GET'])
+def get_crawl_results():
+    """获取爬取结果"""
+    try:
+        from services.source_crawler_service import get_crawler_service
+        keyword = request.args.get('keyword', '')
+        crawler = get_crawler_service()
+        result = crawler.get_crawled_resources(keyword if keyword else None)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"获取爬取结果失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500

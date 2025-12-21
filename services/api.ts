@@ -467,5 +467,19 @@ export const api = {
     const res = await apiClient.put<ApiResponse<any>>(`/sources/${id}`, data);
     return res.data;
   },
-};
 
+  crawlSources: async () => {
+    const res = await apiClient.post<ApiResponse<any>>('/sources/crawl');
+    return res.data;
+  },
+
+  crawlSingleSource: async (id: string) => {
+    const res = await apiClient.post<ApiResponse<any>>(`/sources/crawl/${id}`);
+    return res.data;
+  },
+
+  getCrawlResults: async (keyword?: string) => {
+    const res = await apiClient.get<ApiResponse<any>>('/sources/results', { params: { keyword } });
+    return res.data;
+  },
+};
