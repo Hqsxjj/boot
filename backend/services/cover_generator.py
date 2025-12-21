@@ -278,11 +278,33 @@ class CoverGenerator:
             # 粘贴海报
             img.paste(rotated, (px, py), rotated)
         
-        # 绘制文字
-        try:
-            m_font = ImageFont.truetype(font_path or "arial.ttf", title_size)
-            s_font = ImageFont.truetype(font_path or "arial.ttf", 45)
-        except:
+        # 字体加载逻辑
+        font_candidates = [
+            font_path, # 用户自定义
+            "msyh.ttf", # 微软雅黑 (Windows)
+            "simhei.ttf", # 黑体 (Windows)
+            "PingFang.ttc", # 苹方 (Mac)
+            "STHeiti Light.ttc", # 华文细黑 (Mac)
+            "arial.ttf", # 通用
+            "DejaVuSans.ttf" # Linux
+        ]
+        
+        m_font = None
+        s_font = None
+        
+        for f_path in font_candidates:
+            if not f_path:
+                continue
+            try:
+                m_font = ImageFont.truetype(f_path, title_size)
+                s_font = ImageFont.truetype(f_path, 45) # 副标题固定 45
+                logger.debug(f"成功加载字体: {f_path}")
+                break
+            except Exception:
+                continue
+                
+        if m_font is None:
+            logger.warning("未能加载任何系统字体，使用默认字体 (可能很小)")
             m_font = ImageFont.load_default()
             s_font = ImageFont.load_default()
         
