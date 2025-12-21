@@ -657,7 +657,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={58}
-                                            max={134}
+                                            max={192}
                                             value={titleSize}
                                             onChange={(e) => setTitleSize(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"

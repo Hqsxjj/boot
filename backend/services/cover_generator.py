@@ -189,9 +189,17 @@ class CoverGenerator:
         glass_draw = ImageDraw.Draw(glass_layer)
         
         # 玻璃板区域
+        # 玻璃板区域
         g_box = [glass_margin, glass_margin, width - glass_margin, height - glass_margin]
-        # 填充: 极淡的白色 (5% 不透明度)
-        glass_draw.rounded_rectangle(g_box, radius=40, fill=(255, 255, 255, 12))
+        
+        # 提取主题强调色 (使用中间色 theme["colors"][1])
+        accent_rgb = self._hex_to_rgb(theme["colors"][1])
+        
+        # 填充: 主题色淡混 (alpha 15) + 白色微混
+        # 这里的 fill 只是底色，为了更通透，我们使用极淡的主题色
+        glass_fill = accent_rgb + (15,)
+        
+        glass_draw.rounded_rectangle(g_box, radius=40, fill=glass_fill)
         # 描边: 稍亮的白色 (15% 不透明度)
         glass_draw.rounded_rectangle(g_box, radius=40, outline=(255, 255, 255, 30), width=2)
         
@@ -331,7 +339,9 @@ class CoverGenerator:
         
         # 主标题投影
         draw.text((tx + 6, ty + 6), title, font=m_font, fill=(0, 0, 0, 180))
-        draw.text((tx, ty), title, font=m_font, fill="white")
+        # 主标题 (带玻璃质感描边)
+        # stroke_width, stroke_fill 参数在 PIL 较新版本支持，模拟边缘光感
+        draw.text((tx, ty), title, font=m_font, fill="white", stroke_width=2, stroke_fill=(255, 255, 255, 50))
         
         # 副标题
         draw.text((tx, ty + title_size + 25), subtitle, font=s_font, fill=(255, 255, 255, 200))
