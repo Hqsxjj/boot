@@ -440,10 +440,16 @@ class CoverGenerator:
             GIF 图片的二进制数据
         """
         if len(posters) < 2:
-            # 海报太少，返回静态图
+            # 海报太少，返回单帧 GIF (保持格式一致)
             static_img = self.generate_cover(posters, title, subtitle, theme_index, width, height, **kwargs)
+            # 缩小到 GIF 尺寸
+            gif_width = min(width, 960)
+            gif_height = int(gif_width * height / width)
+            static_img = static_img.resize((gif_width, gif_height), Image.Resampling.LANCZOS)
+            # 转换为 P 模式 (GIF 要求)
+            static_img = static_img.convert("P", palette=Image.ADAPTIVE, colors=256)
             buffer = io.BytesIO()
-            static_img.save(buffer, format="PNG")
+            static_img.save(buffer, format="GIF")
             return buffer.getvalue()
         
         frames = []

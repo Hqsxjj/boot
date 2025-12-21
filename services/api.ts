@@ -578,6 +578,12 @@ export const api = {
     return res.data;
   },
 
+  // Alias for frontend compatibility
+  getCoverLibraries: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ id: string; name: string; type: string; path: string }>>>('/emby/cover/libraries');
+    return res.data;
+  },
+
   getLibraryPosters: async (libraryId: string, limit: number = 10) => {
     const res = await apiClient.get<ApiResponse<string[]>>(`/emby/cover/posters/${libraryId}`, { params: { limit } });
     return res.data;
