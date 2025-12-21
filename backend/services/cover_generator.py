@@ -301,18 +301,21 @@ class CoverGenerator:
             # 这里的 rotated 已经是 RGBA，直接 paste 即可利用其 alpha 通道进行混合
             img.paste(rotated, (px, py), rotated)
         
-        # 字体加载逻辑
+        # 字体加载逻辑 - 优先使用粗体
         font_candidates = [
             font_path, # 用户自定义
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", # Debian/Ubuntu Noto CJK
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "NotoSansCJK-Regular.ttc",
-            "msyh.ttf", # 微软雅黑 (Windows)
-            "simhei.ttf", # 黑体 (Windows)
-            "PingFang.ttc", # 苹方 (Mac)
-            "STHeiti Light.ttc", # 华文细黑 (Mac)
-            "arial.ttf", # 通用
-            "DejaVuSans.ttf" # Linux
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", # Debian/Ubuntu Noto CJK Bold
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+            "NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "msyhbd.ttf", # 微软雅黑粗体
+            "msyh.ttf", 
+            "simhei.ttf", 
+            "PingFang.ttc", 
+            "STHeiti Light.ttc", 
+            "arialbd.ttf", # Arial Bold
+            "arial.ttf", 
+            "DejaVuSans-Bold.ttf"
         ]
         
         m_font = None
@@ -337,17 +340,34 @@ class CoverGenerator:
         tx = int(width * 0.08)
         ty = int(height * (v_align_pct / 100))
         
-        # 主标题投影
-        draw.text((tx + 6, ty + 6), title, font=m_font, fill=(0, 0, 0, 180))
+        # === 文字 3D 立体阴影效果 ===
+        # 使用多层投影模拟立体感
+        shadow_layers = [
+            (2, 2, (0, 0, 0, 100)),
+            (4, 4, (0, 0, 0, 80)),
+            (6, 6, (0, 0, 0, 60)),
+            (8, 8, (0, 0, 0, 40)),
+        ]
+        
+        # 1. 主标题阴影
+        for dx, dy, color in shadow_layers:
+             draw.text((tx + dx, ty + dy), title, font=m_font, fill=color)
+        
         # 主标题 (带玻璃质感描边)
-        # stroke_width, stroke_fill 参数在 PIL 较新版本支持，模拟边缘光感
         draw.text((tx, ty), title, font=m_font, fill="white", stroke_width=2, stroke_fill=(255, 255, 255, 50))
         
+        # 2. 副标题阴影
+        sub_y = ty + title_size + 25
+        for dx, dy, color in shadow_layers:
+             draw.text((tx + dx, sub_y + dy), subtitle, font=s_font, fill=color)
+             
         # 副标题
-        draw.text((tx, ty + title_size + 25), subtitle, font=s_font, fill=(255, 255, 255, 200))
+        draw.text((tx, sub_y), subtitle, font=s_font, fill=(255, 255, 255, 220), stroke_width=1, stroke_fill=(0, 0, 0, 50))
         
         # 装饰条
         bar_y = ty + title_size + 100
+        # 装饰条阴影
+        draw.rectangle([tx + 4, bar_y + 4, tx + 184, bar_y + 12], fill=(0, 0, 0, 80))
         draw.rectangle([tx, bar_y, tx + 180, bar_y + 8], fill="white")
         
         return img

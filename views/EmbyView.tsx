@@ -580,7 +580,7 @@ export const EmbyView: React.FC = () => {
                             </div>
                             <h3 className="font-bold text-slate-700 dark:text-slate-200">封面图生成器</h3>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 hidden">
                             <button
                                 onClick={loadCoverData}
                                 disabled={isLoadingLibraries}
@@ -607,7 +607,7 @@ export const EmbyView: React.FC = () => {
                                             const lib = coverLibraries.find(l => l.id === libId);
                                             if (lib) {
                                                 setCoverTitle(lib.name);
-                                                // 副标题使用媒体库类型的大写形式
+
                                                 const typeMap: Record<string, string> = {
                                                     'movies': 'MOVIE COLLECTION',
                                                     'tvshows': 'TV SHOWS',
@@ -617,7 +617,9 @@ export const EmbyView: React.FC = () => {
                                                     'photos': 'PHOTO ALBUM',
                                                     'musicvideos': 'MUSIC VIDEOS'
                                                 };
-                                                setCoverSubtitle(typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION');
+                                                // 副标题使用媒体库类型的大写形式 (ENGLISH TYPE)
+                                                const typeEn = typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION';
+                                                setCoverSubtitle(typeEn);
                                             }
                                         }}
                                         className={inputClass}
@@ -745,15 +747,22 @@ export const EmbyView: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Right: Preview */}
-                            <div className="bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center min-h-[300px]">
+                            {/* Right: Preview (16:9 Rounded Box) */}
+                            <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex items-center justify-center min-h-[400px]">
                                 {coverPreview ? (
-                                    <img src={coverPreview} alt="Cover Preview" className="max-w-full max-h-[400px] object-contain" />
+                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-black/10 group">
+                                        <img
+                                            src={coverPreview}
+                                            alt="Cover Preview"
+                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                        />
+                                        {/* 模拟 Emby 选中态边框效果 (Hover) */}
+                                        <div className="absolute inset-0 border-4 border-transparent group-hover:border-white/20 transition-colors pointer-events-none rounded-xl" />
+                                    </div>
                                 ) : (
-                                    <div className="text-slate-500 text-sm text-center p-8">
-                                        <Image size={48} className="mx-auto mb-3 opacity-30" />
-                                        <p>封面预览</p>
-                                        <p className="text-xs mt-1 opacity-50">选择媒体库并点击生成</p>
+                                    <div className="text-center text-slate-400">
+                                        <Image size={48} className="mx-auto mb-2 opacity-50" />
+                                        <p className="text-sm">选择媒体库并点击生成预览</p>
                                     </div>
                                 )}
                             </div>
