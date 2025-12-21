@@ -59,7 +59,7 @@ class CoverGenerator:
         try:
             url = f"{self.emby_url}/emby/Library/VirtualFolders"
             params = {"api_key": self.api_key}
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=10, verify=False)
             resp.raise_for_status()
             
             libraries = []
@@ -93,7 +93,7 @@ class CoverGenerator:
                 "Recursive": True,
                 "IncludeItemTypes": "Movie,Series"
             }
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=10, verify=False)
             resp.raise_for_status()
             
             items = resp.json().get("Items", [])
@@ -109,7 +109,7 @@ class CoverGenerator:
                 img_params = {"api_key": self.api_key, "maxWidth": 400}
                 
                 try:
-                    img_resp = requests.get(img_url, params=img_params, timeout=10)
+                    img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
                     if img_resp.status_code == 200:
                         img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
                         posters.append(img)
@@ -519,7 +519,7 @@ class CoverGenerator:
             logger.info(f"正在上传封面到 {url}, 大小: {len(image_data)} bytes, 类型: {content_type}")
             
             # Emby API 接受 binary body
-            resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30)
+            resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30, verify=False)
             
             # Emby 可能返回 200, 201, 或 204 表示成功
             if resp.status_code in [200, 201, 204]:
