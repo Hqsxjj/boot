@@ -376,20 +376,17 @@ export const ResourceSearchView: React.FC = () => {
                         accessCode = resourceAccessCodes[resourceKey];
                     }
                 } else if (match123) {
-                    const fullCode = match123[1];
-                    shareCode = fullCode;
+                    // 123 云盘分享码格式: /s/IpPUVv-K2Dj?pwd=JZMM
+                    // 分享码是完整的路径部分（包含 -），提取码来自 URL 参数
+                    shareCode = match123[1];  // 完整的分享码，如 IpPUVv-K2Dj
                     cloudType = '123';
-                    if (fullCode.includes('-')) {
-                        const parts = fullCode.split('-');
-                        shareCode = parts[0];
-                        accessCode = parts.slice(1).join('-');
-                    }
-                    if (!accessCode) {
-                        try {
-                            const urlObj = new URL(link);
-                            accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
-                        } catch (e) { /* ignore */ }
-                    }
+
+                    // 从 URL 参数获取提取码
+                    try {
+                        const urlObj = new URL(link);
+                        accessCode = urlObj.searchParams.get('pwd') || urlObj.searchParams.get('password') || '';
+                    } catch (e) { /* ignore */ }
+
                     // 使用 resource.share_code 作为提取码来源（API 返回的密码）
                     if (!accessCode && resource.share_code) {
                         accessCode = resource.share_code;
