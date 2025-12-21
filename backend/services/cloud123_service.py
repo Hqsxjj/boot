@@ -388,16 +388,57 @@ class Cloud123Service:
     def get_share_files(self, share_code: str, access_code: str = None) -> Dict[str, Any]:
         """
         获取 123 云盘分享链接中的文件列表。
+        使用 p123client 的 share_iterdir 函数来解析分享链接（无需登录）。
         
         Args:
-            share_code: 分享码 (如 abc123-xyz)
-            access_code: 提取码
+            share_code: 分享码 (如 IpPUVv-K2Dj)
+            access_code: 提取码 (如 JZMM)
         
         Returns:
             Dict with success flag and file list
         """
         try:
-            # 获取分享信息
+            # 首先尝试使用 p123client.tool.share_iterdir
+            try:
+                from p123client.tool import share_iterdir
+                
+                # 构建分享链接 URL
+                # 支持格式: https://www.123684.com/s/IpPUVv-K2Dj?提取码:JZMM
+                share_url = f"https://www.123684.com/s/{share_code}"
+                if access_code:
+                    share_url += f"?提取码:{access_code}"
+                
+                logger.info(f"使用 share_iterdir 解析分享: {share_url}")
+                
+                # 使用 share_iterdir 遍历分享中的文件列表
+                formatted_files = []
+                for info in share_iterdir(share_url, max_depth=1):
+                    formatted_files.append({
+                        'id': str(info.get('FileId', info.get('file_id', ''))),
+                        'name': info.get('FileName', info.get('name', '')),
+                        'size': info.get('Size', info.get('size', 0)),
+                        'is_directory': info.get('is_dir', info.get('Type', 0) == 1),
+                        'ext': info.get('Etag', ''),
+                    })
+                
+                if not formatted_files:
+                    return {
+                        'success': False,
+                        'error': '分享中没有文件或链接已失效'
+                    }
+                
+                logger.info(f"share_iterdir 成功获取 {len(formatted_files)} 个文件")
+                return {
+                    'success': True,
+                    'data': formatted_files
+                }
+                
+            except ImportError:
+                logger.warning('p123client.tool.share_iterdir 不可用，回退到 API 方式')
+            except Exception as e:
+                logger.warning(f'share_iterdir 失败: {e}，回退到 API 方式')
+            
+            # 回退: 使用官方 API (需要登录)
             share_info_payload = {
                 'shareKey': share_code,
                 'sharePwd': access_code or ''
