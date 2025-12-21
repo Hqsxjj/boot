@@ -179,13 +179,32 @@ class CoverGenerator:
         
         # 绘制渐变背景
         self._draw_gradient_background(draw, width, height, theme["colors"][0], theme["colors"][-1])
+
+        # === 2. 玻璃材质层 (第二层级) ===
+        # 在背景之上，内容之下，加一层淡淡的玻璃质感
+        # 创建一个覆盖大部分区域的圆角矩形，模拟玻璃面板
+        glass_margin = 60
+        glass_layer = Image.new("RGBA", (width, height), (0,0,0,0))
+        glass_draw = ImageDraw.Draw(glass_layer)
+        
+        # 玻璃板区域
+        g_box = [glass_margin, glass_margin, width - glass_margin, height - glass_margin]
+        # 填充: 极淡的白色 (5% 不透明度)
+        glass_draw.rounded_rectangle(g_box, radius=40, fill=(255, 255, 255, 12))
+        # 描边: 稍亮的白色 (15% 不透明度)
+        glass_draw.rounded_rectangle(g_box, radius=40, outline=(255, 255, 255, 30), width=2)
+        
+        # 叠加玻璃层
+        img = Image.alpha_composite(img, glass_layer)
+        # 重新获取 draw 对象因为 img 已经被替换
+        draw = ImageDraw.Draw(img)
         
         # 绘制海报组
         p_base_w = int(width * (poster_scale_pct / 100))
         p_base_h = int(p_base_w * 1.5)
         
         import math
-        from PIL import ImageFilter
+        from PIL import ImageFilter, ImageOps
 
         for i, config in enumerate(STAGES):
             if i >= len(posters):
@@ -197,85 +216,70 @@ class CoverGenerator:
             sw, sh = int(p_base_w * config["scale"]), int(p_base_h * config["scale"])
             poster = poster.resize((sw, sh), Image.Resampling.LANCZOS)
             
+            # === 海报圆角处理 ===
+            # 创建圆角遮罩
+            corner_radius = int(min(sw, sh) * 0.05) # 5% 的圆角
+            mask = Image.new("L", (sw, sh), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.rounded_rectangle([0, 0, sw, sh], radius=corner_radius, fill=255)
+            
+            # 应用遮罩
+            poster.putalpha(mask)
+            
+            # === 海报玻璃边缘感 ===
+            # 在海报上叠加一个内发光/描边效果
+            border_layer = Image.new("RGBA", (sw, sh), (0,0,0,0))
+            border_draw = ImageDraw.Draw(border_layer)
+            # 外部描边 (白色半透明)
+            border_draw.rounded_rectangle([0, 0, sw-1, sh-1], radius=corner_radius, outline=(255, 255, 255, 100), width=2)
+            # 内部微妙高光 (模拟厚度)
+            # border_draw.rounded_rectangle([2, 2, sw-3, sh-3], radius=corner_radius, outline=(255, 255, 255, 40), width=1)
+            
+            poster = Image.alpha_composite(poster, border_layer)
+
             # 亮度调整
             if config["brightness"] < 1.0:
                 enhancer = ImageEnhance.Brightness(poster)
                 poster = enhancer.enhance(config["brightness"])
             
-            # 旋转处理 (PIL 旋转是逆时针，CSS 是顺时针，且 PIL 默认围绕中心旋转)
-            # React 代码中使用 transform-origin: center 80%
-            # 需要手动计算围绕中心下方 30% 处 (0.8 - 0.5) 旋转产生的位移
-            
-            # CSS angle (-28deg) -> Tilted Left (CCW). CSS positive is CW. 
-            # PIL positive is CCW. So CSS -28 == PIL +28.
-            # config["angle"] is -28. We need +28. So we use -angle.
+            # 旋转处理
             rot_angle = -config["angle"]
+            # 注意: 旋转带 Alpha 通道的图像，expand=True 会自动处理透明背景
             rotated = poster.rotate(rot_angle, expand=True, resample=Image.Resampling.BICUBIC)
             
-            # 计算 Pivot 偏移
-            # 原图中心 (cx, cy)
-            # Pivot 点 P = (cx, cy + 0.3 * sh)
-            # 旋转后，原图中心移动到了新的位置
-            # 使用向量旋转公式计算中心点的位移
+            # 计算 Pivot 偏移 (Center 80%)
             rad = math.radians(rot_angle)
-            pivot_offset = 0.3 * sh
-            
-            # 向量 PC (从 Pivot 指向 Center) = (0, -0.3 * sh)
-            # 旋转后的向量 PC' 
-            # x' = x*cos - y*sin = 0 - (-0.3*sh)*sin = 0.3*sh*sin
-            # y' = x*sin + y*cos = 0 + (-0.3*sh)*cos = -0.3*sh*cos
-            
-            # 原始 PC = (0, -0.3*sh)
-            # 位移 Delta = PC' - PC
-            # dx = 0.3*sh*sin
-            # dy = -0.3*sh*cos - (-0.3*sh) = 0.3*sh * (1 - cos)
+            pivot_offset = 0.3 * sh # 从中心向下偏移 30% 高度
             
             shift_x = pivot_offset * math.sin(rad)
             shift_y = pivot_offset * (1 - math.cos(rad))
             
-            # 基础位置 (Element Center)
             base_x = config["x"] + offset_x
             base_y = config["y"]
             
-            # 最终中心位置
             final_cx = base_x + shift_x
             final_cy = base_y + shift_y
             
-            # 绘制位置 (Top-Left)
             px = int(final_cx - rotated.width / 2)
             py = int(final_cy - rotated.height / 2)
             
             # 绘制阴影 (带高斯模糊)
-            if config.get("z", 0) > 0: # 只对可见层绘制阴影
-                # 创建阴影层，大小与旋转后的图一致
-                # React shadow: 0 10px 20px rgba(0,0,0,0.5)
-                # 这里模拟一个通用的模糊阴影
+            if config.get("z", 0) > 0:
                 shadow_radius = 20
                 shadow_offset_y = 20
-                
-                # 阴影画布稍大一点以免模糊被截断
                 shadow_w = rotated.width + shadow_radius * 2
                 shadow_h = rotated.height + shadow_radius * 2
                 shadow_img = Image.new("RGBA", (shadow_w, shadow_h), (0, 0, 0, 0))
                 
-                # 绘制黑色实体
-                # 为了获得正确的形状，我们应该使用旋转后的 alpha 通道
                 mask = rotated.split()[3]
-                
-                # 创建一个黑色实底
                 shadow_core = Image.new("RGBA", rotated.size, (0, 0, 0, 100))
                 shadow_core.putalpha(mask)
-                
-                # 粘贴到阴影画布中心
                 shadow_img.paste(shadow_core, (shadow_radius, shadow_radius), shadow_core)
-                
-                # 高斯模糊
                 shadow_blur = shadow_img.filter(ImageFilter.GaussianBlur(10))
-                
-                # 绘制阴影 (位置微调)
                 img.paste(shadow_blur, (px - shadow_radius, py - shadow_radius + shadow_offset_y), shadow_blur)
             
-            # 粘贴海报
+            # 粘贴海报 (使用 alpha_composite 或 paste mask)
+            # 这里的 rotated 已经是 RGBA，直接 paste 即可利用其 alpha 通道进行混合
             img.paste(rotated, (px, py), rotated)
         
         # 字体加载逻辑
