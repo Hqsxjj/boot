@@ -248,6 +248,53 @@ class P115Service:
             logger.error(f"refresh_open_access_token failed: {str(e)}")
             return None
     
+    def _get_qrcode_token_direct(self) -> Dict[str, Any]:
+        """
+        直接调用 115 官方 API 获取二维码 Token，绕过 p115client。
+        
+        API: https://qrcodeapi.115.com/api/1.0/web/1.0/token/
+        
+        Returns:
+            Dict with uid, time, sign, qrcode (扫码内容URL)
+        """
+        try:
+            url = "https://qrcodeapi.115.com/api/1.0/web/1.0/token/"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://115.com/'
+            }
+            
+            response = self._http_session.get(url, headers=headers, timeout=15)
+            result = response.json()
+            
+            logger.info(f"Direct 115 API response: state={result.get('state')}")
+            
+            if result.get('state') == 1:
+                data = result.get('data', {})
+                uid = data.get('uid', '')
+                if uid:
+                    return {
+                        'success': True,
+                        'uid': uid,
+                        'time': data.get('time', 0),
+                        'sign': data.get('sign', ''),
+                        'qrcode': data.get('qrcode', f'https://115.com/scan/dg-{uid}')
+                    }
+                else:
+                    logger.warning(f"115 API returned but no uid: {result}")
+                    return {'success': False, 'error': 'No UID in response'}
+            else:
+                error_msg = result.get('message', result.get('msg', 'Unknown error'))
+                logger.warning(f"115 API error: {error_msg}")
+                return {'success': False, 'error': error_msg}
+                
+        except requests.exceptions.Timeout:
+            logger.warning("Direct 115 API timeout")
+            return {'success': False, 'error': '115 API 请求超时'}
+        except Exception as e:
+            logger.error(f"Direct 115 API exception: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
     def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
         """
         下载二维码图片并转换为 base64 data URI。
@@ -430,55 +477,40 @@ class P115Service:
                     'login_app': 'open_app'
                 }
             else:
-                # 普通扫码模式：使用 login_qrcode_token
+                # 普通扫码模式：优先使用直接 API 调用，p115client 作为备选
                 logger.info(f"Starting QR login: login_app={login_app}, login_method={login_method}")
                 
-                qr_token_result = None
+                uid = None
+                qr_data = {}
                 last_error = None
                 
-                # 尝试多种调用方式以适配不同版本的 p115client
-                try:
-                    # 方式1: 不带任何参数（最兼容）
-                    qr_token_result = p115client.P115Client.login_qrcode_token()
-                    logger.info(f"QR token obtained without params: state={qr_token_result.get('state')}")
-                except Exception as e1:
-                    last_error = e1
-                    logger.warning(f"Method 1 (no params) failed: {e1}")
+                # 方法1: 直接调用 115 官方 API（更可靠）
+                direct_result = self._get_qrcode_token_direct()
+                if direct_result.get('success'):
+                    uid = direct_result.get('uid', '')
+                    qr_data = {
+                        'uid': uid,
+                        'time': direct_result.get('time', 0),
+                        'sign': direct_result.get('sign', ''),
+                        'qrcode': direct_result.get('qrcode', f'https://115.com/scan/dg-{uid}')
+                    }
+                    logger.info(f"Got QR token from direct API: uid={uid[:8]}...")
+                else:
+                    last_error = direct_result.get('error', 'Unknown error')
+                    logger.warning(f"Direct API failed: {last_error}, trying p115client...")
                     
+                    # 方法2: 使用 p115client 作为备选
                     try:
-                        # 方式2: 尝试只传 app 参数
-                        qr_token_result = p115client.P115Client.login_qrcode_token(login_app)
-                        logger.info(f"QR token obtained with app param: state={qr_token_result.get('state')}")
-                    except Exception as e2:
-                        last_error = e2
-                        logger.warning(f"Method 2 (app param) failed: {e2}")
-                        
-                        try:
-                            # 方式3: 尝试 app= 关键字参数
-                            qr_token_result = p115client.P115Client.login_qrcode_token(app=login_app)
-                            logger.info(f"QR token obtained with app=: state={qr_token_result.get('state')}")
-                        except Exception as e3:
-                            last_error = e3
-                            logger.error(f"All QR token methods failed. Last error: {e3}")
-                
-                if qr_token_result is None:
-                    return {
-                        'error': f'获取二维码失败: {str(last_error)}',
-                        'success': False
-                    }
-                
-                logger.info(f"QR token result keys: {list(qr_token_result.keys())}")
-                
-                if qr_token_result.get('state') != 1:
-                    error_msg = qr_token_result.get('message') or qr_token_result.get('error') or f'状态码: {qr_token_result.get("state")}'
-                    logger.error(f"Failed to get QR token: {error_msg}, full response: {qr_token_result}")
-                    return {
-                        'error': f"获取二维码失败: {error_msg}",
-                        'success': False
-                    }
-                
-                qr_data = qr_token_result.get('data', {})
-                uid = qr_data.get('uid', '')
+                        qr_token_result = p115client.P115Client.login_qrcode_token()
+                        if qr_token_result.get('state') == 1:
+                            qr_data = qr_token_result.get('data', {})
+                            uid = qr_data.get('uid', '')
+                            logger.info(f"Got QR token from p115client: uid={uid[:8] if uid else 'N/A'}...")
+                        else:
+                            last_error = qr_token_result.get('message', 'p115client returned non-1 state')
+                    except Exception as e:
+                        last_error = str(e)
+                        logger.error(f"p115client also failed: {e}")
                 
                 if not uid:
                     logger.error(f"No UID in QR token response: {qr_data}")
