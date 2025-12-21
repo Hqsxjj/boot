@@ -63,6 +63,8 @@ export const EmbyView: React.FC = () => {
                     // 如果获取到了配置，顺便测试一下连接
                     if (data.emby.serverUrl && data.emby.apiKey) {
                         checkConnection(data);
+                        // 自动加载媒体库
+                        loadCoverData();
                     }
                 } else {
                     setConfig(DEFAULT_CONFIG);
