@@ -352,15 +352,19 @@ class CoverGenerator:
             offset = frame_idx % num_posters
             rotated_posters = posters[offset:] + posters[:offset]
             
-            frame = self.generate_cover(
+            # 渲染全分辨率帧以保持布局一致性 (STAGES 坐标基于 1920x1080)
+            full_frame = self.generate_cover(
                 rotated_posters,
                 title,
                 subtitle,
                 theme_index,
-                gif_width,
-                gif_height,
+                width,
+                height,
                 **kwargs
             )
+            
+            # 缩放到 GIF 尺寸
+            frame = full_frame.resize((gif_width, gif_height), Image.Resampling.LANCZOS)
             
             # 转换为 RGB (GIF 不支持 RGBA)
             frame_rgb = frame.convert("P", palette=Image.ADAPTIVE, colors=256)
