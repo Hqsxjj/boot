@@ -116,6 +116,33 @@ def scan_missing_episodes():
         }), 500
 
 
+@emby_bp.route('/series-list', methods=['GET'])
+@require_auth
+def get_series_list():
+    """获取 Emby 中所有电视剧列表 (用于逐个扫描缺集)"""
+    try:
+        if not _emby_service:
+            return jsonify({'success': False, 'error': 'Emby 服务未初始化'}), 500
+        
+        result = _emby_service.get_series_list()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/scan-series/<series_id>', methods=['POST'])
+@require_auth
+def scan_single_series(series_id: str):
+    """扫描单个电视剧的缺集情况"""
+    try:
+        if not _emby_service:
+            return jsonify({'success': False, 'error': 'Emby 服务未初始化'}), 500
+        
+        result = _emby_service.scan_single_series(series_id)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 def _get_mock_missing_data():
     """返回演示用的模拟缺集数据"""
     return [

@@ -328,6 +328,18 @@ export const api = {
     return res.data;
   },
 
+  // 获取所有电视剧列表 (用于逐个扫描)
+  getSeriesList: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ id: string; name: string; poster?: string; tmdbId?: string }>>>('/emby/series-list');
+    return res.data;
+  },
+
+  // 扫描单个电视剧的缺集
+  scanSingleSeries: async (seriesId: string) => {
+    const res = await apiClient.post<ApiResponse<any[]>>(`/emby/scan-series/${encodeURIComponent(seriesId)}`);
+    return res.data;
+  },
+
   // --- STRM 接口 ---
 
   generateStrmJob: async (type: string, config: any) => {

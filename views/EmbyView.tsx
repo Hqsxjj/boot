@@ -36,6 +36,9 @@ export const EmbyView: React.FC = () => {
 
     const [missingData, setMissingData] = useState<any[]>([]);
 
+    // 缺集扫描进度状态
+    const [scanProgress, setScanProgress] = useState<{ current: number; total: number; currentShow: string } | null>(null);
+
     // Cover Generator State
     const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
     const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
@@ -197,32 +200,62 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // 扫描缺集
+    // 扫描缺集 (按电视剧逐个处理)
     const handleScan = async () => {
         setIsScanning(true);
-        try {
-            const result = await api.scanEmbyMissing();
-            console.log('Scan result:', result);
+        setMissingData([]);  // 清空之前的结果
 
-            if (result.success) {
-                setMissingData(result.data || []);
-                if (result.data && result.data.length === 0) {
-                    setToast('扫描完成，未发现缺集');
-                } else {
-                    setToast(`扫描完成，发现 ${result.data?.length || 0} 个缺集`);
-                }
-            } else {
-                // 处理后端返回的错误
-                const errorMsg = (result as any).error || '未知错误';
-                setToast(`扫描失败: ${errorMsg}`);
-                console.error('Scan failed:', errorMsg);
+        try {
+            // 1. 获取所有电视剧列表
+            const listResult = await api.getSeriesList();
+            if (!listResult.success || !listResult.data) {
+                setToast(`获取剧集列表失败: ${(listResult as any).error || '未知错误'}`);
+                setIsScanning(false);
+                return;
             }
+
+            const seriesList = listResult.data;
+            const total = seriesList.length;
+
+            if (total === 0) {
+                setToast('未找到任何电视剧');
+                setIsScanning(false);
+                return;
+            }
+
+            let foundMissingCount = 0;
+
+            // 2. 逐个扫描每部剧
+            for (let i = 0; i < seriesList.length; i++) {
+                const series = seriesList[i];
+
+                // 更新进度
+                setScanProgress({ current: i + 1, total, currentShow: series.name });
+
+                try {
+                    const scanResult = await api.scanSingleSeries(series.id);
+
+                    if (scanResult.success && scanResult.data && scanResult.data.length > 0) {
+                        // 有缺集，追加到结果列表
+                        setMissingData(prev => [...prev, ...scanResult.data]);
+                        foundMissingCount += scanResult.data.length;
+                    }
+                } catch (err) {
+                    console.error(`扫描 ${series.name} 失败:`, err);
+                }
+
+                // 短暂延迟避免请求过快
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            setToast(`扫描完成: 共检查 ${total} 部剧，发现 ${foundMissingCount} 个缺集`);
         } catch (e: any) {
             const errorMsg = e?.response?.data?.error || e?.message || '网络错误';
             setToast(`扫描失败: ${errorMsg}`);
             console.error('Scan error:', e);
         } finally {
             setIsScanning(false);
+            setScanProgress(null);
             setTimeout(() => setToast(null), 4000);
         }
     };
@@ -417,6 +450,28 @@ export const EmbyView: React.FC = () => {
                             />
                         </div>
                         <span className="text-xs font-mono">{queueProgress.current}/{queueProgress.total}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* 缺集扫描进度显示 */}
+            {scanProgress && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-purple-600/95 backdrop-blur-md text-white px-8 py-4 rounded-xl shadow-2xl z-50 border-[0.5px] border-purple-500/50 min-w-[300px]">
+                    <div className="flex items-center gap-3 mb-2">
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span className="font-bold">正在扫描缺集...</span>
+                    </div>
+                    <div className="text-sm opacity-90 mb-2">
+                        当前: <span className="font-medium">{scanProgress.currentShow}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-purple-800/50 rounded-full h-2 overflow-hidden">
+                            <div
+                                className="bg-white h-full transition-all duration-300 rounded-full"
+                                style={{ width: `${(scanProgress.current / scanProgress.total) * 100}%` }}
+                            />
+                        </div>
+                        <span className="text-xs font-mono">{scanProgress.current}/{scanProgress.total}</span>
                     </div>
                 </div>
             )}
