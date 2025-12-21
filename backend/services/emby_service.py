@@ -272,6 +272,10 @@ class EmbyService:
         if not server_url or not api_key:
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
         
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"开始获取电视剧列表: {server_url}")
+        
         try:
             series_response = self._make_request(
                 'GET',
@@ -309,8 +313,10 @@ class EmbyService:
                     'tmdbId': tmdb_id
                 })
             
+            logger.info(f"电视剧列表获取完成: 共 {len(result)} 部")
             return {'success': True, 'data': result}
         except Exception as e:
+            logger.error(f"获取电视剧列表失败: {e}")
             return {'success': False, 'data': [], 'error': str(e)}
     
     def scan_single_series(self, series_id: str) -> Dict[str, Any]:
@@ -331,6 +337,9 @@ class EmbyService:
         
         if not server_url or not api_key:
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
+        
+        import logging
+        logger = logging.getLogger(__name__)
         
         # 获取 TMDB 配置
         full_config = self.store.get_config()
@@ -428,8 +437,11 @@ class EmbyService:
                         'poster': poster_path
                     })
             
+            if missing_data:
+                logger.info(f"扫描完成 [{series_name}]: 发现 {len(missing_data)} 个缺集季")
             return {'success': True, 'data': missing_data}
         except Exception as e:
+            logger.error(f"扫描失败 [{series_id}]: {e}")
             return {'success': False, 'data': [], 'error': str(e)}
     
     def scan_missing_episodes(self) -> Dict[str, Any]:
