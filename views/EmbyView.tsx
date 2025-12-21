@@ -48,10 +48,10 @@ export const EmbyView: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
-    const [titleSize, setTitleSize] = useState(100);      // 主标题文字大小 5.2vw (1920*0.052 ~= 100)
+    const [titleSize, setTitleSize] = useState(98);      // 主标题文字大小 5.1vw (1920*0.051 ~= 98)
     const [offsetX, setOffsetX] = useState(200);           // 海报水平位移 (原272超出范围，调整为200)
-    const [posterScale, setPosterScale] = useState(30);   // 整体缩放比例 30%
-    const [vAlign, setVAlign] = useState(52);             // 标题纵向对齐 52%
+    const [posterScale, setPosterScale] = useState(32);   // 整体缩放比例 32%
+    const [vAlign, setVAlign] = useState(55);             // 标题纵向对齐 55%
 
     // 加载配置
     useEffect(() => {
