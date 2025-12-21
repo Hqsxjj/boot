@@ -604,6 +604,130 @@ def get_cover_libraries():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+
+@emby_bp.route('/apply_covers', methods=['POST'])
+@require_auth
+def apply_covers_to_emby():
+    """批量生成并覆盖封面"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+        
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        if not emby_url or not api_key:
+            return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
+        
+        data = request.get_json()
+        library_ids = data.get('library_ids', [])
+        cover_config = data.get('config', {})
+        
+        if not library_ids:
+            return jsonify({'success': False, 'error': '未选择任何媒体库'}), 400
+            
+        generator = get_cover_generator()
+        generator.set_emby_config(emby_url, api_key)
+        
+        # 获取所有库的信息以便查名称
+        libraries = generator.get_libraries()
+        lib_map = {l['id']: l for l in libraries}
+        
+        success_count = 0
+        results = []
+        
+        for lib_id in library_ids:
+            try:
+                target_lib = lib_map.get(lib_id)
+                if not target_lib:
+                    results.append({'id': lib_id, 'success': False, 'msg': '库不存在'})
+                    continue
+                
+                # 1. 获取海报
+                posters = generator.get_library_posters(lib_id, limit=6)
+                if not posters:
+                    results.append({'id': lib_id, 'success': False, 'msg': '无海报'})
+                    continue
+                
+                # 2. 准备参数
+                title = target_lib['name']
+                
+                # 自动副标题
+                type_map = {
+                    'movies': 'MOVIE COLLECTION',
+                    'tvshows': 'TV SHOWS',
+                    'music': 'MUSIC COLLECTION',
+                    'homevideos': 'HOME VIDEOS',
+                    'books': 'BOOK COLLECTION',
+                    'photos': 'PHOTO ALBUM',
+                    'musicvideos': 'MUSIC VIDEOS'
+                }
+                subtitle = type_map.get(target_lib.get('type', '').lower(), 'MEDIA COLLECTION')
+                
+                width = 1920
+                height = 1080
+                cover_format = cover_config.get('format', 'png')
+                
+                # 生成参数
+                gen_kwargs = {
+                    'title': title,
+                    'subtitle': subtitle,
+                    'theme_index': cover_config.get('theme', 0),
+                    'width': width,
+                    'height': height,
+                    'title_size': cover_config.get('titleSize', 172),
+                    'offset_x': cover_config.get('offsetX', 50),
+                    'poster_scale_pct': cover_config.get('posterScale', 32),
+                    'v_align_pct': cover_config.get('vAlign', 60)
+                }
+                
+                image_data = None
+                content_type = 'image/png'
+                
+                if cover_format == 'gif':
+                    image_data = generator.generate_animated_cover(
+                        posters, 
+                        frame_count=len(posters) * 4,
+                        duration_ms=150,
+                        **gen_kwargs
+                    )
+                    content_type = 'image/gif'
+                else:
+                    img = generator.generate_cover(posters, **gen_kwargs)
+                    import io
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    image_data = buf.getvalue()
+                    content_type = 'image/png'
+                
+                # 3. 上传
+                if generator.upload_cover(lib_id, image_data, content_type):
+                    success_count += 1
+                    results.append({'id': lib_id, 'success': True})
+                else:
+                    results.append({'id': lib_id, 'success': False, 'msg': '上传失败'})
+                    
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"处理库 {lib_id} 失败: {e}")
+                results.append({'id': lib_id, 'success': False, 'msg': str(e)})
+        
+        return jsonify({
+            'success': True,
+            'processed': len(library_ids),
+            'success_count': success_count,
+            'details': results
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        import logging
+        logging.getLogger(__name__).error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @emby_bp.route('/cover/posters/<library_id>', methods=['GET'])
 @require_auth
 def get_library_posters(library_id: str):

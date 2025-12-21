@@ -53,6 +53,9 @@ export const EmbyView: React.FC = () => {
     const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
 
+    // 批量选择 (用 Set 存储选中的 ID)
+    const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
+
     // 加载配置
     useEffect(() => {
         const initConfig = async () => {
@@ -95,6 +98,52 @@ export const EmbyView: React.FC = () => {
             });
         } catch (e) {
             setConnectionStatus({ success: false, latency: 0, msg: "网络错误" });
+        }
+    };
+
+    // 批量生成并替换封面
+    const handleBatchApply = async () => {
+        if (batchSelection.size === 0) {
+            setToast('请至少选择一个媒体库');
+            return;
+        }
+
+        if (!confirm(`确定要为选中的 ${batchSelection.size} 个媒体库生成并覆盖现有封面吗？此操作不可逆。`)) {
+            return;
+        }
+
+        setIsGenerating(true);
+        try {
+            const libraryIds = Array.from(batchSelection);
+
+            // 构建配置参数
+            const coverConfig = {
+                title: coverTitle,
+                subtitle: coverSubtitle,
+                titleSize,
+                offsetX,
+                posterScale,
+                vAlign,
+                format: coverFormat,
+                theme: selectedTheme
+            };
+
+            const result = await api.batchApplyCovers(libraryIds, coverConfig);
+
+            if (result.success) {
+                setToast(`批量处理完成: 成功 ${result.success_count} / ${result.processed}`);
+                if (result.details && result.details.some((d: any) => !d.success)) {
+                    // console.error("部分失败:", result.details);
+                }
+            } else {
+                setToast(`批量处理失败: ${result.error || '未知错误'}`);
+            }
+        } catch (e: any) {
+            const errorMsg = e.response?.data?.error || e.message || '网络错误';
+            setToast(`操作失败: ${errorMsg}`);
+        } finally {
+            setIsGenerating(false);
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -259,16 +308,21 @@ export const EmbyView: React.FC = () => {
         }
         setIsGenerating(true);
         try {
-            const result = await api.generateCover({
-                libraryId: selectedLibrary,
+            // 构建配置参数
+            const coverConfig = {
                 title: coverTitle,
                 subtitle: coverSubtitle,
-                themeIndex: selectedTheme,
+                titleSize,
+                offsetX,
+                posterScale,
+                vAlign,
                 format: coverFormat,
-                titleSize: titleSize,
-                offsetX: offsetX,
-                posterScale: posterScale,
-                vAlign: vAlign
+                theme: selectedTheme
+            };
+
+            const result = await api.generateCover({
+                libraryId: selectedLibrary,
+                config: coverConfig
             });
             if (result.success) {
                 setCoverPreview(result.data.image);
@@ -599,38 +653,77 @@ export const EmbyView: React.FC = () => {
                             {/* Left: Controls */}
                             <div className="space-y-5">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">选择媒体库</label>
-                                    <select
-                                        value={selectedLibrary}
-                                        onChange={(e) => {
-                                            const libId = e.target.value;
-                                            setSelectedLibrary(libId);
-                                            // 自动填充标题为媒体库名称
-                                            const lib = coverLibraries.find(l => l.id === libId);
-                                            if (lib) {
-                                                setCoverTitle(lib.name);
-
-                                                const typeMap: Record<string, string> = {
-                                                    'movies': 'MOVIE COLLECTION',
-                                                    'tvshows': 'TV SHOWS',
-                                                    'music': 'MUSIC COLLECTION',
-                                                    'homevideos': 'HOME VIDEOS',
-                                                    'books': 'BOOK COLLECTION',
-                                                    'photos': 'PHOTO ALBUM',
-                                                    'musicvideos': 'MUSIC VIDEOS'
-                                                };
-                                                // 副标题使用媒体库类型的大写形式 (ENGLISH TYPE)
-                                                const typeEn = typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION';
-                                                setCoverSubtitle(typeEn);
-                                            }
-                                        }}
-                                        className={inputClass}
-                                    >
-                                        {coverLibraries.length === 0 && <option value="">请先点击"加载媒体库"</option>}
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
+                                        <span>选择媒体库 (已选 {batchSelection.size})</span>
+                                        <button
+                                            onClick={() => {
+                                                if (batchSelection.size === coverLibraries.length) {
+                                                    setBatchSelection(new Set());
+                                                } else {
+                                                    setBatchSelection(new Set(coverLibraries.map(l => l.id)));
+                                                }
+                                            }}
+                                            className="text-amber-500 hover:text-amber-600 text-xs"
+                                        >
+                                            {batchSelection.size === coverLibraries.length ? '全不选' : '全选'}
+                                        </button>
+                                    </label>
+                                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden max-h-[180px] overflow-y-auto">
+                                        {coverLibraries.length === 0 && (
+                                            <div className="p-4 text-center text-slate-400 text-sm">请先点击"加载媒体库"</div>
+                                        )}
                                         {coverLibraries.map(lib => (
-                                            <option key={lib.id} value={lib.id}>{lib.name} ({lib.type || '未知'})</option>
+                                            <label
+                                                key={lib.id}
+                                                className={`flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border-b last:border-0 border-slate-100 dark:border-slate-800 transition-colors ${selectedLibrary === lib.id ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}
+                                                onClick={() => {
+                                                    // 防止触发两次
+                                                    // 点击行也能切换预览选中态，但 checkbox 是独立的
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={batchSelection.has(lib.id)}
+                                                    onChange={(e) => {
+                                                        const newSet = new Set(batchSelection);
+                                                        if (e.target.checked) {
+                                                            newSet.add(lib.id);
+                                                        } else {
+                                                            newSet.delete(lib.id);
+                                                        }
+                                                        setBatchSelection(newSet);
+                                                    }}
+                                                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 dark:border-slate-600"
+                                                />
+                                                <div
+                                                    className="flex-1"
+                                                    onClick={(e) => {
+                                                        e.preventDefault(); // 防止 checkbox 联动
+
+                                                        // 点击文字切换为当前预览对象
+                                                        setSelectedLibrary(lib.id);
+                                                        // 自动填充标题逻辑
+                                                        setCoverTitle(lib.name);
+                                                        const typeMap: Record<string, string> = {
+                                                            'movies': 'MOVIE COLLECTION',
+                                                            'tvshows': 'TV SHOWS',
+                                                            'music': 'MUSIC COLLECTION',
+                                                            'homevideos': 'HOME VIDEOS',
+                                                            'books': 'BOOK COLLECTION',
+                                                            'photos': 'PHOTO ALBUM',
+                                                            'musicvideos': 'MUSIC VIDEOS'
+                                                        };
+                                                        const typeEn = typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION';
+                                                        setCoverSubtitle(typeEn);
+                                                    }}
+                                                >
+                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{lib.name}</div>
+                                                    <div className="text-xs text-slate-400">{lib.type || '未知类型'}</div>
+                                                </div>
+                                                {selectedLibrary === lib.id && <div className="w-2 h-2 rounded-full bg-amber-500"></div>}
+                                            </label>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
 
                                 {/* 标题由媒体库自动填充，隐藏手动输入 */}
@@ -735,15 +828,25 @@ export const EmbyView: React.FC = () => {
                                         className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20"
                                     >
                                         {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Image size={16} />}
-                                        {isGenerating ? '生成中...' : '生成封面'}
+                                        {isGenerating ? '生成中...' : '生成当前预览'}
                                     </button>
+
+                                    <button
+                                        onClick={handleBatchApply}
+                                        disabled={isGenerating || batchSelection.size === 0}
+                                        className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-500/20"
+                                        title="为所有勾选的库生成并覆盖现有封面"
+                                    >
+                                        {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
+                                        批量覆盖 ({batchSelection.size})
+                                    </button>
+
                                     {coverPreview && (
                                         <button
                                             onClick={downloadCover}
                                             className="px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                                         >
                                             <Download size={16} />
-                                            下载
                                         </button>
                                     )}
                                 </div>

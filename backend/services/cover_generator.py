@@ -312,20 +312,21 @@ class CoverGenerator:
             px = int(final_cx - rotated.width / 2)
             py = int(final_cy - rotated.height / 2)
             
+            # 兼容性处理: 如果 rotated 尺寸超过画布，进行裁剪或调整
+            # 简单方式: 直接 paste (PIL 会自动处理边界)
+            
             # 绘制阴影 (带高斯模糊)
             if config.get("z", 0) > 0:
-                shadow_radius = 20
-                shadow_offset_y = 20
-                shadow_w = rotated.width + shadow_radius * 2
-                shadow_h = rotated.height + shadow_radius * 2
-                shadow_img = Image.new("RGBA", (shadow_w, shadow_h), (0, 0, 0, 0))
+                shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 0))
+                # 创建阴影 mask，使用 alpha 通道
+                shadow.paste((0,0,0,150), (0,0), rotated)
+                # 模糊
+                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=15))
                 
-                mask = rotated.split()[3]
-                shadow_core = Image.new("RGBA", rotated.size, (0, 0, 0, 100))
-                shadow_core.putalpha(mask)
-                shadow_img.paste(shadow_core, (shadow_radius, shadow_radius), shadow_core)
-                shadow_blur = shadow_img.filter(ImageFilter.GaussianBlur(10))
-                img.paste(shadow_blur, (px - shadow_radius, py - shadow_radius + shadow_offset_y), shadow_blur)
+                # 阴影偏移
+                sx = px + 10
+                sy = py + 20
+                img.paste(shadow, (sx, sy), shadow)
             
             # 粘贴海报 (使用 alpha_composite 或 paste mask)
             # 这里的 rotated 已经是 RGBA，直接 paste 即可利用其 alpha 通道进行混合
@@ -485,6 +486,40 @@ class CoverGenerator:
         )
         
         return buffer.getvalue()
+    
+    def upload_cover(self, library_id: str, image_data: bytes, content_type: str = "image/png") -> bool:
+        """
+        上传封面到 Emby 服务器
+        
+        Args:
+            library_id: 媒体库 ID
+            image_data: 图片二进制数据
+            content_type: 图片类型 (image/png 或 image/gif)
+            
+        Returns:
+            是否成功
+        """
+        if not self.emby_url or not self.api_key:
+            return False
+            
+        try:
+            url = f"{self.emby_url}/emby/Items/{library_id}/Images/Primary"
+            params = {"api_key": self.api_key}
+            headers = {"Content-Type": content_type}
+            
+            # Emby API 接受 binary body
+            resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30)
+            
+            if resp.status_code == 204: # Emby return 204 No Content on success
+                logger.info(f"封面上传成功: {library_id}")
+                return True
+            else:
+                logger.error(f"封面上传失败: {resp.status_code} - {resp.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"封面上传异常: {e}")
+            return False
     
     def cover_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
         """将图片转换为 base64 字符串"""
