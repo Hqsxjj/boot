@@ -508,6 +508,7 @@ class CoverGenerator:
             是否成功
         """
         if not self.emby_url or not self.api_key:
+            logger.error("封面上传失败: Emby URL 或 API Key 未配置")
             return False
             
         try:
@@ -515,18 +516,27 @@ class CoverGenerator:
             params = {"api_key": self.api_key}
             headers = {"Content-Type": content_type}
             
+            logger.info(f"正在上传封面到 {url}, 大小: {len(image_data)} bytes, 类型: {content_type}")
+            
             # Emby API 接受 binary body
             resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30)
             
-            if resp.status_code == 204: # Emby return 204 No Content on success
-                logger.info(f"封面上传成功: {library_id}")
+            # Emby 可能返回 200, 201, 或 204 表示成功
+            if resp.status_code in [200, 201, 204]:
+                logger.info(f"封面上传成功: {library_id} (状态码: {resp.status_code})")
                 return True
             else:
-                logger.error(f"封面上传失败: {resp.status_code} - {resp.text}")
+                logger.error(f"封面上传失败: {library_id} HTTP {resp.status_code} - {resp.text[:200] if resp.text else '无响应内容'}")
                 return False
                 
+        except requests.Timeout:
+            logger.error(f"封面上传超时: {library_id}")
+            return False
+        except requests.ConnectionError as e:
+            logger.error(f"封面上传连接失败: {library_id} - {e}")
+            return False
         except Exception as e:
-            logger.error(f"封面上传异常: {e}")
+            logger.error(f"封面上传异常: {library_id} - {e}")
             return False
     
     def cover_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
