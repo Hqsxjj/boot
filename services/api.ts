@@ -482,4 +482,108 @@ export const api = {
     const res = await apiClient.get<ApiResponse<any>>('/sources/results', { params: { keyword } });
     return res.data;
   },
+
+  // --- 115 OAuth PKCE ---
+
+  init115OAuth: async (appId: string, redirectUri?: string) => {
+    const res = await apiClient.post<ApiResponse<{ authUrl: string; codeVerifier: string; codeChallenge: string }>>('/115/oauth/init', {
+      appId,
+      redirectUri
+    });
+    return res.data;
+  },
+
+  complete115OAuth: async (appId: string, appSecret: string, code: string, codeVerifier: string, redirectUri?: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/oauth/complete', {
+      appId,
+      appSecret,
+      code,
+      codeVerifier,
+      redirectUri
+    });
+    return res.data;
+  },
+
+  refresh115Token: async (refreshToken?: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/oauth/refresh', { refreshToken });
+    return res.data;
+  },
+
+  // --- 115 Offline Download ---
+
+  get115OfflineQuota: async () => {
+    const res = await apiClient.get<ApiResponse<any>>('/115/offline/quota');
+    return res.data;
+  },
+
+  get115OfflineTasks: async (page: number = 1) => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/115/offline/tasks', { params: { page } });
+    return res.data;
+  },
+
+  add115OfflineUrl: async (urls: string[], saveCid: string = '0') => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/offline/add', { urls, saveCid });
+    return res.data;
+  },
+
+  delete115OfflineTasks: async (taskIds: string[]) => {
+    const res = await apiClient.delete<ApiResponse<any>>('/115/offline/tasks', { data: { taskIds } });
+    return res.data;
+  },
+
+  clear115OfflineTasks: async (flag: number = 0) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/offline/clear', { flag });
+    return res.data;
+  },
+
+  // --- 115 Video Playback ---
+
+  get115VideoPlayUrl: async (fileId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/115/video/${fileId}/play`);
+    return res.data;
+  },
+
+  get115VideoSubtitles: async (fileId: string) => {
+    const res = await apiClient.get<ApiResponse<any[]>>(`/115/video/${fileId}/subtitles`);
+    return res.data;
+  },
+
+  // --- 115 File Management ---
+
+  search115Files: async (keyword: string, cid: string = '0', limit: number = 50) => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/115/files/search', { params: { keyword, cid, limit } });
+    return res.data;
+  },
+
+  copy115Files: async (fileIds: string[], targetCid: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/files/copy', { fileIds, targetCid });
+    return res.data;
+  },
+
+  get115DownloadLink: async (fileId: string) => {
+    const res = await apiClient.get<ApiResponse<{ url: string }>>(`/115/files/download/${fileId}`);
+    return res.data;
+  },
+
+  create115Folder: async (name: string, parentCid: string = '0') => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/folder', { name, parentCid });
+    return res.data;
+  },
+
+  // --- 115 Recycle Bin ---
+
+  get115RecycleList: async (page: number = 1, limit: number = 50) => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/115/recycle', { params: { page, limit } });
+    return res.data;
+  },
+
+  restore115Recycle: async (fileIds: string[]) => {
+    const res = await apiClient.post<ApiResponse<any>>('/115/recycle/restore', { fileIds });
+    return res.data;
+  },
+
+  clear115Recycle: async () => {
+    const res = await apiClient.delete<ApiResponse<any>>('/115/recycle');
+    return res.data;
+  },
 };

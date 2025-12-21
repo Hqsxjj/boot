@@ -778,3 +778,481 @@ class Cloud115Service:
             logger.warning(f'获取会话元数据失败: {str(e)}')
         
         return {}
+    
+    # ==================== OAuth PKCE Methods ====================
+    
+    def generate_pkce(self) -> Dict[str, str]:
+        """
+        Generate PKCE code_verifier and code_challenge for OAuth.
+        
+        Returns:
+            Dict with code_verifier and code_challenge
+        """
+        import secrets
+        import hashlib
+        import base64
+        
+        # Generate code_verifier (43-128 characters)
+        code_verifier = secrets.token_urlsafe(64)[:128]
+        
+        # Generate code_challenge (SHA256 hash, base64url encoded)
+        code_challenge_digest = hashlib.sha256(code_verifier.encode('ascii')).digest()
+        code_challenge = base64.urlsafe_b64encode(code_challenge_digest).decode('ascii').rstrip('=')
+        
+        return {
+            'code_verifier': code_verifier,
+            'code_challenge': code_challenge
+        }
+    
+    def get_oauth_url(self, app_id: str, code_challenge: str, redirect_uri: str = 'http://localhost:8080/callback') -> str:
+        """
+        Construct OAuth authorization URL for 115 Open Platform.
+        
+        Args:
+            app_id: Third-party App ID
+            code_challenge: PKCE code_challenge
+            redirect_uri: Redirect URI after authorization
+        
+        Returns:
+            Authorization URL string
+        """
+        import urllib.parse
+        
+        # 115 OAuth endpoints
+        base_url = 'https://open.115.com/oauth2/authorize'
+        
+        params = {
+            'response_type': 'code',
+            'client_id': app_id,
+            'redirect_uri': redirect_uri,
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256',
+            'scope': 'user:read+file:read+file:write+offline:read+offline:write'
+        }
+        
+        return f"{base_url}?{urllib.parse.urlencode(params)}"
+    
+    def exchange_code_for_token(self, app_id: str, app_secret: str, code: str, 
+                                 code_verifier: str, redirect_uri: str = 'http://localhost:8080/callback') -> Dict[str, Any]:
+        """
+        Exchange authorization code for access_token and refresh_token.
+        
+        Args:
+            app_id: Third-party App ID
+            app_secret: Third-party App Secret
+            code: Authorization code from callback
+            code_verifier: PKCE code_verifier
+            redirect_uri: Must match the one used in authorization
+        
+        Returns:
+            Dict with success flag and token data
+        """
+        import requests
+        
+        try:
+            token_url = 'https://passportapi.115.com/open/authApi/accessToken'
+            
+            payload = {
+                'grant_type': 'authorization_code',
+                'client_id': app_id,
+                'client_secret': app_secret,
+                'code': code,
+                'code_verifier': code_verifier,
+                'redirect_uri': redirect_uri
+            }
+            
+            response = requests.post(token_url, data=payload, timeout=30)
+            result = response.json()
+            
+            if result.get('state') == False or result.get('errno'):
+                return {
+                    'success': False,
+                    'error': result.get('error') or result.get('message') or '获取 token 失败'
+                }
+            
+            # Extract token data
+            data = result.get('data', result)
+            token_data = {
+                'access_token': data.get('access_token'),
+                'refresh_token': data.get('refresh_token'),
+                'expires_in': data.get('expires_in', 7200),
+                'token_type': data.get('token_type', 'Bearer')
+            }
+            
+            # Save tokens to secret store
+            self.secret_store.set_secret('cloud115_openapp_cookies', json.dumps(token_data))
+            self.secret_store.set_secret('cloud115_session_metadata', json.dumps({
+                'login_method': 'oauth_pkce',
+                'app_id': app_id,
+                'timestamp': datetime.now().isoformat()
+            }))
+            
+            logger.info(f'115 OAuth token 已保存，access_token: {token_data["access_token"][:20]}...')
+            
+            return {
+                'success': True,
+                'data': token_data
+            }
+            
+        except Exception as e:
+            logger.error(f'交换 token 失败: {str(e)}')
+            return {
+                'success': False,
+                'error': f'交换 token 失败: {str(e)}'
+            }
+    
+    def refresh_access_token(self, refresh_token: str = None) -> Dict[str, Any]:
+        """
+        Refresh access_token using refresh_token.
+        
+        Args:
+            refresh_token: Optional, if not provided will use stored token
+        
+        Returns:
+            Dict with success flag and new token data
+        """
+        import requests
+        
+        try:
+            # Get stored token if not provided
+            if not refresh_token:
+                stored_json = self.secret_store.get_secret('cloud115_openapp_cookies')
+                if stored_json:
+                    stored_data = json.loads(stored_json)
+                    refresh_token = stored_data.get('refresh_token')
+            
+            if not refresh_token:
+                return {
+                    'success': False,
+                    'error': '没有可用的 refresh_token'
+                }
+            
+            refresh_url = 'https://passportapi.115.com/open/authApi/accessToken'
+            
+            payload = {
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token
+            }
+            
+            response = requests.post(refresh_url, data=payload, timeout=30)
+            result = response.json()
+            
+            if result.get('state') == False or result.get('errno'):
+                return {
+                    'success': False,
+                    'error': result.get('error') or result.get('message') or '刷新 token 失败'
+                }
+            
+            # Extract token data
+            data = result.get('data', result)
+            token_data = {
+                'access_token': data.get('access_token'),
+                'refresh_token': data.get('refresh_token') or refresh_token,
+                'expires_in': data.get('expires_in', 7200),
+                'token_type': data.get('token_type', 'Bearer')
+            }
+            
+            # Update stored tokens
+            self.secret_store.set_secret('cloud115_openapp_cookies', json.dumps(token_data))
+            
+            logger.info('115 access_token 已刷新')
+            
+            return {
+                'success': True,
+                'data': token_data
+            }
+            
+        except Exception as e:
+            logger.error(f'刷新 token 失败: {str(e)}')
+            return {
+                'success': False,
+                'error': f'刷新 token 失败: {str(e)}'
+            }
+    
+    # ==================== Offline Download API ====================
+    
+    def get_offline_quota(self) -> Dict[str, Any]:
+        """获取离线下载配额信息"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'offline_quota'):
+                result = client.offline_quota()
+            elif hasattr(client, 'offline') and hasattr(client.offline, 'quota'):
+                result = client.offline.quota()
+            else:
+                return {'success': False, 'error': '不支持获取离线配额'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'quota': result}
+            }
+        except Exception as e:
+            logger.error(f'获取离线配额失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def list_offline_tasks(self, page: int = 1) -> Dict[str, Any]:
+        """获取离线下载任务列表"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'offline_list'):
+                result = client.offline_list({'page': page})
+            elif hasattr(client, 'offline') and hasattr(client.offline, 'list'):
+                result = client.offline.list(page=page)
+            else:
+                return {'success': False, 'error': '不支持获取离线任务列表'}
+            
+            # Format task list
+            tasks = []
+            task_list = result.get('tasks', result.get('data', [])) if isinstance(result, dict) else result
+            for task in task_list:
+                if isinstance(task, dict):
+                    tasks.append({
+                        'id': task.get('info_hash') or task.get('task_id'),
+                        'name': task.get('name') or task.get('file_name'),
+                        'size': task.get('size', 0),
+                        'status': task.get('status'),
+                        'progress': task.get('percentDone', 0),
+                        'add_time': task.get('add_time')
+                    })
+            
+            return {
+                'success': True,
+                'data': tasks
+            }
+        except Exception as e:
+            logger.error(f'获取离线任务列表失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def add_offline_url(self, urls: List[str], save_cid: str = '0') -> Dict[str, Any]:
+        """添加离线下载链接任务（支持 HTTP/磁力链接）"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'offline_add_url'):
+                result = client.offline_add_url({'url': urls, 'wp_path_id': save_cid})
+            elif hasattr(client, 'offline') and hasattr(client.offline, 'add_url'):
+                result = client.offline.add_url(urls, save_cid)
+            else:
+                return {'success': False, 'error': '不支持添加离线任务'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'result': result}
+            }
+        except Exception as e:
+            logger.error(f'添加离线任务失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def delete_offline_task(self, task_ids: List[str]) -> Dict[str, Any]:
+        """删除离线下载任务"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'offline_del'):
+                result = client.offline_del({'hash': task_ids})
+            elif hasattr(client, 'offline') and hasattr(client.offline, 'delete'):
+                result = client.offline.delete(task_ids)
+            else:
+                return {'success': False, 'error': '不支持删除离线任务'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'deleted': task_ids}
+            }
+        except Exception as e:
+            logger.error(f'删除离线任务失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def clear_offline_tasks(self, flag: int = 0) -> Dict[str, Any]:
+        """
+        清空离线下载任务
+        
+        Args:
+            flag: 0=清空已完成, 1=清空全部
+        """
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'offline_clear'):
+                result = client.offline_clear({'flag': flag})
+            elif hasattr(client, 'offline') and hasattr(client.offline, 'clear'):
+                result = client.offline.clear(flag=flag)
+            else:
+                return {'success': False, 'error': '不支持清空离线任务'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'cleared': True}
+            }
+        except Exception as e:
+            logger.error(f'清空离线任务失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    # ==================== Video Playback API ====================
+    
+    def get_video_play_url(self, file_id: str) -> Dict[str, Any]:
+        """获取视频在线播放地址"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'fs_video_play'):
+                result = client.fs_video_play({'pickcode': file_id})
+            elif hasattr(client, 'video_play'):
+                result = client.video_play(file_id)
+            else:
+                return {'success': False, 'error': '不支持获取视频播放地址'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'url': result}
+            }
+        except Exception as e:
+            logger.error(f'获取视频播放地址失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def get_video_subtitles(self, file_id: str) -> Dict[str, Any]:
+        """获取视频字幕列表"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'fs_video_subtitle'):
+                result = client.fs_video_subtitle({'pickcode': file_id})
+            elif hasattr(client, 'video_subtitle'):
+                result = client.video_subtitle(file_id)
+            else:
+                return {'success': False, 'error': '不支持获取视频字幕'}
+            
+            subtitles = result.get('list', []) if isinstance(result, dict) else result
+            return {
+                'success': True,
+                'data': subtitles
+            }
+        except Exception as e:
+            logger.error(f'获取视频字幕失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    # ==================== File Search API ====================
+    
+    def search_files(self, keyword: str, cid: str = '0', limit: int = 50) -> Dict[str, Any]:
+        """搜索文件"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'fs_search'):
+                result = client.fs_search({'search_value': keyword, 'cid': int(cid), 'limit': limit})
+            elif hasattr(client, 'search'):
+                result = client.search(keyword, cid=cid, limit=limit)
+            else:
+                return {'success': False, 'error': '不支持文件搜索'}
+            
+            # Format results
+            files = []
+            file_list = result.get('data', []) if isinstance(result, dict) else result
+            for f in file_list:
+                if isinstance(f, dict):
+                    files.append({
+                        'id': str(f.get('fid') or f.get('cid') or f.get('file_id')),
+                        'name': f.get('n') or f.get('name'),
+                        'size': f.get('s') or f.get('size', 0),
+                        'is_directory': f.get('ico') == 'folder'
+                    })
+            
+            return {
+                'success': True,
+                'data': files
+            }
+        except Exception as e:
+            logger.error(f'搜索文件失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def copy_files(self, file_ids: List[str], target_cid: str) -> Dict[str, Any]:
+        """复制文件到指定目录"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'fs_copy'):
+                result = client.fs_copy({'fid': file_ids, 'pid': int(target_cid)})
+            elif hasattr(client, 'copy'):
+                result = client.copy(file_ids, target_cid)
+            else:
+                return {'success': False, 'error': '不支持复制文件'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'copied': file_ids}
+            }
+        except Exception as e:
+            logger.error(f'复制文件失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def get_recycle_list(self, page: int = 1, limit: int = 50) -> Dict[str, Any]:
+        """获取回收站列表"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'recyclebin_list'):
+                result = client.recyclebin_list({'offset': (page - 1) * limit, 'limit': limit})
+            elif hasattr(client, 'recycle_list'):
+                result = client.recycle_list(page=page, limit=limit)
+            else:
+                return {'success': False, 'error': '不支持获取回收站'}
+            
+            files = []
+            file_list = result.get('data', []) if isinstance(result, dict) else result
+            for f in file_list:
+                if isinstance(f, dict):
+                    files.append({
+                        'id': str(f.get('id') or f.get('file_id')),
+                        'name': f.get('file_name') or f.get('name'),
+                        'delete_time': f.get('dtime') or f.get('delete_time')
+                    })
+            
+            return {
+                'success': True,
+                'data': files
+            }
+        except Exception as e:
+            logger.error(f'获取回收站失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def restore_recycle(self, file_ids: List[str]) -> Dict[str, Any]:
+        """从回收站恢复文件"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'recyclebin_revert'):
+                result = client.recyclebin_revert({'rid': file_ids})
+            elif hasattr(client, 'recycle_revert'):
+                result = client.recycle_revert(file_ids)
+            else:
+                return {'success': False, 'error': '不支持恢复回收站文件'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'restored': file_ids}
+            }
+        except Exception as e:
+            logger.error(f'恢复回收站文件失败: {str(e)}')
+            return {'success': False, 'error': str(e)}
+    
+    def clear_recycle(self) -> Dict[str, Any]:
+        """清空回收站"""
+        try:
+            client = self._get_authenticated_client()
+            
+            if hasattr(client, 'recyclebin_clean'):
+                result = client.recyclebin_clean()
+            elif hasattr(client, 'recycle_clean'):
+                result = client.recycle_clean()
+            else:
+                return {'success': False, 'error': '不支持清空回收站'}
+            
+            return {
+                'success': True,
+                'data': result if isinstance(result, dict) else {'cleared': True}
+            }
+        except Exception as e:
+            logger.error(f'清空回收站失败: {str(e)}')
+            return {'success': False, 'error': str(e)}

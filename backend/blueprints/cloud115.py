@@ -598,3 +598,360 @@ def list_login_apps():
             "success": False,
             "error": f"Failed to list login apps: {str(e)}"
         }), 500
+
+
+# ==================== OAuth PKCE API ====================
+
+@cloud115_bp.route('/oauth/init', methods=['POST'])
+@require_auth
+def init_oauth():
+    """Initialize OAuth PKCE flow for third-party app login."""
+    try:
+        data = request.get_json() or {}
+        
+        app_id = data.get('appId') or data.get('app_id')
+        redirect_uri = data.get('redirectUri') or data.get('redirect_uri') or 'http://localhost:8080/callback'
+        
+        if not app_id:
+            return jsonify({
+                'success': False,
+                'error': 'appId is required'
+            }), 400
+        
+        # Generate PKCE
+        pkce = _cloud115_service.generate_pkce()
+        
+        # Get OAuth URL
+        oauth_url = _cloud115_service.get_oauth_url(app_id, pkce['code_challenge'], redirect_uri)
+        
+        # Store code_verifier temporarily (should be stored securely in session)
+        # For now, return it to frontend to store
+        return jsonify({
+            'success': True,
+            'data': {
+                'authUrl': oauth_url,
+                'codeVerifier': pkce['code_verifier'],
+                'codeChallenge': pkce['code_challenge']
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to initialize OAuth: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/oauth/complete', methods=['POST'])
+@require_auth
+def complete_oauth():
+    """Complete OAuth flow by exchanging code for tokens."""
+    try:
+        data = request.get_json() or {}
+        
+        app_id = data.get('appId') or data.get('app_id')
+        app_secret = data.get('appSecret') or data.get('app_secret')
+        code = data.get('code')
+        code_verifier = data.get('codeVerifier') or data.get('code_verifier')
+        redirect_uri = data.get('redirectUri') or data.get('redirect_uri') or 'http://localhost:8080/callback'
+        
+        if not all([app_id, app_secret, code, code_verifier]):
+            return jsonify({
+                'success': False,
+                'error': 'appId, appSecret, code, and codeVerifier are required'
+            }), 400
+        
+        result = _cloud115_service.exchange_code_for_token(
+            app_id, app_secret, code, code_verifier, redirect_uri
+        )
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to complete OAuth: {str(e)}'
+        }), 500
+
+
+@cloud115_bp.route('/oauth/refresh', methods=['POST'])
+@require_auth
+def refresh_oauth_token():
+    """Refresh access token using refresh token."""
+    try:
+        data = request.get_json() or {}
+        refresh_token = data.get('refreshToken') or data.get('refresh_token')
+        
+        result = _cloud115_service.refresh_access_token(refresh_token)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to refresh token: {str(e)}'
+        }), 500
+
+
+# ==================== Offline Download API ====================
+
+@cloud115_bp.route('/offline/quota', methods=['GET'])
+@require_auth
+def get_offline_quota():
+    """Get offline download quota information."""
+    try:
+        result = _cloud115_service.get_offline_quota()
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/offline/tasks', methods=['GET'])
+@require_auth
+def list_offline_tasks():
+    """List offline download tasks."""
+    try:
+        page = request.args.get('page', 1, type=int)
+        result = _cloud115_service.list_offline_tasks(page)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/offline/add', methods=['POST'])
+@require_auth
+def add_offline_url():
+    """Add offline download URL task (HTTP/magnet)."""
+    try:
+        data = request.get_json() or {}
+        urls = data.get('urls') or [data.get('url')]
+        save_cid = data.get('saveCid') or data.get('save_cid') or '0'
+        
+        if not urls or not urls[0]:
+            return jsonify({'success': False, 'error': 'urls is required'}), 400
+        
+        result = _cloud115_service.add_offline_url(urls, save_cid)
+        if result.get('success'):
+            return jsonify(result), 201
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/offline/tasks', methods=['DELETE'])
+@require_auth
+def delete_offline_tasks():
+    """Delete offline download tasks."""
+    try:
+        data = request.get_json() or {}
+        task_ids = data.get('taskIds') or data.get('task_ids') or []
+        
+        if not task_ids:
+            return jsonify({'success': False, 'error': 'taskIds is required'}), 400
+        
+        result = _cloud115_service.delete_offline_task(task_ids)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/offline/clear', methods=['POST'])
+@require_auth
+def clear_offline_tasks():
+    """Clear offline download tasks."""
+    try:
+        data = request.get_json() or {}
+        flag = data.get('flag', 0)  # 0=completed, 1=all
+        
+        result = _cloud115_service.clear_offline_tasks(flag)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Video Playback API ====================
+
+@cloud115_bp.route('/video/<file_id>/play', methods=['GET'])
+@require_auth
+def get_video_play_url(file_id: str):
+    """Get video online play URL."""
+    try:
+        result = _cloud115_service.get_video_play_url(file_id)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/video/<file_id>/subtitles', methods=['GET'])
+@require_auth
+def get_video_subtitles(file_id: str):
+    """Get video subtitles list."""
+    try:
+        result = _cloud115_service.get_video_subtitles(file_id)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== File Management API ====================
+
+@cloud115_bp.route('/files/search', methods=['GET'])
+@require_auth
+def search_files():
+    """Search files in 115 cloud."""
+    try:
+        keyword = request.args.get('keyword') or request.args.get('q')
+        cid = request.args.get('cid', '0')
+        limit = request.args.get('limit', 50, type=int)
+        
+        if not keyword:
+            return jsonify({'success': False, 'error': 'keyword is required'}), 400
+        
+        result = _cloud115_service.search_files(keyword, cid, limit)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/files/copy', methods=['POST'])
+@require_auth
+def copy_files():
+    """Copy files to another directory."""
+    try:
+        data = request.get_json() or {}
+        file_ids = data.get('fileIds') or data.get('file_ids') or []
+        target_cid = data.get('targetCid') or data.get('target_cid')
+        
+        if not file_ids:
+            return jsonify({'success': False, 'error': 'fileIds is required'}), 400
+        if not target_cid:
+            return jsonify({'success': False, 'error': 'targetCid is required'}), 400
+        
+        result = _cloud115_service.copy_files(file_ids, target_cid)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/files/download/<file_id>', methods=['GET'])
+@require_auth
+def get_download_link(file_id: str):
+    """Get file download link."""
+    try:
+        result = _cloud115_service.get_download_link(file_id)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/folder', methods=['POST'])
+@require_auth
+def create_folder():
+    """Create a new folder."""
+    try:
+        data = request.get_json() or {}
+        parent_cid = data.get('parentCid') or data.get('parent_cid') or '0'
+        name = data.get('name')
+        
+        if not name:
+            return jsonify({'success': False, 'error': 'name is required'}), 400
+        
+        result = _cloud115_service.create_directory(parent_cid, name)
+        if result.get('success'):
+            return jsonify(result), 201
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== Recycle Bin API ====================
+
+@cloud115_bp.route('/recycle', methods=['GET'])
+@require_auth
+def get_recycle_list():
+    """Get recycle bin list."""
+    try:
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 50, type=int)
+        
+        result = _cloud115_service.get_recycle_list(page, limit)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/recycle/restore', methods=['POST'])
+@require_auth
+def restore_recycle():
+    """Restore files from recycle bin."""
+    try:
+        data = request.get_json() or {}
+        file_ids = data.get('fileIds') or data.get('file_ids') or []
+        
+        if not file_ids:
+            return jsonify({'success': False, 'error': 'fileIds is required'}), 400
+        
+        result = _cloud115_service.restore_recycle(file_ids)
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@cloud115_bp.route('/recycle', methods=['DELETE'])
+@require_auth
+def clear_recycle():
+    """Clear recycle bin."""
+    try:
+        result = _cloud115_service.clear_recycle()
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Import logger at module level
+import logging
+logger = logging.getLogger(__name__)
