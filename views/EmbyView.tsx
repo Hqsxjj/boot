@@ -48,10 +48,10 @@ export const EmbyView: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
-    const [titleSize, setTitleSize] = useState(98);      // 主标题文字大小 5.1vw (1920*0.051 ~= 98)
-    const [offsetX, setOffsetX] = useState(200);           // 海报水平位移 (原272超出范围，调整为200)
-    const [posterScale, setPosterScale] = useState(32);   // 整体缩放比例 32%
-    const [vAlign, setVAlign] = useState(55);             // 标题纵向对齐 55%
+    const [titleSize, setTitleSize] = useState(172);     // 主标题文字大小 9.0vw (1920*0.09 ~= 172)
+    const [offsetX, setOffsetX] = useState(50);          // 海报水平位移 (X) 默认 50
+    const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
+    const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
 
     // 加载配置
     useEffect(() => {
@@ -700,7 +700,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={5}
-                                            max={60}
+                                            max={65}
                                             value={vAlign}
                                             onChange={(e) => setVAlign(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"

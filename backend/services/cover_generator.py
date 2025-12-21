@@ -387,7 +387,10 @@ class CoverGenerator:
         draw.text((tx, ty), title, font=m_font, fill="white", stroke_width=2, stroke_fill=(255, 255, 255, 50))
         
         # 2. 副标题阴影
-        sub_y = ty + title_size + 25
+        # 增加主副标题间距：不再是固定 25，而是跟字号成比例，增加呼吸感
+        spacing = int(title_size * 0.4) + 10 
+        sub_y = ty + title_size + spacing
+        
         for dx, dy, color in shadow_layers:
              draw.text((tx + dx, sub_y + dy), subtitle, font=s_font, fill=color)
              
