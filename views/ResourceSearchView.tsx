@@ -1904,10 +1904,11 @@ const ResourceCard: React.FC<{
     const hasCloudFiles = (resource.cloud_type === '115' || resource.cloud_type === '123') && onToggleExpand;
     const hasShareLink = resource.share_link || (resource.share_links && resource.share_links[0]?.link);
 
-    // 辅助函数：判断是否为真正的文件夹（排除视频文件）
+    // 辅助函数：判断是否为真正的文件夹（排除所有文件类型）
     const isRealFolder = (file: ShareFile) => {
-        const videoExts = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb|rm|3gp|mpg|mpeg)$/i;
-        return file.is_directory && !videoExts.test(file.name || '');
+        // 常见文件扩展名：视频、音频、图片、字幕、压缩包、文档、元数据等
+        const fileExts = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb|rm|3gp|mpg|mpeg|mp3|flac|wav|aac|ogg|wma|m4a|jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff|heic|srt|ass|ssa|sub|idx|vtt|lrc|zip|rar|7z|tar|gz|bz2|xz|iso|nfo|txt|doc|docx|pdf|epub|mobi|xml|json|html|htm|css|js|py|md|log|ini|cfg|yaml|yml)$/i;
+        return file.is_directory && !fileExts.test(file.name || '');
     };
 
     const handleSaveClick = async () => {
