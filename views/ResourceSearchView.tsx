@@ -337,6 +337,10 @@ export const ResourceSearchView: React.FC = () => {
                         const urlObj = new URL(link);
                         accessCode = urlObj.searchParams.get('password') || '';
                     } catch (e) { /* ignore */ }
+                    // 使用 resource.share_code 作为提取码来源（API 返回的密码）
+                    if (!accessCode && resource.share_code) {
+                        accessCode = resource.share_code;
+                    }
                     if (!accessCode && resourceAccessCodes[resourceKey]) {
                         accessCode = resourceAccessCodes[resourceKey];
                     }
@@ -354,6 +358,10 @@ export const ResourceSearchView: React.FC = () => {
                             const urlObj = new URL(link);
                             accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
                         } catch (e) { /* ignore */ }
+                    }
+                    // 使用 resource.share_code 作为提取码来源（API 返回的密码）
+                    if (!accessCode && resource.share_code) {
+                        accessCode = resource.share_code;
                     }
                     if (!accessCode && resourceAccessCodes[resourceKey]) {
                         accessCode = resourceAccessCodes[resourceKey];
