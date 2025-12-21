@@ -960,13 +960,13 @@ const SourceManager: React.FC<{
             const res = await api.crawlSources() as any;
             if (res.success) {
                 setCrawlResult({ total_resources: res.total_resources, last_crawl: res.last_crawl });
-                setToast(`爬取完成，共获取 ${res.total_resources} 个资源链接`);
+                setToast(`抓取完成，共获取 ${res.total_resources} 个资源链接`);
             } else {
-                setToast(res.error || '爬取失败');
+                setToast(res.error || '抓取失败');
             }
             setTimeout(() => setToast(null), 3000);
         } catch (e) {
-            setToast('爬取失败');
+            setToast('抓取失败');
             setTimeout(() => setToast(null), 3000);
         } finally {
             setIsCrawling(false);
@@ -1056,12 +1056,12 @@ const SourceManager: React.FC<{
                     {isCrawling ? (
                         <>
                             <Loader2 size={16} className="animate-spin" />
-                            爬取中...
+                            抓取中...
                         </>
                     ) : (
                         <>
                             <RefreshCw size={16} />
-                            爬取资源
+                            抓取来源
                         </>
                     )}
                 </button>

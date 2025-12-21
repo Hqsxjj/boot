@@ -79,7 +79,19 @@ class PanSearchService:
                 else:
                     results = raw_data.get('results', [])
                 
-                total = raw_data.get('total', len(results))
+                # 整合用户来源爬取的资源
+                try:
+                    from services.source_crawler_service import get_crawler_service
+                    crawler = get_crawler_service()
+                    crawled = crawler.search_in_crawled(keyword)
+                    if crawled:
+                        logger.info(f"从用户来源中找到 {len(crawled)} 个匹配资源")
+                        # 将爬取的资源添加到结果开头（优先显示）
+                        results = crawled + results
+                except Exception as e:
+                    logger.warning(f"整合爬取资源失败: {e}")
+                
+                total = len(results)
                 
                 logger.info(f"网盘搜索成功: 共 {total} 个结果")
                 return {
