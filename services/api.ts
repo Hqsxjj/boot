@@ -594,7 +594,7 @@ export const api = {
     posters?: string[];
     config: any;
   }) => {
-    const res = await apiClient.post<ApiResponse<{ image: string }>>('/emby/generate-cover', options);
+    const res = await apiClient.post<ApiResponse<{ image: string }>>('/emby/cover/generate', options);
     return res.data;
   },
 
