@@ -681,6 +681,11 @@ def apply_covers_to_emby():
                 # 2. 准备参数
                 title = target_lib['name']
                 
+                # 清理库名称用于文件夹/文件名 (移除不安全字符)
+                safe_lib_name = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip()
+                if not safe_lib_name:
+                    safe_lib_name = lib_id
+                
                 # 自动副标题
                 type_map = {
                     'movies': 'MOVIE COLLECTION',
@@ -710,8 +715,15 @@ def apply_covers_to_emby():
                     'v_align_pct': cover_config.get('vAlign', 60)
                 }
                 
-                image_data = None
-                content_type = 'image/png'
+                # 3. 创建本地缓存目录
+                import os
+                cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'covers', safe_lib_name)
+                os.makedirs(cache_dir, exist_ok=True)
+                
+                # 4. 生成封面并保存到本地
+                file_ext = 'gif' if cover_format == 'gif' else 'png'
+                local_file_path = os.path.join(cache_dir, f"{safe_lib_name}.{file_ext}")
+                content_type = 'image/gif' if cover_format == 'gif' else 'image/png'
                 
                 if cover_format == 'gif':
                     image_data = generator.generate_animated_cover(
@@ -720,21 +732,24 @@ def apply_covers_to_emby():
                         duration_ms=150,
                         **gen_kwargs
                     )
-                    content_type = 'image/gif'
+                    with open(local_file_path, 'wb') as f:
+                        f.write(image_data)
                 else:
                     img = generator.generate_cover(posters, **gen_kwargs)
-                    import io
-                    buf = io.BytesIO()
-                    img.save(buf, format='PNG')
-                    image_data = buf.getvalue()
-                    content_type = 'image/png'
+                    img.save(local_file_path, format='PNG')
                 
-                # 3. 上传
+                import logging
+                logging.getLogger(__name__).info(f"封面已保存到本地: {local_file_path}")
+                
+                # 5. 读取本地文件并上传到 Emby
+                with open(local_file_path, 'rb') as f:
+                    image_data = f.read()
+                
                 if generator.upload_cover(lib_id, image_data, content_type):
                     success_count += 1
-                    results.append({'id': lib_id, 'success': True})
+                    results.append({'id': lib_id, 'success': True, 'localPath': local_file_path})
                 else:
-                    results.append({'id': lib_id, 'success': False, 'msg': '上传失败'})
+                    results.append({'id': lib_id, 'success': False, 'msg': '上传失败', 'localPath': local_file_path})
                     
             except Exception as e:
                 import logging
