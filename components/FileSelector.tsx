@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, ChevronRight, Check, X, HardDrive, ArrowLeft, Loader2 } from 'lucide-react';
+import { Folder, File, ChevronRight, Check, X, HardDrive, ArrowLeft, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 
 interface FileSelectorProps {
@@ -38,7 +38,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // 获取当前目录 ID
-  const currentFolderId = history[history.length - 1].id;
+  // const currentFolderId = history[history.length - 1].id; // Unused
 
   // 根据云盘类型获取初始目录 ID
   const getInitialDirId = () => {
@@ -55,27 +55,27 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      let dirs: FileNode[] = [];
+      let items: FileNode[] = [];
 
       switch (cloudType) {
         case '115': {
           // 115 网盘 API
           const data = await api.get115Files(dirId);
           if (data && data.files) {
-            dirs = data.files.filter((f: any) => f.is_dir || f.file_type === 0).map((f: any) => ({
+            items = data.files.map((f: any) => ({
               id: f.id || f.cid || f.file_id,
               name: f.name || f.n,
-              is_dir: true,
+              is_dir: f.is_dir || f.file_type === 0,
               time: f.time || f.t || ''
             }));
           }
           break;
         }
         case '123': {
-          // 123 云盘 API
+          // 123 云盘 API - only directories are listed via this endpoint
           const data = await api.list123Directories(dirId);
           if (data && Array.isArray(data)) {
-            dirs = data.filter((f: any) => f.children !== false).map((f: any) => ({
+            items = data.map((f: any) => ({
               id: f.id,
               name: f.name,
               is_dir: true,
@@ -84,10 +84,9 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           }
           break;
         }
-
       }
 
-      setFiles(dirs);
+      setFiles(items);
     } catch (e) {
       console.error("加载目录失败", e);
       setError(`加载失败: ${cloudType === '115' ? '请先登录 115 账号' : cloudType === '123' ? '请先配置 123 云盘凭证' : '服务未连接'}`);
@@ -193,23 +192,27 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
                   <span className="text-sm">空文件夹</span>
                 </div>
               ) : (
-                files.map((folder) => (
+                files.map((item) => (
                   <div
-                    key={folder.id}
-                    onClick={() => { setSelectedId(folder.id); setSelectedName(folder.name); }}
-                    onDoubleClick={() => handleNavigate(folder)}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors mb-1 group border ${selectedId === folder.id ? 'bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800' : 'bg-white dark:bg-slate-800 border-transparent hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-sm'}`}
+                    key={item.id}
+                    onClick={() => { setSelectedId(item.id); setSelectedName(item.name); }}
+                    onDoubleClick={() => { if (item.is_dir) handleNavigate(item); }}
+                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors mb-1 group border ${selectedId === item.id ? 'bg-brand-50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800' : 'bg-white dark:bg-slate-800 border-transparent hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-sm'}`}
                   >
                     <div className="flex items-center gap-3 overflow-hidden">
-                      <div className={`p-2 rounded-lg transition-colors shrink-0 ${selectedId === folder.id ? 'bg-brand-100 text-brand-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-600'}`}>
-                        <Folder size={20} className={selectedId === folder.id ? 'fill-brand-600/20' : 'fill-slate-400/20'} />
+                      <div className={`p-2 rounded-lg transition-colors shrink-0 ${selectedId === item.id ? 'bg-brand-100 text-brand-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-600'}`}>
+                        {item.is_dir ? (
+                          <Folder size={20} className={selectedId === item.id ? 'fill-brand-600/20' : 'fill-slate-400/20'} />
+                        ) : (
+                          <File size={20} className={selectedId === item.id ? 'fill-brand-600/20' : 'fill-slate-400/20'} />
+                        )}
                       </div>
                       <div className="min-w-0">
-                        <div className={`text-sm font-medium truncate ${selectedId === folder.id ? 'text-brand-700 dark:text-brand-300' : 'text-slate-700 dark:text-slate-200'}`}>{folder.name}</div>
-                        {folder.time && <div className="text-[10px] text-slate-400">{folder.time}</div>}
+                        <div className={`text-sm font-medium truncate ${selectedId === item.id ? 'text-brand-700 dark:text-brand-300' : 'text-slate-700 dark:text-slate-200'}`}>{item.name}</div>
+                        {item.time && <div className="text-[10px] text-slate-400">{item.time}</div>}
                       </div>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300 shrink-0" />
+                    {item.is_dir && <ChevronRight size={16} className="text-slate-300 shrink-0" />}
                   </div>
                 ))
               )}
