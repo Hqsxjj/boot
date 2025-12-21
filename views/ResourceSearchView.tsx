@@ -235,7 +235,7 @@ export const ResourceSearchView: React.FC = () => {
         let accessCode = '';
         try {
             const urlObj = new URL(link);
-            accessCode = urlObj.searchParams.get('password') || '';
+            accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
         } catch (e) {
             // URL parse error, maybe partial url
         }
@@ -366,7 +366,7 @@ export const ResourceSearchView: React.FC = () => {
                     cloudType = '115';
                     try {
                         const urlObj = new URL(link);
-                        accessCode = urlObj.searchParams.get('password') || '';
+                        accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
                     } catch (e) { /* ignore */ }
                     // 使用 resource.share_code 作为提取码来源（API 返回的密码）
                     if (!accessCode && resource.share_code) {
@@ -569,7 +569,7 @@ export const ResourceSearchView: React.FC = () => {
                 let accessCode = '';
                 try {
                     const urlObj = new URL(link);
-                    accessCode = urlObj.searchParams.get('password') || '';
+                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
                 } catch (e) {
                     // ignore
                 }
