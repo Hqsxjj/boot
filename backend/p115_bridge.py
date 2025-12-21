@@ -292,26 +292,51 @@ class StandardClientHolder:
                 return {"state": False, "msg": str(e)}
 
     def poll_qrcode(self) -> dict:
-        """轮询扫码状态"""
+        """轮询扫码状态 - 使用 holder 中存储的 _qr_token"""
+        return self.poll_qrcode_with_token(self._qr_token)
+    
+    def poll_qrcode_with_token(self, qr_token: dict, login_app: str = "tv") -> dict:
+        """轮询扫码状态 - 使用传入的 token 数据"""
         with self._lock:
-            if not self._qr_token:
-                logger.warning("[115 QR] 轮询时没有 QR token")
-                return {"state": False, "msg": "no token"}
+            if not qr_token or not qr_token.get("uid"):
+                logger.warning("[115 QR] 轮询时没有有效的 QR token")
+                return {"state": False, "msg": "no token", "status": "error"}
 
             if P115Client is None:
-                return {"state": False, "msg": "p115client 未安装"}
+                return {"state": False, "msg": "p115client 未安装", "status": "error"}
 
             try:
-                target_app = self._qr_token.get("app") or "tv"
-                status = P115Client.login_qrcode_scan_status(self._qr_token)
+                target_app = qr_token.get("app") or login_app or "tv"
+                
+                # 构造 p115client 需要的 token 格式
+                token_for_api = {
+                    "uid": qr_token.get("uid"),
+                    "time": qr_token.get("time"),
+                    "sign": qr_token.get("sign")
+                }
+                
+                logger.debug(f"[115 QR] 调用 scan_status: uid={token_for_api['uid'][:8] if token_for_api['uid'] else 'None'}...")
+                status = P115Client.login_qrcode_scan_status(token_for_api)
+                
+                # 检查 API 响应
+                if status is None:
+                    return {"state": False, "status": "error", "msg": "API 返回空"}
+                
+                # state=0 表示 API 请求失败（如二维码过期）
+                if status.get("state") == 0:
+                    code = status.get("code")
+                    if code == 40199002:  # key invalid - 二维码已过期
+                        return {"state": True, "status": "expired"}
+                    return {"state": False, "status": "error", "msg": status.get("message", "API 请求失败")}
+                
                 data = status.get("data", {}) if isinstance(status, dict) else {}
                 st = data.get("status")
                 logger.debug(f"[115 QR] 扫码状态: {st}")
 
                 if st == 2:
                     logger.info("[115 QR] 扫码成功，获取 cookie...")
-                    result = P115Client.login_qrcode_scan_result(self._qr_token.get("uid"), app=target_app)
-                    if result.get("state"):
+                    result = P115Client.login_qrcode_scan_result(qr_token.get("uid"), app=target_app)
+                    if result and result.get("state"):
                         cookie_obj = result["data"].get("cookie")
                         if isinstance(cookie_obj, dict):
                             cookie_str = "; ".join([f"{k}={v}" for k, v in cookie_obj.items()])
@@ -331,6 +356,8 @@ class StandardClientHolder:
                         # 保存 Cookie
                         self._save_to_store(cookies_dict)
                         return {"state": True, "status": "success", "cookies": cookies_dict, "user": self.user_info}
+                    else:
+                        return {"state": False, "status": "error", "msg": f"获取 cookie 失败: {result}"}
 
                 status_map = {0: "waiting", 1: "scanned", 2: "success", -1: "expired", -2: "error"}
                 return {"state": True, "status": status_map.get(st, "waiting")}
@@ -496,19 +523,30 @@ class P115Service:
             return {"success": False, "error": result.get("msg", "获取二维码失败")}
 
     def poll_login_status(self, session_id: str) -> Dict[str, Any]:
-        """轮询登录状态"""
+        """轮询登录状态 - 使用 session 中存储的 token 数据"""
         session_info = self._session_cache.get(session_id)
         if not session_info:
             return {"success": False, "error": "Session not found", "status": "error"}
 
         login_method = session_info.get("login_method", "qrcode")
+        login_app = session_info.get("login_app", "tv")
+
+        # 构造用于轮询的 token 数据
+        qr_token = {
+            "uid": session_info.get("uid"),
+            "time": session_info.get("time"),
+            "sign": session_info.get("sign"),
+            "app": login_app
+        }
 
         if login_method == "open_app":
-            holder = self._ensure_open_holder()
+            holder = self._ensure_open_holder(session_info.get("app_id", ""))
+            # OpenApp 模式使用 holder 内部状态
             result = holder.poll_open_qrcode()
         else:
             holder = self._ensure_standard_holder()
-            result = holder.poll_qrcode()
+            # 标准模式使用 session 中存储的 token
+            result = holder.poll_qrcode_with_token(qr_token, login_app)
 
         status = result.get("status", "waiting")
 
