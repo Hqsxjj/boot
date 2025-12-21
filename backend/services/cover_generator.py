@@ -29,12 +29,13 @@ THEMES = [
 ]
 
 # 海报布局阶段 (模拟 3D 堆叠效果)
+# 海报布局阶段 (模拟 3D 堆叠效果)
 STAGES = [
-    {"x": 960,  "y": 440, "scale": 0.70, "angle": -28, "brightness": 0.5, "z": 20},
-    {"x": 1050, "y": 470, "scale": 0.80, "angle": -18, "brightness": 0.7, "z": 30},
-    {"x": 1150, "y": 500, "scale": 0.90, "angle": -8,  "brightness": 0.8, "z": 40},
-    {"x": 1280, "y": 530, "scale": 1.00, "angle": 0,   "brightness": 0.9, "z": 50},
-    {"x": 1450, "y": 560, "scale": 1.10, "angle": 10,  "brightness": 1.0, "z": 100},
+    {"x": 960,  "y": 440, "scale": 0.70, "angle": -28, "brightness": 0.5, "opacity": 0.4, "z": 20},
+    {"x": 1050, "y": 470, "scale": 0.80, "angle": -18, "brightness": 0.7, "opacity": 0.6, "z": 30},
+    {"x": 1150, "y": 500, "scale": 0.90, "angle": -8,  "brightness": 0.8, "opacity": 0.8, "z": 40},
+    {"x": 1280, "y": 530, "scale": 1.00, "angle": 0,   "brightness": 0.9, "opacity": 0.95, "z": 50},
+    {"x": 1450, "y": 560, "scale": 1.10, "angle": 10,  "brightness": 1.0, "opacity": 1.0,  "z": 100},
 ]
 
 
@@ -223,17 +224,27 @@ class CoverGenerator:
             mask_draw = ImageDraw.Draw(mask)
             mask_draw.rounded_rectangle([0, 0, sw, sh], radius=corner_radius, fill=255)
             
-            # 应用遮罩
+            # 1. 透明度渐变处理
+            # 遮罩的 alpha 值决定了最终图片的 alpha
+            # 如果配置中有 opacity，则将遮罩的 alpha 值乘以此系数
+            opacity = config.get("opacity", 1.0)
+            if opacity < 1.0:
+                # 获取 mask 数据
+                mask_data = mask.getdata()
+                # 重新计算 alpha
+                new_data = [int(p * opacity) for p in mask_data]
+                mask.putdata(new_data)
+            
+            # 应用遮罩 (此时 mask 已经被调整过 alpha)
             poster.putalpha(mask)
             
             # === 海报玻璃边缘感 ===
             # 在海报上叠加一个内发光/描边效果
             border_layer = Image.new("RGBA", (sw, sh), (0,0,0,0))
             border_draw = ImageDraw.Draw(border_layer)
-            # 外部描边 (白色半透明)
-            border_draw.rounded_rectangle([0, 0, sw-1, sh-1], radius=corner_radius, outline=(255, 255, 255, 100), width=2)
-            # 内部微妙高光 (模拟厚度)
-            # border_draw.rounded_rectangle([2, 2, sw-3, sh-3], radius=corner_radius, outline=(255, 255, 255, 40), width=1)
+            # 外部描边 (白色半透明) - 透明度也需要随整体 opacity 调整
+            border_alpha = int(100 * opacity)
+            border_draw.rounded_rectangle([0, 0, sw-1, sh-1], radius=corner_radius, outline=(255, 255, 255, border_alpha), width=2)
             
             poster = Image.alpha_composite(poster, border_layer)
 
