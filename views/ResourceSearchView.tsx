@@ -149,7 +149,13 @@ export const ResourceSearchView: React.FC = () => {
             if (response.success) {
                 // Filter out resources without valid share links
                 const validResources = (response.data || []).filter(hasValidShareLink);
-                setSearchResults(validResources);
+                // 排序：115网盘结果排在123云盘前面
+                const sortedResources = validResources.sort((a, b) => {
+                    if (a.cloud_type === '115' && b.cloud_type !== '115') return -1;
+                    if (a.cloud_type !== '115' && b.cloud_type === '115') return 1;
+                    return 0;
+                });
+                setSearchResults(sortedResources);
                 setAiEnabled((response as any).ai_enabled);
                 if ((response as any).message) {
                     setSearchMessage((response as any).message);
@@ -1965,14 +1971,7 @@ const ResourceCard: React.FC<{
                             {resource.cloud_type === '115' ? '115网盘' : resource.cloud_type === '123' ? '123网盘' : resource.cloud_type || '未知'}
                         </div>
 
-                        {/* Type Badge - 电影/电视剧明显区分 */}
-                        <div className={`absolute top-2 right-2 px-2 py-1 rounded-lg flex items-center gap-1 backdrop-blur-sm shadow-lg ${resource.type === 'movie'
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-purple-500/40'
-                            : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/40'
-                            } text-white`}>
-                            {resource.type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
-                            <span className="text-[10px] font-bold">{resource.type === 'movie' ? '电影' : '剧集'}</span>
-                        </div>
+                        {/* Type Badge removed per user request */}
 
                         {resource.rating && (
                             <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[10px] font-bold text-amber-400">
@@ -2107,10 +2106,16 @@ const ResourceCard: React.FC<{
                                             <div
                                                 key={file.id}
                                                 onClick={(e) => {
-                                                    if (file.is_directory && onFolderClick) {
+                                                    // 视频文件扩展名列表
+                                                    const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.rmvb', '.rm', '.3gp', '.mpg', '.mpeg'];
+                                                    const fileName = file.name?.toLowerCase() || '';
+                                                    const isVideoFile = videoExtensions.some(ext => fileName.endsWith(ext));
+
+                                                    if (file.is_directory && !isVideoFile && onFolderClick) {
                                                         e.stopPropagation();
                                                         onFolderClick(file);
                                                     } else {
+                                                        // 视频文件和其他非目录文件只能选择，不能进入
                                                         onToggleFileSelection?.(file.id);
                                                     }
                                                 }}
