@@ -263,16 +263,24 @@ class StandardClientHolder:
                         img_url = f"https://qrcodeapi.115.com/api/1.0/{target_app}/1.0/qrcode?uid={uid}"
                         logger.info(f"[115 QR] 下载二维码: {img_url}")
                         img_resp = requests.get(img_url, headers=self.headers, timeout=10)
+                        
+                        logger.info(f"[115 QR] 图片响应: status={img_resp.status_code}, content-type={img_resp.headers.get('content-type')}, len={len(img_resp.content)}")
 
                         if img_resp.status_code == 200:
-                            b64_img = base64.b64encode(img_resp.content).decode('utf-8')
-                            self._qr_token["qrcode"] = b64_img
-                            logger.info(f"[115 QR] 二维码下载成功, 大小: {len(b64_img)} bytes")
+                            content_type = img_resp.headers.get('content-type', '')
+                            # 验证返回的是图片而非错误页面
+                            if 'image' in content_type or len(img_resp.content) > 100:
+                                b64_img = base64.b64encode(img_resp.content).decode('utf-8')
+                                self._qr_token["qrcode"] = b64_img
+                                logger.info(f"[115 QR] 二维码下载成功, 大小: {len(b64_img)} bytes")
+                            else:
+                                logger.error(f"[115 QR] 返回内容不是图片: {img_resp.content[:200]}")
+                                self._qr_token["qrcode"] = ""
                         else:
-                            logger.error(f"[115 QR] 二维码下载失败, status: {img_resp.status_code}")
+                            logger.error(f"[115 QR] 二维码下载失败, status: {img_resp.status_code}, body: {img_resp.text[:200]}")
                             self._qr_token["qrcode"] = ""
                     except Exception as e:
-                        logger.error(f"[115 QR] 二维码下载异常: {e}")
+                        logger.error(f"[115 QR] 二维码下载异常: {e}", exc_info=True)
                         self._qr_token["qrcode"] = ""
 
                     return {
