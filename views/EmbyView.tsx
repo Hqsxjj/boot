@@ -47,6 +47,11 @@ export const EmbyView: React.FC = () => {
     const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
+    // 参数滑块 (匹配 Python Tkinter 参数)
+    const [titleSize, setTitleSize] = useState(130);      // 主标题文字大小 40-300
+    const [offsetX, setOffsetX] = useState(200);           // 海报水平位移 -100 to 600
+    const [posterScale, setPosterScale] = useState(30);   // 整体缩放比例 10-60
+    const [vAlign, setVAlign] = useState(22);             // 标题纵向对齐 5-90
 
     // 加载配置
     useEffect(() => {
@@ -244,7 +249,11 @@ export const EmbyView: React.FC = () => {
                 title: coverTitle,
                 subtitle: coverSubtitle,
                 themeIndex: selectedTheme,
-                format: coverFormat
+                format: coverFormat,
+                titleSize: titleSize,
+                offsetX: offsetX,
+                posterScale: posterScale,
+                vAlign: vAlign
             });
             if (result.success) {
                 setCoverPreview(result.data.image);
@@ -624,6 +633,62 @@ export const EmbyView: React.FC = () => {
                                                 title={theme.name}
                                             />
                                         ))}
+                                    </div>
+                                </div>
+
+                                {/* 参数滑块 - 匹配 Python Tkinter 参数 */}
+                                <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            主标题文字大小: {titleSize}
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={40}
+                                            max={300}
+                                            value={titleSize}
+                                            onChange={(e) => setTitleSize(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            海报水平位移 (X): {offsetX}
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={-100}
+                                            max={600}
+                                            value={offsetX}
+                                            onChange={(e) => setOffsetX(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            整体缩放比例 (%): {posterScale}
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={10}
+                                            max={60}
+                                            value={posterScale}
+                                            onChange={(e) => setPosterScale(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            标题纵向对齐 (%): {vAlign}
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={5}
+                                            max={90}
+                                            value={vAlign}
+                                            onChange={(e) => setVAlign(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
                                     </div>
                                 </div>
 
