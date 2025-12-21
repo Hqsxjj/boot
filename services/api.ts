@@ -445,5 +445,27 @@ export const api = {
     const res = await apiClient.post<ApiResponse<any>>('/subscription/settings', settings);
     return res.data;
   },
+
+  // --- 来源管理相关接口 ---
+
+  getSources: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/sources');
+    return res.data;
+  },
+
+  addSource: async (type: 'telegram' | 'website', url: string, name?: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/sources', { type, url, name });
+    return res.data;
+  },
+
+  deleteSource: async (id: string) => {
+    const res = await apiClient.delete<ApiResponse<any>>(`/sources/${id}`);
+    return res.data;
+  },
+
+  updateSource: async (id: string, data: { enabled?: boolean; name?: string }) => {
+    const res = await apiClient.put<ApiResponse<any>>(`/sources/${id}`, data);
+    return res.data;
+  },
 };
 

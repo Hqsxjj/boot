@@ -26,6 +26,8 @@ import {
     Square,
     Save,
     Settings,
+    Globe,
+    Link,
     History,
     CheckCircle,
     Clock,
@@ -81,7 +83,14 @@ export const ResourceSearchView: React.FC = () => {
     const [toast, setToast] = useState<string | null>(null);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
     const [searchMessage, setSearchMessage] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'search' | 'subscription'>('search');
+    const [activeTab, setActiveTab] = useState<'search' | 'subscription' | 'sources'>('search');
+
+    // 来源管理状态
+    const [sources, setSources] = useState<Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>>([]);
+    const [isLoadingSources, setIsLoadingSources] = useState(false);
+    const [newSourceType, setNewSourceType] = useState<'telegram' | 'website'>('telegram');
+    const [newSourceUrl, setNewSourceUrl] = useState('');
+    const [newSourceName, setNewSourceName] = useState('');
 
     const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -644,6 +653,16 @@ export const ResourceSearchView: React.FC = () => {
                         <Bell size={14} />
                         订阅管理
                     </button>
+                    <button
+                        onClick={() => setActiveTab('sources')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'sources'
+                            ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            }`}
+                    >
+                        <Globe size={14} />
+                        来源管理
+                    </button>
                 </div>
             </div>
 
@@ -876,10 +895,210 @@ export const ResourceSearchView: React.FC = () => {
                         </div>
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'subscription' ? (
                 <SubscriptionManager glassCardClass={glassCardClass} inputClass={inputClass} />
+            ) : (
+                <SourceManager glassCardClass={glassCardClass} inputClass={inputClass} sources={sources} setSources={setSources} isLoadingSources={isLoadingSources} setIsLoadingSources={setIsLoadingSources} newSourceType={newSourceType} setNewSourceType={setNewSourceType} newSourceUrl={newSourceUrl} setNewSourceUrl={setNewSourceUrl} newSourceName={newSourceName} setNewSourceName={setNewSourceName} setToast={setToast} />
             )}
         </div>
+    );
+};
+
+// Source Manager Component
+const SourceManager: React.FC<{
+    glassCardClass: string;
+    inputClass: string;
+    sources: Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>;
+    setSources: React.Dispatch<React.SetStateAction<Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>>>;
+    isLoadingSources: boolean;
+    setIsLoadingSources: React.Dispatch<React.SetStateAction<boolean>>;
+    newSourceType: 'telegram' | 'website';
+    setNewSourceType: React.Dispatch<React.SetStateAction<'telegram' | 'website'>>;
+    newSourceUrl: string;
+    setNewSourceUrl: React.Dispatch<React.SetStateAction<string>>;
+    newSourceName: string;
+    setNewSourceName: React.Dispatch<React.SetStateAction<string>>;
+    setToast: React.Dispatch<React.SetStateAction<string | null>>;
+}> = ({ glassCardClass, inputClass, sources, setSources, isLoadingSources, setIsLoadingSources, newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl, newSourceName, setNewSourceName, setToast }) => {
+    const [isAdding, setIsAdding] = useState(false);
+
+    useEffect(() => {
+        loadSources();
+    }, []);
+
+    const loadSources = async () => {
+        setIsLoadingSources(true);
+        try {
+            const res = await api.getSources();
+            if (res.success) {
+                setSources(res.data || []);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoadingSources(false);
+        }
+    };
+
+    const handleAddSource = async () => {
+        if (!newSourceUrl.trim()) {
+            setToast('请输入链接');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        setIsAdding(true);
+        try {
+            const res = await api.addSource(newSourceType, newSourceUrl.trim(), newSourceName.trim() || undefined);
+            if (res.success) {
+                setSources(prev => [...prev, res.data]);
+                setNewSourceUrl('');
+                setNewSourceName('');
+                setToast('来源添加成功');
+            } else {
+                setToast(res.error || '添加失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            setToast('添加失败');
+            setTimeout(() => setToast(null), 3000);
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
+    const handleDeleteSource = async (id: string) => {
+        if (!confirm('确定删除此来源？')) return;
+        try {
+            const res = await api.deleteSource(id);
+            if (res.success) {
+                setSources(prev => prev.filter(s => s.id !== id));
+                setToast('来源已删除');
+            } else {
+                setToast(res.error || '删除失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            setToast('删除失败');
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
+    const handleToggleSource = async (id: string, enabled: boolean) => {
+        try {
+            const res = await api.updateSource(id, { enabled: !enabled });
+            if (res.success) {
+                setSources(prev => prev.map(s => s.id === id ? { ...s, enabled: !enabled } : s));
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    return (
+        <section className={`${glassCardClass} p-6 space-y-6`}>
+            <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <Globe size={20} className="text-brand-500" />
+                    来源管理
+                </h3>
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                    添加 TG 频道或网站作为资源搜索来源
+                </span>
+            </div>
+
+            {/* Add Source Form */}
+            <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-800/50 space-y-4">
+                <div className="flex gap-4">
+                    <select
+                        value={newSourceType}
+                        onChange={(e) => setNewSourceType(e.target.value as 'telegram' | 'website')}
+                        className={`${inputClass} w-40`}
+                    >
+                        <option value="telegram">TG 频道/群组</option>
+                        <option value="website">网站</option>
+                    </select>
+                    <input
+                        type="text"
+                        value={newSourceUrl}
+                        onChange={(e) => setNewSourceUrl(e.target.value)}
+                        placeholder={newSourceType === 'telegram' ? 'https://t.me/channel_name 或 @channel_name' : 'https://example.com'}
+                        className={`${inputClass} flex-1`}
+                    />
+                </div>
+                <div className="flex gap-4">
+                    <input
+                        type="text"
+                        value={newSourceName}
+                        onChange={(e) => setNewSourceName(e.target.value)}
+                        placeholder="备注名称 (可选)"
+                        className={`${inputClass} flex-1`}
+                    />
+                    <button
+                        onClick={handleAddSource}
+                        disabled={isAdding || !newSourceUrl.trim()}
+                        className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {isAdding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                        添加来源
+                    </button>
+                </div>
+            </div>
+
+            {/* Sources List */}
+            <div className="space-y-3">
+                {isLoadingSources ? (
+                    <div className="flex justify-center py-10">
+                        <Loader2 className="animate-spin text-brand-500" size={32} />
+                    </div>
+                ) : sources.length === 0 ? (
+                    <div className="text-center text-slate-500 py-10">
+                        暂无来源，请添加 TG 频道或网站链接
+                    </div>
+                ) : (
+                    sources.map(source => (
+                        <div key={source.id} className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <div className="flex items-center gap-4 flex-1">
+                                <div className={`p-2 rounded-lg ${source.type === 'telegram' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600'}`}>
+                                    {source.type === 'telegram' ? <Bell size={18} /> : <Globe size={18} />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-slate-800 dark:text-white truncate">{source.name}</div>
+                                    <div className="text-sm text-slate-500 truncate">{source.url}</div>
+                                </div>
+                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${source.enabled ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                    {source.enabled ? '启用' : '禁用'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 ml-4">
+                                <button
+                                    onClick={() => handleToggleSource(source.id, source.enabled)}
+                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${source.enabled ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700' : 'bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'}`}
+                                >
+                                    {source.enabled ? '禁用' : '启用'}
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteSource(source.id)}
+                                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Info */}
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                <div className="flex items-start gap-3">
+                    <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
+                    <div className="text-sm text-blue-700 dark:text-blue-300">
+                        <p><strong>提示：</strong>添加的来源会在后续版本中用于扩展资源搜索范围。</p>
+                        <p className="mt-1">TG 频道格式：<code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">https://t.me/channel_name</code> 或 <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">@channel_name</code></p>
+                    </div>
+                </div>
+            </div>
+        </section>
     );
 };
 
