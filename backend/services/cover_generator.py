@@ -184,6 +184,9 @@ class CoverGenerator:
         p_base_w = int(width * (poster_scale_pct / 100))
         p_base_h = int(p_base_w * 1.5)
         
+        import math
+        from PIL import ImageFilter
+
         for i, config in enumerate(STAGES):
             if i >= len(posters):
                 break
@@ -199,16 +202,78 @@ class CoverGenerator:
                 enhancer = ImageEnhance.Brightness(poster)
                 poster = enhancer.enhance(config["brightness"])
             
-            # 旋转
-            rotated = poster.rotate(config["angle"], expand=True, resample=Image.Resampling.BICUBIC)
+            # 旋转处理 (PIL 旋转是逆时针，CSS 是顺时针，且 PIL 默认围绕中心旋转)
+            # React 代码中使用 transform-origin: center 80%
+            # 需要手动计算围绕中心下方 30% 处 (0.8 - 0.5) 旋转产生的位移
             
-            # 位置
-            px = int(config["x"] + offset_x - rotated.width / 2)
-            py = int(config["y"] - rotated.height / 2)
+            # CSS angle (-28deg) -> Tilted Left (CCW). CSS positive is CW. 
+            # PIL positive is CCW. So CSS -28 == PIL +28.
+            # config["angle"] is -28. We need +28. So we use -angle.
+            rot_angle = -config["angle"]
+            rotated = poster.rotate(rot_angle, expand=True, resample=Image.Resampling.BICUBIC)
             
-            # 绘制阴影
-            shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 120))
-            img.paste(shadow, (px + 20, py + 20), shadow)
+            # 计算 Pivot 偏移
+            # 原图中心 (cx, cy)
+            # Pivot 点 P = (cx, cy + 0.3 * sh)
+            # 旋转后，原图中心移动到了新的位置
+            # 使用向量旋转公式计算中心点的位移
+            rad = math.radians(rot_angle)
+            pivot_offset = 0.3 * sh
+            
+            # 向量 PC (从 Pivot 指向 Center) = (0, -0.3 * sh)
+            # 旋转后的向量 PC' 
+            # x' = x*cos - y*sin = 0 - (-0.3*sh)*sin = 0.3*sh*sin
+            # y' = x*sin + y*cos = 0 + (-0.3*sh)*cos = -0.3*sh*cos
+            
+            # 原始 PC = (0, -0.3*sh)
+            # 位移 Delta = PC' - PC
+            # dx = 0.3*sh*sin
+            # dy = -0.3*sh*cos - (-0.3*sh) = 0.3*sh * (1 - cos)
+            
+            shift_x = pivot_offset * math.sin(rad)
+            shift_y = pivot_offset * (1 - math.cos(rad))
+            
+            # 基础位置 (Element Center)
+            base_x = config["x"] + offset_x
+            base_y = config["y"]
+            
+            # 最终中心位置
+            final_cx = base_x + shift_x
+            final_cy = base_y + shift_y
+            
+            # 绘制位置 (Top-Left)
+            px = int(final_cx - rotated.width / 2)
+            py = int(final_cy - rotated.height / 2)
+            
+            # 绘制阴影 (带高斯模糊)
+            if config.get("z", 0) > 0: # 只对可见层绘制阴影
+                # 创建阴影层，大小与旋转后的图一致
+                # React shadow: 0 10px 20px rgba(0,0,0,0.5)
+                # 这里模拟一个通用的模糊阴影
+                shadow_radius = 20
+                shadow_offset_y = 20
+                
+                # 阴影画布稍大一点以免模糊被截断
+                shadow_w = rotated.width + shadow_radius * 2
+                shadow_h = rotated.height + shadow_radius * 2
+                shadow_img = Image.new("RGBA", (shadow_w, shadow_h), (0, 0, 0, 0))
+                
+                # 绘制黑色实体
+                # 为了获得正确的形状，我们应该使用旋转后的 alpha 通道
+                mask = rotated.split()[3]
+                
+                # 创建一个黑色实底
+                shadow_core = Image.new("RGBA", rotated.size, (0, 0, 0, 100))
+                shadow_core.putalpha(mask)
+                
+                # 粘贴到阴影画布中心
+                shadow_img.paste(shadow_core, (shadow_radius, shadow_radius), shadow_core)
+                
+                # 高斯模糊
+                shadow_blur = shadow_img.filter(ImageFilter.GaussianBlur(10))
+                
+                # 绘制阴影 (位置微调)
+                img.paste(shadow_blur, (px - shadow_radius, py - shadow_radius + shadow_offset_y), shadow_blur)
             
             # 粘贴海报
             img.paste(rotated, (px, py), rotated)
