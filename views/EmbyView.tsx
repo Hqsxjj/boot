@@ -48,10 +48,10 @@ export const EmbyView: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
-    const [titleSize, setTitleSize] = useState(130);      // 主标题文字大小 40-300
-    const [offsetX, setOffsetX] = useState(200);           // 海报水平位移 -100 to 600
-    const [posterScale, setPosterScale] = useState(30);   // 整体缩放比例 10-60
-    const [vAlign, setVAlign] = useState(22);             // 标题纵向对齐 5-90
+    const [titleSize, setTitleSize] = useState(100);      // 主标题文字大小 5.2vw (1920*0.052 ~= 100)
+    const [offsetX, setOffsetX] = useState(272);           // 海报水平位移 272px
+    const [posterScale, setPosterScale] = useState(30);   // 整体缩放比例 30%
+    const [vAlign, setVAlign] = useState(52);             // 标题纵向对齐 52%
 
     // 加载配置
     useEffect(() => {
@@ -629,27 +629,7 @@ export const EmbyView: React.FC = () => {
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">主标题</label>
-                                    <input
-                                        type="text"
-                                        value={coverTitle}
-                                        onChange={(e) => setCoverTitle(e.target.value)}
-                                        placeholder="电影收藏"
-                                        className={inputClass}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">副标题</label>
-                                    <input
-                                        type="text"
-                                        value={coverSubtitle}
-                                        onChange={(e) => setCoverSubtitle(e.target.value)}
-                                        placeholder="MOVIE COLLECTION"
-                                        className={inputClass}
-                                    />
-                                </div>
+                                {/* 标题由媒体库自动填充，隐藏手动输入 */}
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
