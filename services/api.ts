@@ -318,7 +318,8 @@ export const api = {
   testEmbyConnection: async () => {
     const res = await apiClient.post<ApiResponse<{ success: boolean; latency: number; msg?: string }>>(
       '/emby/test-connection',
-      {}
+      {},
+      { timeout: 35000 }  // 35秒超时 (后端 Emby 连接超时是 30 秒)
     );
     return res.data;
   },
