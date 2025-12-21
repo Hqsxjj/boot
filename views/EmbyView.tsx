@@ -226,7 +226,20 @@ export const EmbyView: React.FC = () => {
             if (librariesRes.success) {
                 setCoverLibraries(librariesRes.data);
                 if (librariesRes.data.length > 0) {
-                    setSelectedLibrary(librariesRes.data[0].id);
+                    const firstLib = librariesRes.data[0];
+                    setSelectedLibrary(firstLib.id);
+                    // 自动填充标题
+                    setCoverTitle(firstLib.name);
+                    const typeMap: Record<string, string> = {
+                        'movies': 'MOVIE COLLECTION',
+                        'tvshows': 'TV SHOWS',
+                        'music': 'MUSIC COLLECTION',
+                        'homevideos': 'HOME VIDEOS',
+                        'books': 'BOOK COLLECTION',
+                        'photos': 'PHOTO ALBUM',
+                        'musicvideos': 'MUSIC VIDEOS'
+                    };
+                    setCoverSubtitle(typeMap[firstLib.type?.toLowerCase()] || firstLib.type?.toUpperCase() || 'MEDIA COLLECTION');
                 }
             }
         } catch (e) {
@@ -587,7 +600,26 @@ export const EmbyView: React.FC = () => {
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">选择媒体库</label>
                                     <select
                                         value={selectedLibrary}
-                                        onChange={(e) => setSelectedLibrary(e.target.value)}
+                                        onChange={(e) => {
+                                            const libId = e.target.value;
+                                            setSelectedLibrary(libId);
+                                            // 自动填充标题为媒体库名称
+                                            const lib = coverLibraries.find(l => l.id === libId);
+                                            if (lib) {
+                                                setCoverTitle(lib.name);
+                                                // 副标题使用媒体库类型的大写形式
+                                                const typeMap: Record<string, string> = {
+                                                    'movies': 'MOVIE COLLECTION',
+                                                    'tvshows': 'TV SHOWS',
+                                                    'music': 'MUSIC COLLECTION',
+                                                    'homevideos': 'HOME VIDEOS',
+                                                    'books': 'BOOK COLLECTION',
+                                                    'photos': 'PHOTO ALBUM',
+                                                    'musicvideos': 'MUSIC VIDEOS'
+                                                };
+                                                setCoverSubtitle(typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION');
+                                            }
+                                        }}
                                         className={inputClass}
                                     >
                                         {coverLibraries.length === 0 && <option value="">请先点击"加载媒体库"</option>}
