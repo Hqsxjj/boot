@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
-import { Save, RefreshCw, KeyRound, User, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, Shield, Tv, Database } from 'lucide-react';
+import { Save, RefreshCw, KeyRound, User, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, Shield, Tv } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
-import { Cloud115AuthPanel } from '../components/Cloud115AuthPanel';
 
 // [新增] 默认空配置 (看不见的兜底数据)
 const DEFAULT_CONFIG: Partial<AppConfig> = {
@@ -36,11 +35,10 @@ export const UserCenterView: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
-  const [loginApps, setLoginApps] = useState<Array<{ key: string; name: string }>>([]);
+
 
   useEffect(() => {
     fetchConfig();
-    fetchLoginApps();
 
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsPwaInstalled(true);
@@ -74,20 +72,7 @@ export const UserCenterView: React.FC = () => {
     }
   };
 
-  const fetchLoginApps = async () => {
-    try {
-      const apps = await api.get115LoginApps();
-      if (apps && apps.length > 0) {
-        setLoginApps(apps.map(a => ({ key: a.key, name: a.name })));
-      }
-    } catch (e) {
-      setLoginApps([
-        { key: 'android', name: '安卓' },
-        { key: 'ios', name: 'iOS' },
-        { key: 'tv', name: '电视端' }
-      ]);
-    }
-  };
+
 
   const handlePwaInstall = () => {
     if (deferredPrompt) {
@@ -598,31 +583,7 @@ export const UserCenterView: React.FC = () => {
       </div>
 
 
-      {/* Cloud 115 Settings (New Section) */}
-      <section className={`${glassCardClass} flex flex-col`}>
-        <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400 shadow-inner">
-              <Database size={20} />
-            </div>
-            <h3 className="font-bold text-slate-700 dark:text-slate-200">115 云盘连接</h3>
-          </div>
-        </div>
-        <div className="p-6">
-          <Cloud115AuthPanel
-            config={config}
-            onUpdateConfig={(section, key, value) => {
-              // Adapter for updateNested
-              if (section === 'cloud115') {
-                updateNested('cloud115', key, value);
-              }
-            }}
-            onSave={handleSave}
-            isSaving={isSaving}
-            loginApps={loginApps}
-          />
-        </div>
-      </section>
+
 
       {/* PWA Module - Bottom */}
       {(deferredPrompt || isPwaInstalled) && (
