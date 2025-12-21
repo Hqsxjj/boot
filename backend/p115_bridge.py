@@ -124,12 +124,13 @@ class P115Service:
     def _background_poll_qrcode_login(self, session_id: str):
         """
         后台线程：持续轮询普通 qrcode 扫码状态直到成功或超时。
-        解决同步轮询导致的前端超时问题。
+        使用直接 115 API 调用，不依赖 p115client。
         """
         import time
         
         session_info = self._session_cache.get(session_id)
         if not session_info:
+            logger.error(f"Session {session_id} not found at start of polling")
             return
         
         qr_data = session_info.get('qr_data', {})
@@ -140,20 +141,16 @@ class P115Service:
         
         if not uid:
             logger.error(f"Session {session_id} 缺少 uid")
+            session_info['status'] = 'error'
+            session_info['error'] = '缺少 uid'
             return
         
-        payload = {'uid': uid, 'time': time_val, 'sign': sign}
+        logger.info(f"开始后台轮询 session {session_id}: uid={uid[:8]}..., time={time_val}")
         
         max_wait_time = 300  # 最多等待 5 分钟
         elapsed_time = 0
         scanned = False
         consecutive_errors = 0
-        
-        p115client = self.p115client
-        if not p115client:
-            session_info['status'] = 'error'
-            session_info['error'] = 'p115client not available'
-            return
         
         while elapsed_time < max_wait_time:
             if session_id not in self._session_cache:
@@ -161,12 +158,9 @@ class P115Service:
                 break
             
             try:
-                try:
-                    status_result = p115client.P115Client.login_qrcode_scan_status(payload, app=login_app)
-                except TypeError:
-                    status_result = p115client.P115Client.login_qrcode_scan_status(payload)
-                
-                status_code = status_result.get('data', {}).get('status', 0)
+                # 使用直接 API 检查状态
+                status_result = self._check_qrcode_status_direct(uid, time_val, sign)
+                status_code = status_result.get('status', 0)
                 consecutive_errors = 0  # 重置错误计数
                 
                 if status_code == 0:
@@ -178,35 +172,14 @@ class P115Service:
                     session_info['status'] = 'scanned'
                 elif status_code == 2:
                     # 用户确认，获取 cookies
-                    try:
-                        try:
-                            scan_result = p115client.P115Client.login_qrcode_scan(payload, app=login_app)
-                        except TypeError:
-                            scan_result = p115client.P115Client.login_qrcode_scan(payload)
-                        
-                        if scan_result.get('state') == 1:
-                            cookie_data = scan_result.get('data', {}).get('cookie', {})
-                            if isinstance(cookie_data, str):
-                                cookies = {}
-                                for part in cookie_data.split(';'):
-                                    part = part.strip()
-                                    if '=' in part:
-                                        key, value = part.split('=', 1)
-                                        cookies[key.strip()] = value.strip()
-                            elif isinstance(cookie_data, dict):
-                                cookies = cookie_data
-                            else:
-                                cookies = {}
-                            
-                            session_info['status'] = 'success'
-                            session_info['cookies'] = cookies
-                            logger.info(f"Session {session_id} 扫码登录成功!")
-                        else:
-                            session_info['status'] = 'error'
-                            session_info['error'] = '获取 cookies 失败'
-                    except Exception as e:
+                    login_result = self._login_with_qrcode_direct(uid, login_app)
+                    if login_result.get('success'):
+                        session_info['status'] = 'success'
+                        session_info['cookies'] = login_result.get('cookies', {})
+                        logger.info(f"Session {session_id} 扫码登录成功!")
+                    else:
                         session_info['status'] = 'error'
-                        session_info['error'] = str(e)
+                        session_info['error'] = login_result.get('error', '获取 cookies 失败')
                     break
                 elif status_code in [-1, -2]:
                     session_info['status'] = 'expired'
@@ -216,7 +189,7 @@ class P115Service:
             except Exception as e:
                 consecutive_errors += 1
                 logger.warning(f"Session {session_id} 轮询出错 ({consecutive_errors}): {str(e)}")
-                if consecutive_errors >= 5:
+                if consecutive_errors >= 10:
                     session_info['status'] = 'error'
                     session_info['error'] = f'轮询失败: {str(e)}'
                     break
@@ -405,6 +378,77 @@ class P115Service:
             return {'success': False, 'error': '115 API 请求超时'}
         except Exception as e:
             logger.error(f"Direct 115 API exception: {str(e)}")
+            return {'success': False, 'error': str(e)}
+    
+    def _check_qrcode_status_direct(self, uid: str, time_val: int, sign: str) -> Dict[str, Any]:
+        """
+        直接调用 115 官方 API 检查二维码状态。
+        
+        Returns:
+            {status: 0/1/2/-1/-2, ...} 其中 0=等待, 1=已扫描, 2=已确认, -1/-2=过期
+        """
+        try:
+            url = "https://qrcodeapi.115.com/get/status/"
+            params = {'uid': uid, 'time': time_val, 'sign': sign}
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://115.com/'
+            }
+            
+            response = self._http_session.get(url, headers=headers, params=params, timeout=10)
+            result = response.json()
+            
+            # 返回格式：{state: 1, data: {status: 0/1/2/-1/-2, ...}}
+            if result.get('state') == 1:
+                return {
+                    'success': True,
+                    'status': result.get('data', {}).get('status', 0)
+                }
+            else:
+                return {'success': False, 'status': -1, 'error': result.get('message', 'Unknown')}
+                
+        except Exception as e:
+            logger.warning(f"Direct status check failed: {str(e)}")
+            return {'success': False, 'status': -1, 'error': str(e)}
+    
+    def _login_with_qrcode_direct(self, uid: str, app: str = 'web') -> Dict[str, Any]:
+        """
+        直接调用 115 官方 API 完成扫码登录获取 cookies。
+        
+        Returns:
+            {success: True, cookies: {...}} or {success: False, error: '...'}
+        """
+        try:
+            url = "https://passportapi.115.com/app/1.0/web/1.0/login/qrcode/"
+            data = {'account': uid, 'app': app}
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://115.com/'
+            }
+            
+            response = self._http_session.post(url, headers=headers, data=data, timeout=15)
+            result = response.json()
+            
+            if result.get('state') == 1:
+                cookie_data = result.get('data', {}).get('cookie', {})
+                if isinstance(cookie_data, str):
+                    cookies = {}
+                    for part in cookie_data.split(';'):
+                        part = part.strip()
+                        if '=' in part:
+                            key, value = part.split('=', 1)
+                            cookies[key.strip()] = value.strip()
+                elif isinstance(cookie_data, dict):
+                    cookies = cookie_data
+                else:
+                    cookies = {}
+                
+                return {'success': True, 'cookies': cookies}
+            else:
+                return {'success': False, 'error': result.get('message', 'Login failed')}
+                
+        except Exception as e:
+            logger.error(f"Direct login failed: {str(e)}")
             return {'success': False, 'error': str(e)}
     
     def _fetch_qrcode_as_base64(self, qrcode_url: str, uid: str = '') -> str:
