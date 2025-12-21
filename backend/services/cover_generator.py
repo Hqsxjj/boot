@@ -373,36 +373,38 @@ class CoverGenerator:
         
         # === 文字 3D 立体阴影效果 ===
         # 使用多层投影模拟立体感
-        shadow_layers = [
-            (2, 2, (0, 0, 0, 100)),
-            (4, 4, (0, 0, 0, 80)),
-            (6, 6, (0, 0, 0, 60)),
-            (8, 8, (0, 0, 0, 40)),
-        ]
+        # === 文字效果 (扁平化) ===
         
-        # 1. 主标题阴影
-        for dx, dy, color in shadow_layers:
-             draw.text((tx + dx, ty + dy), title, font=m_font, fill=color)
+        # 1. 主标题
+        # 移除 3D 阴影，仅保留一个柔和的投影以保证可读性
+        draw.text((tx + 2, ty + 2), title, font=m_font, fill=(0, 0, 0, 100))
+        draw.text((tx, ty), title, font=m_font, fill="white")
         
-        # 主标题 (带玻璃质感描边)
-        draw.text((tx, ty), title, font=m_font, fill="white", stroke_width=2, stroke_fill=(255, 255, 255, 50))
-        
-        # 2. 副标题阴影
-        # 增加主副标题间距：不再是固定 25，而是跟字号成比例，增加呼吸感
+        # 2. 副标题
+        # 调整间距
         spacing = int(title_size * 0.4) + 10 
         sub_y = ty + title_size + spacing
         
-        for dx, dy, color in shadow_layers:
-             draw.text((tx + dx, sub_y + dy), subtitle, font=s_font, fill=color)
-             
-        # 副标题
-        draw.text((tx, sub_y), subtitle, font=s_font, fill=(255, 255, 255, 220), stroke_width=1, stroke_fill=(0, 0, 0, 50))
+        # 简单的投影
+        draw.text((tx + 2, sub_y + 2), subtitle, font=s_font, fill=(0, 0, 0, 80))
+        draw.text((tx, sub_y), subtitle, font=s_font, fill=(255, 255, 255, 220))
         
-        # 装饰条
-        bar_y = ty + title_size + 100
-        # 装饰条阴影
-        draw.rectangle([tx + 4, bar_y + 4, tx + 184, bar_y + 12], fill=(0, 0, 0, 80))
-        draw.rectangle([tx, bar_y, tx + 180, bar_y + 8], fill="white")
+        # 3. 装饰底线 (由实到虚)
+        bar_y = sub_y + 60  # 在副标题下方
+        bar_height = 4
+        bar_width = 400
+        
+        # 创建渐变 Mask
+        gradient_bar = Image.new('RGBA', (bar_width, bar_height), (0, 0, 0, 0))
+        bar_draw = ImageDraw.Draw(gradient_bar)
+        
+        # 绘制渐变
+        for x in range(bar_width):
+            alpha = int(255 * (1 - (x / bar_width))) # 从左到右透明度降低 255 -> 0
+            bar_draw.line([(x, 0), (x, bar_height)], fill=(255, 255, 255, alpha))
+            
+        # 粘贴渐变线条
+        img.paste(gradient_bar, (tx, bar_y), gradient_bar)
         
         return img
     
