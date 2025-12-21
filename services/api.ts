@@ -586,4 +586,37 @@ export const api = {
     const res = await apiClient.delete<ApiResponse<any>>('/115/recycle');
     return res.data;
   },
+
+  // --- Emby Cover Generator ---
+
+  getCoverThemes: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ index: number; name: string; colors: string[] }>>>('/emby/cover/themes');
+    return res.data;
+  },
+
+  getCoverLibraries: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ id: string; name: string; type: string; path: string }>>>('/emby/cover/libraries');
+    return res.data;
+  },
+
+  getLibraryPosters: async (libraryId: string, limit: number = 10) => {
+    const res = await apiClient.get<ApiResponse<string[]>>(`/emby/cover/posters/${libraryId}`, { params: { limit } });
+    return res.data;
+  },
+
+  generateCover: async (options: {
+    libraryId: string;
+    title: string;
+    subtitle: string;
+    themeIndex: number;
+    format: 'png' | 'gif';
+    titleSize?: number;
+    offsetX?: number;
+    posterScale?: number;
+    vAlign?: number;
+  }) => {
+    const res = await apiClient.post<ApiResponse<{ image: string; format: string }>>('/emby/cover/generate', options);
+    return res.data;
+  },
 };
+

@@ -558,3 +558,163 @@ def test_emby_notification():
             'success': False,
             'error': f'测试失败: {str(e)}'
         }), 500
+
+
+# ==================== 封面生成器 API ====================
+
+from services.cover_generator import get_cover_generator, THEMES
+
+
+@emby_bp.route('/cover/themes', methods=['GET'])
+@require_auth
+def get_cover_themes():
+    """获取可用的封面主题列表"""
+    themes = [{"index": i, "name": t["name"], "colors": t["colors"]} for i, t in enumerate(THEMES)]
+    return jsonify({
+        'success': True,
+        'data': themes
+    }), 200
+
+
+@emby_bp.route('/cover/libraries', methods=['GET'])
+@require_auth
+def get_cover_libraries():
+    """获取 Emby 媒体库列表（用于封面生成）"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+            
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        if not emby_url or not api_key:
+            return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
+        
+        generator = get_cover_generator()
+        generator.set_emby_config(emby_url, api_key)
+        libraries = generator.get_libraries()
+        
+        return jsonify({
+            'success': True,
+            'data': libraries
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/posters/<library_id>', methods=['GET'])
+@require_auth
+def get_library_posters(library_id: str):
+    """获取媒体库海报列表（base64 格式）"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+            
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        if not emby_url or not api_key:
+            return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
+        
+        limit = request.args.get('limit', 10, type=int)
+        
+        generator = get_cover_generator()
+        generator.set_emby_config(emby_url, api_key)
+        posters = generator.get_library_posters(library_id, limit=limit)
+        
+        # 转换为 base64
+        poster_data = []
+        for img in posters:
+            b64 = generator.cover_to_base64(img)
+            poster_data.append(b64)
+        
+        return jsonify({
+            'success': True,
+            'data': poster_data
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/generate', methods=['POST'])
+@require_auth
+def generate_cover():
+    """生成封面图"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+            
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        data = request.get_json() or {}
+        library_id = data.get('libraryId')
+        title = data.get('title', '电影收藏')
+        subtitle = data.get('subtitle', 'MOVIE COLLECTION')
+        theme_index = data.get('themeIndex', 0)
+        output_format = data.get('format', 'png')  # 'png' or 'gif'
+        title_size = data.get('titleSize', 130)
+        offset_x = data.get('offsetX', 200)
+        poster_scale = data.get('posterScale', 30)
+        v_align = data.get('vAlign', 22)
+        
+        generator = get_cover_generator()
+        
+        if emby_url and api_key:
+            generator.set_emby_config(emby_url, api_key)
+        
+        # 获取海报
+        posters = []
+        if library_id:
+            posters = generator.get_library_posters(library_id, limit=5)
+        
+        if not posters:
+            return jsonify({'success': False, 'error': '未能获取海报图片'}), 400
+        
+        # 生成封面
+        if output_format.lower() == 'gif':
+            gif_data = generator.generate_animated_cover(
+                posters=posters,
+                title=title,
+                subtitle=subtitle,
+                theme_index=theme_index,
+                title_size=title_size,
+                offset_x=offset_x,
+                poster_scale_pct=poster_scale,
+                v_align_pct=v_align,
+                frame_count=len(posters) * 4,
+                duration_ms=150
+            )
+            result_b64 = generator.bytes_to_base64(gif_data, "image/gif")
+        else:
+            cover_img = generator.generate_cover(
+                posters=posters,
+                title=title,
+                subtitle=subtitle,
+                theme_index=theme_index,
+                title_size=title_size,
+                offset_x=offset_x,
+                poster_scale_pct=poster_scale,
+                v_align_pct=v_align
+            )
+            result_b64 = generator.cover_to_base64(cover_img)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'image': result_b64,
+                'format': output_format
+            }
+        }), 200
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(f"生成封面失败: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
-import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2 } from 'lucide-react';
+import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2, Image, Download, Palette } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 
 // === 定义默认配置 (防止后端连不上时页面白屏) ===
@@ -35,6 +35,18 @@ export const EmbyView: React.FC = () => {
     }>({ success: null, latency: 0 });
 
     const [missingData, setMissingData] = useState<any[]>([]);
+
+    // Cover Generator State
+    const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
+    const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
+    const [selectedLibrary, setSelectedLibrary] = useState<string>('');
+    const [coverTitle, setCoverTitle] = useState('电影收藏');
+    const [coverSubtitle, setCoverSubtitle] = useState('MOVIE COLLECTION');
+    const [selectedTheme, setSelectedTheme] = useState(0);
+    const [coverFormat, setCoverFormat] = useState<'png' | 'gif'>('png');
+    const [coverPreview, setCoverPreview] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
 
     // 加载配置
     useEffect(() => {
@@ -195,6 +207,66 @@ export const EmbyView: React.FC = () => {
             setToast('请手动复制上方地址');
         }
         setTimeout(() => setToast(null), 2000);
+    };
+
+    // Cover Generator Functions
+    const loadCoverData = async () => {
+        setIsLoadingLibraries(true);
+        try {
+            const [themesRes, librariesRes] = await Promise.all([
+                api.getCoverThemes(),
+                api.getCoverLibraries()
+            ]);
+            if (themesRes.success) setCoverThemes(themesRes.data);
+            if (librariesRes.success) {
+                setCoverLibraries(librariesRes.data);
+                if (librariesRes.data.length > 0) {
+                    setSelectedLibrary(librariesRes.data[0].id);
+                }
+            }
+        } catch (e) {
+            console.error('加载封面生成器数据失败:', e);
+        } finally {
+            setIsLoadingLibraries(false);
+        }
+    };
+
+    const handleGenerateCover = async () => {
+        if (!selectedLibrary) {
+            setToast('请先选择媒体库');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        setIsGenerating(true);
+        try {
+            const result = await api.generateCover({
+                libraryId: selectedLibrary,
+                title: coverTitle,
+                subtitle: coverSubtitle,
+                themeIndex: selectedTheme,
+                format: coverFormat
+            });
+            if (result.success) {
+                setCoverPreview(result.data.image);
+                setToast('封面生成成功！');
+            } else {
+                setToast(result.error || '生成失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            setToast('生成失败');
+            setTimeout(() => setToast(null), 3000);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const downloadCover = () => {
+        if (!coverPreview) return;
+        const link = document.createElement('a');
+        link.href = coverPreview;
+        link.download = `emby-cover.${coverFormat}`;
+        link.click();
     };
 
     // === Loading 状态判断 ===
@@ -472,6 +544,141 @@ export const EmbyView: React.FC = () => {
                                         </table>
                                     )}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Cover Generator */}
+                <section className={`${glassCardClass} overflow-hidden xl:col-span-2`}>
+                    <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400 shadow-inner">
+                                <Image size={20} />
+                            </div>
+                            <h3 className="font-bold text-slate-700 dark:text-slate-200">封面图生成器</h3>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={loadCoverData}
+                                disabled={isLoadingLibraries}
+                                className={`${actionBtnClass} bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/40 disabled:opacity-50`}
+                            >
+                                {isLoadingLibraries ? <RefreshCw className="animate-spin" size={12} /> : <RefreshCw size={12} />}
+                                加载媒体库
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-6 transition-all duration-300">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left: Controls */}
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">选择媒体库</label>
+                                    <select
+                                        value={selectedLibrary}
+                                        onChange={(e) => setSelectedLibrary(e.target.value)}
+                                        className={inputClass}
+                                    >
+                                        {coverLibraries.length === 0 && <option value="">请先点击"加载媒体库"</option>}
+                                        {coverLibraries.map(lib => (
+                                            <option key={lib.id} value={lib.id}>{lib.name} ({lib.type || '未知'})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">主标题</label>
+                                    <input
+                                        type="text"
+                                        value={coverTitle}
+                                        onChange={(e) => setCoverTitle(e.target.value)}
+                                        placeholder="电影收藏"
+                                        className={inputClass}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">副标题</label>
+                                    <input
+                                        type="text"
+                                        value={coverSubtitle}
+                                        onChange={(e) => setCoverSubtitle(e.target.value)}
+                                        placeholder="MOVIE COLLECTION"
+                                        className={inputClass}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
+                                        <Palette size={12} /> 主题配色
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {coverThemes.map(theme => (
+                                            <button
+                                                key={theme.index}
+                                                onClick={() => setSelectedTheme(theme.index)}
+                                                className={`w-8 h-8 rounded-lg transition-all ${selectedTheme === theme.index ? 'ring-2 ring-offset-2 ring-amber-500 scale-110' : 'opacity-80 hover:opacity-100'}`}
+                                                style={{ background: `linear-gradient(135deg, ${theme.colors[0]}, ${theme.colors[theme.colors.length - 1]})` }}
+                                                title={theme.name}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">输出格式</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setCoverFormat('png')}
+                                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition-all ${coverFormat === 'png' ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
+                                            >
+                                                PNG 静态
+                                            </button>
+                                            <button
+                                                onClick={() => setCoverFormat('gif')}
+                                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition-all ${coverFormat === 'gif' ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
+                                            >
+                                                GIF 动图
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={handleGenerateCover}
+                                        disabled={isGenerating || !selectedLibrary}
+                                        className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20"
+                                    >
+                                        {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Image size={16} />}
+                                        {isGenerating ? '生成中...' : '生成封面'}
+                                    </button>
+                                    {coverPreview && (
+                                        <button
+                                            onClick={downloadCover}
+                                            className="px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                                        >
+                                            <Download size={16} />
+                                            下载
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right: Preview */}
+                            <div className="bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center min-h-[300px]">
+                                {coverPreview ? (
+                                    <img src={coverPreview} alt="Cover Preview" className="max-w-full max-h-[400px] object-contain" />
+                                ) : (
+                                    <div className="text-slate-500 text-sm text-center p-8">
+                                        <Image size={48} className="mx-auto mb-3 opacity-30" />
+                                        <p>封面预览</p>
+                                        <p className="text-xs mt-1 opacity-50">选择媒体库并点击生成</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
