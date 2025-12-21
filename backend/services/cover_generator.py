@@ -180,6 +180,36 @@ class CoverGenerator:
         
         # 绘制渐变背景
         self._draw_gradient_background(draw, width, height, theme["colors"][0], theme["colors"][-1])
+        
+        # === 背景混合色 (Ambient Light / Mesh Gradient 模拟) ===
+        # 在背景左上角和右下角添加淡淡的混合光斑，使背景不那么单调
+        # 使用中间色 theme["colors"][1]
+        mix_color = self._hex_to_rgb(theme["colors"][1])
+        
+        # 创建一个混合层
+        mix_layer = Image.new("RGBA", (width, height), (0,0,0,0))
+        mix_draw = ImageDraw.Draw(mix_layer)
+        
+        # 光斑 1: 左上角，巨大，柔和
+        # 使用径向渐变模拟 (这里用多层半透明圆模拟模糊)
+        import random
+        # 稍微随机一点位置，增加自然感
+        cx1, cy1 = random.randint(0, width//3), random.randint(0, height//3)
+        radius1 = 800
+        for r in range(radius1, 0, -20):
+            alpha = int(40 * (1 - r/radius1)) # 边缘透明，中心 40 alpha
+            mix_draw.ellipse([cx1-r, cy1-r, cx1+r, cy1+r], fill=mix_color + (alpha,))
+            
+        # 光斑 2: 右下角，互补或同色
+        cx2, cy2 = random.randint(width*2//3, width), random.randint(height*2//3, height)
+        radius2 = 600
+        for r in range(radius2, 0, -20):
+            alpha = int(30 * (1 - r/radius2))
+            mix_draw.ellipse([cx2-r, cy2-r, cx2+r, cy2+r], fill=mix_color + (alpha,))
+            
+        # 叠加混合层
+        img = Image.alpha_composite(img, mix_layer)
+        draw = ImageDraw.Draw(img)
 
         # === 2. 玻璃材质层 (第二层级) ===
         # 在背景之上，内容之下，加一层淡淡的玻璃质感
