@@ -37,7 +37,8 @@ import {
     FileAudio,
     FileArchive,
     FileImage,
-    File
+    File,
+    FolderPlus
 } from 'lucide-react';
 
 
@@ -624,6 +625,62 @@ export const ResourceSearchView: React.FC = () => {
         }
     };
 
+    // 保存单个文件
+    const handleSaveSingleFile = async (resource: Resource, fileId: string, fileName: string) => {
+        const link = resource.share_link || resource.share_links?.[0]?.link;
+        if (!link) {
+            setToast('无法获取分享链接');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        try {
+            let response;
+
+            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
+            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
+
+            if (match115) {
+                const shareCode = match115[1];
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+                } catch (e) { /* ignore */ }
+                if (!accessCode && resource.share_code) {
+                    accessCode = resource.share_code;
+                }
+                response = await api.save115Share(shareCode, accessCode, undefined, [fileId]);
+            } else if (match123) {
+                const shareCode = match123[1];
+                let accessCode = '';
+                try {
+                    const urlObj = new URL(link);
+                    accessCode = urlObj.searchParams.get('pwd') || urlObj.searchParams.get('password') || '';
+                } catch (e) { /* ignore */ }
+                if (!accessCode && resource.share_code) {
+                    accessCode = resource.share_code;
+                }
+                response = await api.save123Share(shareCode, accessCode, undefined, [fileId]);
+            } else {
+                setToast('不支持的链接格式');
+                setTimeout(() => setToast(null), 3000);
+                return;
+            }
+
+            if (response.success) {
+                setToast(`已转存: ${fileName}`);
+            } else {
+                setToast(response.error || '转存失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            console.error(e);
+            setToast('转存失败');
+            setTimeout(() => setToast(null), 3000);
+        }
+    };
+
     const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
     const inputClass = "w-full px-4 py-3 rounded-xl border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder:text-slate-400 text-base backdrop-blur-sm shadow-inner";
 
@@ -767,6 +824,7 @@ export const ResourceSearchView: React.FC = () => {
                                         onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
                                         onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
                                         onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                        onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
                                         breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
                                         onFolderClick={(folder) => handleFolderClick(resource, folder)}
                                         onBreadcrumbClick={(index) => navigateToBreadcrumb(resource, index)}
@@ -2192,10 +2250,11 @@ const ResourceCard: React.FC<{
     onToggleFileSelection?: (fileId: string) => void;
     onToggleSelectAll?: () => void;
     onSaveFiles?: () => Promise<void>;
+    onSaveSingleFile?: (fileId: string, fileName: string) => Promise<void>;
     breadcrumbs?: Array<{ id: string; name: string }>;
     onFolderClick?: (folder: ShareFile) => void;
     onBreadcrumbClick?: (index: number) => void;
-}> = ({ resource, onClick, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles, breadcrumbs, onFolderClick, onBreadcrumbClick }) => {
+}> = ({ resource, onClick, onToggleExpand, isExpanded, files, isLoadingFiles, selectedFileIds, onToggleFileSelection, onToggleSelectAll, onSaveFiles, onSaveSingleFile, breadcrumbs, onFolderClick, onBreadcrumbClick }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -2480,7 +2539,7 @@ const ResourceCard: React.FC<{
                                                 </div>
 
                                                 {/* Folder Enter Button - 右侧明显的进入按钮 */}
-                                                {isRealFolder(file) && (
+                                                {isRealFolder(file) ? (
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -2490,6 +2549,17 @@ const ResourceCard: React.FC<{
                                                     >
                                                         <ExternalLink size={14} />
                                                         进入
+                                                    </button>
+                                                ) : onSaveSingleFile && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onSaveSingleFile(file.id, file.name);
+                                                        }}
+                                                        className="shrink-0 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                                                    >
+                                                        <FolderPlus size={12} />
+                                                        转存
                                                     </button>
                                                 )}
                                             </div>
