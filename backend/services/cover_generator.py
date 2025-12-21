@@ -285,6 +285,9 @@ class CoverGenerator:
         # 字体加载逻辑
         font_candidates = [
             font_path, # 用户自定义
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", # Debian/Ubuntu Noto CJK
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "NotoSansCJK-Regular.ttc",
             "msyh.ttf", # 微软雅黑 (Windows)
             "simhei.ttf", # 黑体 (Windows)
             "PingFang.ttc", # 苹方 (Mac)
