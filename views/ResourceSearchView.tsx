@@ -1896,6 +1896,12 @@ const ResourceCard: React.FC<{
     const hasCloudFiles = (resource.cloud_type === '115' || resource.cloud_type === '123') && onToggleExpand;
     const hasShareLink = resource.share_link || (resource.share_links && resource.share_links[0]?.link);
 
+    // 辅助函数：判断是否为真正的文件夹（排除视频文件）
+    const isRealFolder = (file: ShareFile) => {
+        const videoExts = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|ts|rmvb|rm|3gp|mpg|mpeg)$/i;
+        return file.is_directory && !videoExts.test(file.name || '');
+    };
+
     const handleSaveClick = async () => {
         if (!onSaveFiles) return;
         setIsSaving(true);
@@ -2119,7 +2125,7 @@ const ResourceCard: React.FC<{
                                                         onToggleFileSelection?.(file.id);
                                                     }
                                                 }}
-                                                className={`flex items-start gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all ${file.is_directory
+                                                className={`flex items-start gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all ${isRealFolder(file)
                                                     ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
                                                     : selectedFileIds?.has(file.id)
                                                         ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800'
@@ -2128,7 +2134,7 @@ const ResourceCard: React.FC<{
                                             >
                                                 {/* Icon / Checkbox */}
                                                 <div className="pt-0.5 shrink-0">
-                                                    {file.is_directory ? (
+                                                    {isRealFolder(file) ? (
                                                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
                                                             <Folder size={22} className="text-white" fill="white" fillOpacity={0.3} />
                                                         </div>
@@ -2166,7 +2172,7 @@ const ResourceCard: React.FC<{
                                                 </div>
 
                                                 {/* Folder Enter Button - 右侧明显的进入按钮 */}
-                                                {file.is_directory && (
+                                                {isRealFolder(file) && (
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
