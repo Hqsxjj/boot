@@ -624,11 +624,18 @@ class P115Service:
                 files = result.get("data", {}).get("list", [])
                 formatted = []
                 for f in files:
+                    # 目录判断：115 API 中目录有 cid 而没有 fid，文件有 fid
+                    # 也检查 fc 和 ico 字段
+                    has_cid = f.get("cid") is not None
+                    has_fid = f.get("fid") is not None
+                    is_folder_by_field = f.get("fc") == "folder" or f.get("ico") == "folder"
+                    is_dir = is_folder_by_field or (has_cid and not has_fid)
+                    
                     formatted.append({
-                        "id": str(f.get("fid") or f.get("cid")),
+                        "id": str(f.get("cid") or f.get("fid")),
                         "name": f.get("n") or f.get("file_name"),
                         "size": f.get("s") or f.get("file_size", 0),
-                        "is_directory": f.get("fc") == "folder" or f.get("ico") == "folder"
+                        "is_directory": is_dir
                     })
                 return {"success": True, "data": formatted}
             return {"success": False, "error": result.get("error", "获取分享失败")}
