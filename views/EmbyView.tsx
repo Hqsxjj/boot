@@ -49,7 +49,7 @@ export const EmbyView: React.FC = () => {
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
     const [titleSize, setTitleSize] = useState(100);      // 主标题文字大小 5.2vw (1920*0.052 ~= 100)
-    const [offsetX, setOffsetX] = useState(272);           // 海报水平位移 272px
+    const [offsetX, setOffsetX] = useState(200);           // 海报水平位移 (原272超出范围，调整为200)
     const [posterScale, setPosterScale] = useState(30);   // 整体缩放比例 30%
     const [vAlign, setVAlign] = useState(52);             // 标题纵向对齐 52%
 
@@ -652,12 +652,12 @@ export const EmbyView: React.FC = () => {
                                 <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-700">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            主标题文字大小: {titleSize}
+                                            主标题文字大小: {titleSize} (约 {(titleSize / 19.2).toFixed(1)}vw)
                                         </label>
                                         <input
                                             type="range"
-                                            min={40}
-                                            max={300}
+                                            min={58}
+                                            max={134}
                                             value={titleSize}
                                             onChange={(e) => setTitleSize(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
@@ -669,8 +669,8 @@ export const EmbyView: React.FC = () => {
                                         </label>
                                         <input
                                             type="range"
-                                            min={-100}
-                                            max={600}
+                                            min={50}
+                                            max={225}
                                             value={offsetX}
                                             onChange={(e) => setOffsetX(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
@@ -682,8 +682,8 @@ export const EmbyView: React.FC = () => {
                                         </label>
                                         <input
                                             type="range"
-                                            min={10}
-                                            max={60}
+                                            min={25}
+                                            max={35}
                                             value={posterScale}
                                             onChange={(e) => setPosterScale(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
@@ -696,7 +696,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={5}
-                                            max={90}
+                                            max={60}
                                             value={vAlign}
                                             onChange={(e) => setVAlign(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
