@@ -56,6 +56,9 @@ export const EmbyView: React.FC = () => {
     // 批量选择 (用 Set 存储选中的 ID)
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
 
+    // 队列进度状态
+    const [queueProgress, setQueueProgress] = useState<{ current: number; total: number; currentLib: string } | null>(null);
+
     // 加载配置
     useEffect(() => {
         const initConfig = async () => {
@@ -101,48 +104,79 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // 批量生成并替换封面
+    // 队列式生成并替换封面 (一个一个处理)
     const handleBatchApply = async () => {
         if (batchSelection.size === 0) {
             setToast('请至少选择一个媒体库');
             return;
         }
 
-        if (!confirm(`确定要为选中的 ${batchSelection.size} 个媒体库生成并覆盖现有封面吗？此操作不可逆。`)) {
+        if (!confirm(`确定要为选中的 ${batchSelection.size} 个媒体库逐个生成并覆盖现有封面吗？此操作不可逆。`)) {
             return;
         }
 
         setIsGenerating(true);
+        const libraryIds = Array.from(batchSelection);
+        const total = libraryIds.length;
+        let successCount = 0;
+        let failCount = 0;
+
         try {
-            const libraryIds = Array.from(batchSelection);
+            for (let i = 0; i < libraryIds.length; i++) {
+                const libId = libraryIds[i];
+                const lib = coverLibraries.find(l => l.id === libId);
+                const libName = lib?.name || libId;
 
-            // 构建配置参数
-            const coverConfig = {
-                title: coverTitle,
-                subtitle: coverSubtitle,
-                titleSize,
-                offsetX,
-                posterScale,
-                vAlign,
-                format: coverFormat,
-                theme: selectedTheme
-            };
+                // 更新进度状态
+                setQueueProgress({ current: i + 1, total, currentLib: libName });
 
-            const result = await api.batchApplyCovers(libraryIds, coverConfig);
+                // 构建该库的配置参数 (标题使用库名)
+                const typeMap: Record<string, string> = {
+                    'movies': 'MOVIE COLLECTION',
+                    'tvshows': 'TV SHOWS',
+                    'music': 'MUSIC COLLECTION',
+                    'homevideos': 'HOME VIDEOS',
+                    'books': 'BOOK COLLECTION',
+                    'photos': 'PHOTO ALBUM',
+                    'musicvideos': 'MUSIC VIDEOS'
+                };
+                const libSubtitle = typeMap[lib?.type?.toLowerCase() || ''] || lib?.type?.toUpperCase() || 'MEDIA COLLECTION';
 
-            if (result.success) {
-                setToast(`批量处理完成: 成功 ${result.success_count} / ${result.processed}`);
-                if (result.details && result.details.some((d: any) => !d.success)) {
-                    // console.error("部分失败:", result.details);
+                const coverConfig = {
+                    title: libName,
+                    subtitle: libSubtitle,
+                    titleSize,
+                    offsetX,
+                    posterScale,
+                    vAlign,
+                    format: coverFormat,
+                    theme: selectedTheme
+                };
+
+                try {
+                    // 单库处理 (使用只处理一个库的API)
+                    const result = await api.batchApplyCovers([libId], coverConfig) as any;
+                    if (result.success && result.success_count > 0) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (err) {
+                    console.error(`处理 ${libName} 失败:`, err);
+                    failCount++;
                 }
-            } else {
-                setToast(`批量处理失败: ${result.error || '未知错误'}`);
+
+                // 短暂延迟，让用户能看到进度
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
+
+            setToast(`队列处理完成: 成功 ${successCount} / ${total}${failCount > 0 ? `, 失败 ${failCount}` : ''}`);
         } catch (e: any) {
             const errorMsg = e.response?.data?.error || e.message || '网络错误';
             setToast(`操作失败: ${errorMsg}`);
         } finally {
             setIsGenerating(false);
+            setQueueProgress(null);
             setTimeout(() => setToast(null), 5000);
         }
     };
@@ -362,6 +396,28 @@ export const EmbyView: React.FC = () => {
                 <div className="fixed top-6 right-6 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] border-slate-700/50">
                     <CheckCircle2 size={18} className="text-green-400" />
                     {toast}
+                </div>
+            )}
+
+            {/* 队列进度显示 */}
+            {queueProgress && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-amber-600/95 backdrop-blur-md text-white px-8 py-4 rounded-xl shadow-2xl z-50 border-[0.5px] border-amber-500/50 min-w-[300px]">
+                    <div className="flex items-center gap-3 mb-2">
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span className="font-bold">正在处理封面...</span>
+                    </div>
+                    <div className="text-sm opacity-90 mb-2">
+                        当前: <span className="font-medium">{queueProgress.currentLib}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-amber-800/50 rounded-full h-2 overflow-hidden">
+                            <div
+                                className="bg-white h-full transition-all duration-300 rounded-full"
+                                style={{ width: `${(queueProgress.current / queueProgress.total) * 100}%` }}
+                            />
+                        </div>
+                        <span className="text-xs font-mono">{queueProgress.current}/{queueProgress.total}</span>
+                    </div>
                 </div>
             )}
 
