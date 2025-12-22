@@ -40,11 +40,11 @@ THEMES = [
 # 加大远近差异，增强立体透视感
 STAGES = [
     {"x": 900,  "y": 410, "scale": 0.55, "angle": -60, "brightness": 0.4, "opacity": 0.70, "z": 10},
-    {"x": 975,  "y": 410, "scale": 0.60, "angle": -50, "brightness": 0.5, "opacity": 0.75, "z": 30},
-    {"x": 1050, "y": 450, "scale": 0.68, "angle": -40, "brightness": 0.6, "opacity": 0.80, "z": 50},
-    {"x": 1125, "y": 450, "scale": 0.76, "angle": -30, "brightness": 0.7, "opacity": 0.85, "z": 70},
-    {"x": 1200, "y": 490, "scale": 0.84, "angle": -20, "brightness": 0.85, "opacity": 0.90, "z": 90},
-    {"x": 1275, "y": 530, "scale": 0.96, "angle": -10, "brightness": 1.0, "opacity": 0.95,  "z": 110},
+    {"x": 975,  "y": 436, "scale": 0.65, "angle": -50, "brightness": 0.5, "opacity": 0.75, "z": 30},
+    {"x": 1050, "y": 462, "scale": 0.75, "angle": -40, "brightness": 0.6, "opacity": 0.80, "z": 50},
+    {"x": 1125, "y": 488, "scale": 0.85, "angle": -30, "brightness": 0.7, "opacity": 0.85, "z": 70},
+    {"x": 1200, "y": 514, "scale": 0.95, "angle": -20, "brightness": 0.85, "opacity": 0.90, "z": 90},
+    {"x": 1275, "y": 542, "scale": 1.05, "angle": -10, "brightness": 1.0, "opacity": 0.95,  "z": 110},
     {"x": 1350, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.00, "z": 130},
 ]
 
