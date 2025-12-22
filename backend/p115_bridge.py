@@ -1,10 +1,11 @@
 """
 p115_bridge.py - 115 网盘服务桥接
-基于 tgbot 项目重构，使用 p115client 类方法进行扫码登录
+
+使用原生实现，无 p115client 依赖
 
 主要类:
-- StandardClientHolder: 标准扫码/Cookie 登录
-- OpenAppClientHolder: 第三方 AppID 登录 (PKCE 模式)
+- StandardClientHolder: 标准扫码/Cookie 登录 (原生 requests)
+- OpenAppClientHolder: 第三方 AppID 登录 (PKCE sha256)
 - Pan115Service: 全局服务实例
 """
 
@@ -13,6 +14,8 @@ import json
 import uuid
 import logging
 import base64
+import hashlib
+import secrets
 import requests
 import threading
 import time
@@ -21,17 +24,14 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# 尝试导入 p115client
-P115Client = None
+# 尝试导入原生 115 Open 客户端
+P115OpenClient = None
+P115CookieClient = None
 try:
-    from p115client import P115Client
-    logger.info("已导入 p115client 模块")
+    from services.p115_open_client import P115OpenClient, P115CookieClient, create_open_client, create_cookie_client
+    logger.info("已导入原生 P115OpenClient 和 P115CookieClient")
 except ImportError:
-    logger.warning("p115client 未安装，115 功能将受限")
-
-# Open AppID 相关常量 (PKCE)
-CODE_VERIFIER = "0" * 64
-CODE_CHALLENGE = "670b14728ad9902aecba32e22fa4f6bd"
+    logger.warning("P115OpenClient 导入失败")
 
 # 支持的客户端列表及中文名称
 LOGIN_APPS = {
@@ -51,502 +51,298 @@ SUPPORTED_APPS = list(LOGIN_APPS.keys())
 
 
 class OpenAppClientHolder:
-    """115 开放平台 (Open AppID) 客户端持有者 - PKCE 模式"""
+    """
+    115 开放平台 (Open AppID) 客户端持有者 - 使用原生 P115OpenClient
+    
+    封装 P115OpenClient，提供与旧接口兼容的 API
+    """
 
     def __init__(self, client_id: str = "", client_secret: str = "", token_service=None):
-        self.client: Optional[P115Client] = None
         self.client_id = client_id
         self.client_secret = client_secret
-        self._qr_token: Optional[dict] = None
-        self._access_token: Optional[str] = None
-        self._refresh_token: Optional[str] = None
-        self._expires_at: float = 0.0
-        self._user_name: Optional[str] = None
-        self._user_id: Optional[str] = None
-        self._lock = threading.RLock()
         self._token_service = token_service
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        # 从数据库加载 Token
-        self._load_from_db()
-
-    def _load_from_db(self):
-        """从数据库加载 access_token/refresh_token"""
-        if not self._token_service:
+        self._lock = threading.RLock()
+        
+        # 创建原生客户端
+        self._client: Optional[P115OpenClient] = None
+        self._init_client()
+    
+    def _init_client(self):
+        """初始化原生客户端"""
+        if P115OpenClient is None:
+            logger.warning("[115 Open] P115OpenClient 未导入")
             return
+        
         try:
-            token_data = self._token_service.get_active_open_token()
-            if token_data:
-                self._access_token = token_data.get('accessToken')
-                self._refresh_token = token_data.get('refreshToken')
-                expires_at_str = token_data.get('expiresAt')
-                if expires_at_str:
-                    from datetime import datetime
-                    self._expires_at = datetime.fromisoformat(expires_at_str).timestamp()
-                else:
-                    self._expires_at = 0
-                self._user_name = token_data.get('userName')
-                self._user_id = token_data.get('userId')
-                logger.info(f"[115 Open] 从数据库加载 Token: {token_data.get('name')}")
-                # 检查是否需要刷新
-                if self._access_token and time.time() < self._expires_at:
-                    self.init_with_token(self._access_token)
-                elif self._refresh_token:
-                    logger.info("[115 Open] Token 已过期，尝试刷新...")
-                    self.refresh_access_token()
+            # 从数据库加载或创建新客户端
+            if self._token_service:
+                self._client = create_open_client(self._token_service)
+            else:
+                self._client = P115OpenClient(app_id=self.client_id)
+            
+            if self._client and self._client.is_logged_in:
+                logger.info(f"[115 Open] 客户端已初始化 (用户: {self._client.user_info().get('user_name', 'Unknown')})")
         except Exception as e:
-            logger.warning(f"[115 Open] 加载 Token 失败: {e}")
-
-    def _save_to_db(self):
-        """保存 access_token/refresh_token 到数据库"""
-        if not self._token_service:
-            return
-        try:
-            from datetime import datetime
-            expires_at = datetime.fromtimestamp(self._expires_at) if self._expires_at else None
-            name = f"open_{self._user_name or 'default'}"
-            self._token_service.save_open_token(
-                name=name,
-                access_token=self._access_token,
-                refresh_token=self._refresh_token,
-                expires_at=expires_at,
-                app_id=self.client_id,
-                user_id=self._user_id,
-                user_name=self._user_name
-            )
-        except Exception as e:
-            logger.error(f"[115 Open] 保存 Token 失败: {e}")
-
+            logger.warning(f"[115 Open] 初始化客户端失败: {e}")
+            self._client = P115OpenClient(token_service=self._token_service, app_id=self.client_id)
+    
+    @property
+    def client(self):
+        """返回原生客户端（兼容旧代码）"""
+        return self._client
+    
     def start_open_qrcode(self) -> Dict[str, Any]:
         """获取 OpenID 二维码"""
         with self._lock:
-            if not self.client_id or not self.client_secret:
-                return {"state": False, "msg": "Open AppID 需要配置 AppID 和 Secret"}
-
-            if P115Client is None:
-                return {"state": False, "msg": "p115client 未安装"}
-
-            try:
-                resp = P115Client.login_qrcode_token_open(
-                    self.client_id,
-                    code_challenge=CODE_CHALLENGE,
-                    code_challenge_method="md5"
-                )
-
-                if resp.get("code") == 0 and resp.get("data"):
-                    self._qr_token = resp["data"]
-                    qr_url = self._qr_token.get("qrcode")
-                    b64_img = ""
-                    try:
-                        if qr_url:
-                            img_resp = requests.get(qr_url, headers=self.headers, timeout=10)
-                            raw_b64 = base64.b64encode(img_resp.content).decode('utf-8')
-                            # 添加 Data URL 前缀以便前端 <img> 标签正确显示
-                            content_type = img_resp.headers.get('content-type', 'image/png')
-                            mime_type = content_type.split(';')[0] if content_type else 'image/png'
-                            if not mime_type.startswith('image/'):
-                                mime_type = 'image/png'
-                            b64_img = f"data:{mime_type};base64,{raw_b64}"
-                    except Exception as e:
-                        logger.error(f"OpenID QR 图片下载失败: {e}")
-
-                    return {
-                        "state": True,
-                        "uid": self._qr_token["uid"],
-                        "qrcode": b64_img,
-                        "msg": "QR token received"
-                    }
-                else:
-                    return {"state": False, "msg": f"获取二维码失败: {resp.get('error')}"}
-            except Exception as e:
-                logger.error(f"Start Open QR Error: {e}")
-                return {"state": False, "msg": str(e)}
-
+            if P115OpenClient is None:
+                return {"state": False, "msg": "P115OpenClient 未导入"}
+            
+            if not self._client:
+                self._client = P115OpenClient(token_service=self._token_service, app_id=self.client_id)
+            
+            result = self._client.generate_qrcode(self.client_id)
+            
+            if result.get("success"):
+                return {
+                    "state": True,
+                    "uid": result.get("uid"),
+                    "qrcode": result.get("qrcode"),
+                    "msg": "QR token received"
+                }
+            else:
+                return {"state": False, "msg": result.get("error", "获取二维码失败")}
+    
     def poll_open_qrcode(self) -> Dict[str, Any]:
         """轮询 OpenID 扫码状态"""
         with self._lock:
-            if not self._qr_token:
-                return {"state": False, "msg": "QR not initialized"}
-
-            if P115Client is None:
-                return {"state": False, "msg": "p115client 未安装"}
-
-            try:
-                status_resp = P115Client.login_qrcode_scan_status(self._qr_token)
-                status_code = status_resp.get("data", {}).get("status")
-
-                if status_code == 2:
-                    # 用户确认，获取 access_token
-                    token_resp = P115Client.login_qrcode_access_token_open(
-                        self._qr_token["uid"],
-                        code_verifier=CODE_VERIFIER
-                    )
-
-                    if token_resp.get("code") == 0 and token_resp.get("data"):
-                        data = token_resp["data"]
-                        self._access_token = data["access_token"]
-                        self._refresh_token = data["refresh_token"]
-                        self._expires_at = time.time() + data.get("expires_in", 7200)
-                        self.init_with_token(self._access_token)
-                        # 持久化保存 Token
-                        self._save_to_db()
-
-                        return {
-                            "state": True,
-                            "status": "success",
-                            "access_token": self._access_token,
-                            "refresh_token": self._refresh_token,
-                            "cookies": {
-                                "access_token": self._access_token,
-                                "refresh_token": self._refresh_token
-                            },
-                            "user": self.client.user_info().get("data", {}) if self.client else {}
-                        }
-                    else:
-                        return {"state": False, "status": "error", "msg": f"换取 Token 失败: {token_resp.get('error')}"}
-
-                status_map = {0: "waiting", 1: "scanned", 2: "success", -1: "expired", -2: "error"}
-                return {"state": True, "status": status_map.get(status_code, "waiting")}
-
-            except Exception as e:
-                logger.error(f"Poll Open QR Error: {e}")
-                return {"state": False, "status": "error", "msg": str(e)}
-
+            if not self._client:
+                return {"state": False, "msg": "客户端未初始化"}
+            
+            result = self._client.poll_qrcode_status()
+            
+            if result.get("status") == "success":
+                return {
+                    "state": True,
+                    "status": "success",
+                    "access_token": result.get("access_token"),
+                    "refresh_token": result.get("refresh_token"),
+                    "cookies": {
+                        "access_token": result.get("access_token"),
+                        "refresh_token": result.get("refresh_token")
+                    },
+                    "user": result.get("user", {})
+                }
+            
+            status = result.get("status", "waiting")
+            if status == "error":
+                return {"state": False, "status": "error", "msg": result.get("error")}
+            
+            return {"state": True, "status": status}
+    
     def init_with_token(self, access_token: str) -> bool:
         """使用 access_token 初始化客户端"""
-        try:
-            if P115Client is None:
-                return False
-            cli = P115Client(access_token=access_token, check_for_relogin=True)
-            ui = cli.user_info()
-            if ui and ui.get("state"):
-                self.client = cli
-                return True
-        except Exception as e:
-            logger.error(f"Init Token Error: {e}")
-        return False
-
+        if not self._client:
+            return False
+        # 原生客户端在登录时已初始化
+        return self._client.is_logged_in
+    
     def refresh_access_token(self) -> Optional[str]:
         """刷新 access_token"""
-        if not self._refresh_token or P115Client is None:
+        if not self._client:
             return None
-        try:
-            resp = P115Client.login_refresh_token_open(self._refresh_token)
-            if resp.get("code") == 0:
-                data = resp["data"]
-                self._access_token = data["access_token"]
-                self._refresh_token = data["refresh_token"]
-                self._expires_at = time.time() + data.get("expires_in", 7200)
-                self.init_with_token(self._access_token)
-                # 持久化保存刷新后的 Token
-                self._save_to_db()
-                logger.info("[115 Open] Token 刷新成功并已保存")
-                return self._access_token
-        except Exception as e:
-            logger.error(f"Refresh Token Error: {e}")
+        if self._client.refresh_access_token():
+            return self._client._access_token
         return None
-
-    def get_valid_client(self) -> Optional[P115Client]:
+    
+    def get_valid_client(self) -> Optional[P115OpenClient]:
         """获取有效的客户端实例"""
-        if self.client and time.time() < self._expires_at:
-            return self.client
-        if self._refresh_token and self.refresh_access_token():
-            return self.client
+        if self._client and self._client.is_logged_in:
+            return self._client
         return None
 
 
 class StandardClientHolder:
-    """115 标准 (Cookie/扫码) 客户端持有者"""
+    """
+    115 标准 (Cookie/扫码) 客户端持有者 - 使用原生 P115CookieClient
+    
+    封装 P115CookieClient，提供与旧接口兼容的 API
+    """
 
     def __init__(self, token_service=None):
-        self.client: Optional[P115Client] = None
-        self.cookies: Optional[str] = None
-        self.user_info: Dict[str, Any] = {}
-        self._qr_token: Optional[dict] = None
-        self._lock = threading.RLock()
         self._token_service = token_service
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://115.com/"
-        }
-
-        # 尝试从数据库加载 Cookie
-        self._load_from_db()
-
-    def _load_from_db(self):
-        """从数据库加载 Cookie"""
-        if not self._token_service:
+        self._lock = threading.RLock()
+        
+        # 创建原生客户端
+        self._client: Optional[P115CookieClient] = None
+        self._init_client()
+    
+    def _init_client(self):
+        """初始化原生客户端"""
+        if P115CookieClient is None:
+            logger.warning("[115 Cookie] P115CookieClient 未导入")
             return
+        
         try:
-            token_data = self._token_service.get_active_cookie_token()
-            if token_data:
-                cookie_str = token_data.get('cookie', '')
-                if cookie_str:
-                    logger.info(f"[115 Cookie] 从数据库加载: {token_data.get('name')}")
-                    self.init_with_cookie(cookie_str, save=False)
+            if self._token_service:
+                self._client = create_cookie_client(self._token_service)
+            else:
+                self._client = P115CookieClient()
+            
+            if self._client and self._client.is_logged_in:
+                logger.info(f"[115 Cookie] 客户端已初始化 (用户: {self._client.user_info().get('user_name', 'Unknown')})")
         except Exception as e:
-            logger.warning(f"[115 Cookie] 加载失败: {e}")
-
-    def _save_to_db(self, cookies_dict: dict, client_app: str = None):
-        """保存 Cookie 到数据库"""
-        if not self._token_service or not cookies_dict:
-            return
-        try:
-            cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-            user_id = self.user_info.get('user_id')
-            user_name = self.user_info.get('user_name', 'default')
-            name = f"cookie_{user_name}"
-            self._token_service.save_cookie_token(
-                name=name,
-                cookie=cookie_str,
-                client=client_app,
-                user_id=str(user_id) if user_id else None,
-                user_name=user_name
-            )
-        except Exception as e:
-            logger.error(f"[115 Cookie] 保存失败: {e}")
-
+            logger.warning(f"[115 Cookie] 初始化客户端失败: {e}")
+            self._client = P115CookieClient(token_service=self._token_service)
+    
+    @property
+    def client(self):
+        """返回原生客户端（兼容旧代码）"""
+        return self._client
+    
+    @property
+    def cookies(self) -> Optional[str]:
+        """返回 Cookie 字符串"""
+        return self._client._cookies if self._client else None
+    
+    @property
+    def user_info(self) -> Dict[str, Any]:
+        """返回用户信息"""
+        return self._client.user_info() if self._client else {}
+    
     def start_qrcode(self, app: str = "tv") -> dict:
         """获取扫码二维码"""
         with self._lock:
-            if P115Client is None:
-                return {"state": False, "msg": "p115client 未安装"}
-
-            target_app = app if app in SUPPORTED_APPS else "tv"
-            try:
-                logger.info(f"[115 QR] 请求二维码 token for app: {target_app}")
-                resp = P115Client.login_qrcode_token(app=target_app)
-                logger.info(f"[115 QR] login_qrcode_token 响应: {resp}")
-
-                if resp and resp.get("state"):
-                    self._qr_token = resp["data"]
-                    self._qr_token["app"] = target_app
-                    uid = self._qr_token.get("uid")
-                    logger.info(f"[115 QR] 获取 UID: {uid}")
-
-                    # 下载二维码图片
-                    try:
-                        img_url = f"https://qrcodeapi.115.com/api/1.0/{target_app}/1.0/qrcode?uid={uid}"
-                        logger.info(f"[115 QR] 下载二维码: {img_url}")
-                        img_resp = requests.get(img_url, headers=self.headers, timeout=10)
-                        
-                        logger.info(f"[115 QR] 图片响应: status={img_resp.status_code}, content-type={img_resp.headers.get('content-type')}, len={len(img_resp.content)}")
-
-                        if img_resp.status_code == 200:
-                            content_type = img_resp.headers.get('content-type', '')
-                            # 验证返回的是图片而非错误页面
-                            if 'image' in content_type or len(img_resp.content) > 100:
-                                b64_img = base64.b64encode(img_resp.content).decode('utf-8')
-                                # 添加 Data URL 前缀以便前端 <img> 标签正确显示
-                                mime_type = content_type.split(';')[0] if content_type else 'image/png'
-                                if not mime_type.startswith('image/'):
-                                    mime_type = 'image/png'
-                                self._qr_token["qrcode"] = f"data:{mime_type};base64,{b64_img}"
-                                logger.info(f"[115 QR] 二维码下载成功, 大小: {len(b64_img)} bytes")
-                            else:
-                                logger.error(f"[115 QR] 返回内容不是图片: {img_resp.content[:200]}")
-                                self._qr_token["qrcode"] = ""
-                        else:
-                            logger.error(f"[115 QR] 二维码下载失败, status: {img_resp.status_code}, body: {img_resp.text[:200]}")
-                            self._qr_token["qrcode"] = ""
-                    except Exception as e:
-                        logger.error(f"[115 QR] 二维码下载异常: {e}", exc_info=True)
-                        self._qr_token["qrcode"] = ""
-
-                    return {
-                        "state": True,
-                        "uid": uid,
-                        "time": self._qr_token.get("time"),
-                        "sign": self._qr_token.get("sign"),
-                        "qrcode": self._qr_token.get("qrcode", ""),
-                        "app": target_app
-                    }
-                else:
-                    error_msg = resp.get('message') if resp else "No response"
-                    logger.error(f"[115 QR] 获取二维码失败: {error_msg}")
-                    return {"state": False, "msg": f"获取二维码失败: {error_msg}"}
-            except Exception as e:
-                logger.error(f"[115 QR] start_qrcode 异常: {e}", exc_info=True)
-                return {"state": False, "msg": str(e)}
+            if P115CookieClient is None:
+                return {"state": False, "msg": "P115CookieClient 未导入"}
+            
+            if not self._client:
+                self._client = P115CookieClient(token_service=self._token_service)
+            
+            result = self._client.generate_qrcode(app)
+            
+            if result.get("success"):
+                return {
+                    "state": True,
+                    "uid": result.get("uid"),
+                    "time": result.get("time"),
+                    "sign": result.get("sign"),
+                    "qrcode": result.get("qrcode"),
+                    "app": result.get("app")
+                }
+            else:
+                return {"state": False, "msg": result.get("error", "获取二维码失败")}
 
     def poll_qrcode(self) -> dict:
-        """轮询扫码状态 - 使用 holder 中存储的 _qr_token"""
-        return self.poll_qrcode_with_token(self._qr_token)
+        """轮询扫码状态 - 使用 holder 中存储的 token"""
+        return self.poll_qrcode_with_token(None)
     
-    def poll_qrcode_with_token(self, qr_token: dict, login_app: str = "tv") -> dict:
-        """轮询扫码状态 - 使用传入的 token 数据"""
+    def poll_qrcode_with_token(self, qr_token: dict = None, login_app: str = "tv") -> dict:
+        """轮询扫码状态"""
         with self._lock:
-            if not qr_token or not qr_token.get("uid"):
-                logger.warning("[115 QR] 轮询时没有有效的 QR token")
-                return {"state": False, "msg": "no token", "status": "error"}
-
-            if P115Client is None:
-                return {"state": False, "msg": "p115client 未安装", "status": "error"}
-
-            try:
-                target_app = qr_token.get("app") or login_app or "tv"
-                
-                # 构造 p115client 需要的 token 格式
-                token_for_api = {
+            if not self._client:
+                return {"state": False, "msg": "客户端未初始化", "status": "error"}
+            
+            # 构造 token 格式
+            token = None
+            if qr_token and qr_token.get("uid"):
+                token = {
                     "uid": qr_token.get("uid"),
                     "time": qr_token.get("time"),
-                    "sign": qr_token.get("sign")
+                    "sign": qr_token.get("sign"),
+                    "app": qr_token.get("app") or login_app
                 }
-                
-                logger.debug(f"[115 QR] 调用 scan_status: uid={token_for_api['uid'][:8] if token_for_api['uid'] else 'None'}...")
-                status = P115Client.login_qrcode_scan_status(token_for_api)
-                
-                # 检查 API 响应
-                if status is None:
-                    return {"state": False, "status": "error", "msg": "API 返回空"}
-                
-                # state=0 表示 API 请求失败（如二维码过期）
-                if status.get("state") == 0:
-                    code = status.get("code")
-                    if code == 40199002:  # key invalid - 二维码已过期
-                        return {"state": True, "status": "expired"}
-                    return {"state": False, "status": "error", "msg": status.get("message", "API 请求失败")}
-                
-                data = status.get("data", {}) if isinstance(status, dict) else {}
-                st = data.get("status")
-                logger.debug(f"[115 QR] 扫码状态: {st}")
-
-                if st == 2:
-                    logger.info("[115 QR] 扫码成功，获取 cookie...")
-                    result = P115Client.login_qrcode_scan_result(qr_token.get("uid"), app=target_app)
-                    if result and result.get("state"):
-                        cookie_obj = result["data"].get("cookie")
-                        if isinstance(cookie_obj, dict):
-                            cookie_str = "; ".join([f"{k}={v}" for k, v in cookie_obj.items()])
-                            cookies_dict = cookie_obj
-                        else:
-                            cookie_str = str(cookie_obj)
-                            cookies_dict = {}
-
-                        self.cookies = cookie_str
-                        self.client = P115Client(cookies=cookie_str, check_for_relogin=True)
-
-                        ui = self.client.user_info()
-                        if ui and ui.get("state"):
-                            self.user_info = ui["data"]
-
-                        logger.info(f"[115 QR] 登录成功: {self.user_info.get('user_name', 'Unknown')}")
-                        # 保存 Cookie
-                        self._save_to_db(cookies_dict, target_app)
-                        return {"state": True, "status": "success", "cookies": cookies_dict, "user": self.user_info}
-                    else:
-                        return {"state": False, "status": "error", "msg": f"获取 cookie 失败: {result}"}
-
-                status_map = {0: "waiting", 1: "scanned", 2: "success", -1: "expired", -2: "error"}
-                return {"state": True, "status": status_map.get(st, "waiting")}
-            except Exception as e:
-                logger.error(f"[115 QR] 轮询异常: {e}", exc_info=True)
-                return {"state": False, "status": "error", "msg": str(e)}
+            
+            result = self._client.poll_qrcode_status(token)
+            
+            if result.get("status") == "success":
+                return {
+                    "state": True,
+                    "status": "success",
+                    "cookies": result.get("cookies", {}),
+                    "user": result.get("user", {})
+                }
+            
+            status = result.get("status", "waiting")
+            if status == "error":
+                return {"state": False, "status": "error", "msg": result.get("error")}
+            
+            return {"state": True, "status": status}
 
     def init_with_cookie(self, cookies: str, save: bool = True) -> bool:
         """使用 Cookie 初始化客户端"""
         with self._lock:
-            if P115Client is None:
+            if P115CookieClient is None:
                 return False
+            
             try:
-                # 清洗 Cookie 字符串
-                clean_cookies = cookies.replace("Cookie:", "").replace("\n", "").strip()
-                cli = P115Client(cookies=clean_cookies, check_for_relogin=True)
-                ui = cli.user_info()
-                if ui and ui.get("state"):
-                    self.client = cli
-                    self.cookies = clean_cookies
-                    self.user_info = ui["data"]
+                self._client = P115CookieClient(cookies=cookies, token_service=self._token_service if save else None)
+                if self._client.is_logged_in:
+                    # 获取用户信息触发保存
+                    self._client._fetch_user_info()
                     if save and self._token_service:
-                        # 将 cookie 字符串转为字典保存
+                        # 解析 Cookie 字典
                         cookies_dict = {}
-                        for part in clean_cookies.split(';'):
+                        for part in cookies.split(';'):
                             if '=' in part:
                                 k, v = part.strip().split('=', 1)
                                 cookies_dict[k] = v
-                        self._save_to_db(cookies_dict)
+                        self._client._save_cookie(cookies_dict)
                     return True
             except Exception as e:
-                logger.error(f"Init Cookie Error: {e}")
+                logger.error(f"[115 Cookie] Init Cookie Error: {e}")
             return False
 
-    def get_valid_client(self) -> Optional[P115Client]:
+    def get_valid_client(self) -> Optional[P115CookieClient]:
         """获取有效的客户端实例"""
-        return self.client
+        if self._client and self._client.is_logged_in:
+            return self._client
+        return None
 
-    # ========== 文件操作方法 ==========
+    # ========== 文件操作方法（委托给原生客户端）==========
 
     def fs_files(self, cid=0, limit=1000):
-        if not self.client:
+        if not self._client or not self._client.is_logged_in:
             return {"state": False, "error": "not init"}
-        try:
-            return self.client.fs_files({"cid": cid, "limit": limit, "show_dir": 1})
-        except Exception as e:
-            return {"state": False, "error": str(e)}
+        result = self._client.list_directory(cid, limit)
+        return result if result else {"state": False, "error": "failed"}
 
     def fs_mkdir(self, pid, name):
-        if not self.client:
-            return {"state": False}
-        return self.client.fs_mkdir(pid=pid, payload=name)
+        # Cookie 模式暂不支持高级操作
+        return {"state": False, "error": "use Open API"}
 
     def fs_rename(self, fid, new_name):
-        if not self.client:
-            return {"state": False}
-        return self.client.fs_rename(payload=(fid, new_name))
+        return {"state": False, "error": "use Open API"}
 
     def fs_move(self, fids, to_cid):
-        if not self.client:
-            return {"state": False}
-        return self.client.fs_move(payload=fids, pid=to_cid)
+        # Cookie 模式暂不支持
+        return {"state": False, "error": "use Open API"}
 
     def fs_delete(self, fids):
-        if not self.client:
-            return {"state": False}
-        return self.client.fs_delete(fids)
+        # Cookie 模式暂不支持
+        return {"state": False, "error": "use Open API"}
 
     def offline_add_url(self, url, save_cid):
-        if not self.client:
-            return {"state": False}
-        return self.client.offline_add_url(payload={"url": url, "wp_path_id": save_cid})
+        # Cookie 模式暂不支持
+        return {"state": False, "error": "use Open API"}
 
     def share_receive(self, share_code, receive_code, to_cid):
-        """转存分享"""
-        if not self.client:
-            return {"state": False}
-        payload = {"share_code": share_code, "receive_code": receive_code, "cid": to_cid, "file_id": "0", "is_check": 0}
-        return self.client.share_receive(payload=payload)
+        # Cookie 模式暂不支持
+        return {"state": False, "error": "use Open API"}
 
     def get_user_info(self) -> Dict[str, Any]:
+        """获取用户信息"""
         with self._lock:
-            if self.client:
-                try:
-                    res = self.client.user_info()
-                    if res and res.get("state"):
-                        self.user_info = res.get("data")
-                except Exception as e:
-                    logger.debug(f"获取用户信息失败: {e}")
-            return self.user_info
+            if self._client:
+                return self._client.user_info()
+            return {}
 
     def get_storage_info(self) -> Dict[str, Any]:
-        if not self.client:
-            return {}
-        try:
-            res = self.client.fs_storage_info()
-            return res.get("data") if res and res.get("state") else {}
-        except Exception as e:
-            logger.debug(f"获取存储信息失败: {e}")
-            return {}
+        # Cookie 模式暂不支持
+        return {}
 
     def get_offline_quota(self) -> Dict[str, Any]:
-        if not self.client:
-            return {}
-        try:
-            res = self.client.offline_quota_info()
-            return res.get("data") if res and res.get("state") else {}
-        except Exception as e:
-            logger.debug(f"获取离线配额失败: {e}")
-            return {}
+        # Cookie 模式暂不支持
+        return {}
 
 
 class P115Service:
