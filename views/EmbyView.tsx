@@ -51,12 +51,12 @@ export const EmbyView: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
-    const [titleSize, setTitleSize] = useState(172);     // 主标题文字大小 9.0vw (1920*0.09 ~= 172)
-    const [offsetX, setOffsetX] = useState(40);          // 海报水平位移 (X) 默认 40
-    const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
+    const [titleSize, setTitleSize] = useState(192);     // 主标题文字大小 10vw (默认)
+    const [offsetX, setOffsetX] = useState(0);           // 海报水平位移 (X) 默认 0
+    const [posterScale, setPosterScale] = useState(30);  // 整体缩放比例 30%
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
-    const [spacing, setSpacing] = useState(1.0);         // 堆叠间距系数
-    const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数
+    const [spacing, setSpacing] = useState(2.0);         // 堆叠间距系数 2.0
+    const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数 1.0
     const [useBackdrop, setUseBackdrop] = useState(false); // 是否使用横幅背景
 
     // 批量选择 (用 Set 存储选中的 ID)
@@ -852,7 +852,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={58}
-                                            max={192}
+                                            max={230}
                                             value={titleSize}
                                             onChange={(e) => setTitleSize(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
@@ -865,7 +865,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={0}
-                                            max={225}
+                                            max={250}
                                             value={offsetX}
                                             onChange={(e) => setOffsetX(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
@@ -904,7 +904,7 @@ export const EmbyView: React.FC = () => {
                                         <input
                                             type="range"
                                             min={0.5}
-                                            max={2.0}
+                                            max={3.0}
                                             step={0.1}
                                             value={spacing}
                                             onChange={(e) => setSpacing(Number(e.target.value))}
