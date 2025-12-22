@@ -273,17 +273,27 @@ class CoverGenerator:
                 avg = p.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
                 # 剔除 alpha 如果有
                 if isinstance(avg, int): # Grayscale
-                    base_colors.append((avg, avg, avg))
+                    rgb = (avg, avg, avg)
                 else:
-                    base_colors.append(avg[:3])
-            
+                    rgb = avg[:3]
+                
+                # === 增强鲜艳度 (Saturation Boost) ===
+                # 创建 1x1 临时图片进行处理
+                tmp_p = Image.new("RGB", (1, 1), rgb)
+                # 提升饱和度 1.8x
+                tmp_p = ImageEnhance.Color(tmp_p).enhance(1.8)
+                # 提升亮度 1.1x (避免过于暗沉)
+                tmp_p = ImageEnhance.Brightness(tmp_p).enhance(1.1)
+                base_colors.append(tmp_p.getpixel((0, 0)))
+
             # 如果凑不够3个颜色，补一些随机变种
             while len(base_colors) < 3:
                 import random
+                # 随机生成高饱和度颜色
                 base_colors.append((
-                    random.randint(50, 200),
-                    random.randint(50, 200),
-                    random.randint(50, 200)
+                    random.randint(50, 250),
+                    random.randint(50, 250),
+                    random.randint(50, 250)
                 ))
         else:
             # 使用预设主题
@@ -562,15 +572,14 @@ class CoverGenerator:
         
         # 1. 主标题
         # 增强 3D 立体阴影
-        # 多层叠加产生厚度感
-        for off in range(1, 6):
-            alpha = int(200 - off * 30) # 越远越淡
+        # 多层叠加产生厚度感 (摩斯阴影效果 - 加厚)
+        for off in range(1, 12):
+            alpha = int(max(0, 240 - off * 18)) # 越远越淡，但保持一定浓度
             draw.text((tx + off, ty + off), title, font=m_font, fill=(0, 0, 0, alpha))
             
-        # 额外的柔和弥散阴影
-        # (由于 PIL 模糊文字比较复杂，这里用多重微小偏移模拟模糊)
-        draw.text((tx + 2, ty + 4), title, font=m_font, fill=(0, 0, 0, 80))
-        draw.text((tx + 4, ty + 2), title, font=m_font, fill=(0, 0, 0, 80))
+        # 额外的柔和弥散阴影 (模拟高斯模糊)
+        draw.text((tx + 2, ty + 4), title, font=m_font, fill=(0, 0, 0, 90))
+        draw.text((tx + 4, ty + 2), title, font=m_font, fill=(0, 0, 0, 90))
 
         draw.text((tx, ty), title, font=m_font, fill="white")
         
