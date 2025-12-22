@@ -350,6 +350,8 @@ class EmbyService:
         if not tmdb_api_key:
             tmdb_api_key = DEFAULT_TMDB_API_KEY
         
+        logger.info(f"[缺集检测] 开始扫描: SeriesID={series_id}")
+        
         missing_data = []
         
         try:

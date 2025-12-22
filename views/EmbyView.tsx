@@ -36,9 +36,6 @@ export const EmbyView: React.FC = () => {
 
     const [missingData, setMissingData] = useState<any[]>([]);
 
-    // 缺集扫描进度状态
-    const [scanProgress, setScanProgress] = useState<{ current: number; total: number; currentShow: string } | null>(null);
-
     // Cover Generator State
     const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
     const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
@@ -216,8 +213,7 @@ export const EmbyView: React.FC = () => {
             for (let i = 0; i < seriesList.length; i++) {
                 const series = seriesList[i];
 
-                // 更新进度
-                setScanProgress({ current: i + 1, total, currentShow: series.name });
+                // 进度在后端日志中记录，不在前端显示
 
                 try {
                     const scanResult = await api.scanSingleSeries(series.id);
@@ -242,7 +238,6 @@ export const EmbyView: React.FC = () => {
             console.error('Scan error:', e);
         } finally {
             setIsScanning(false);
-            setScanProgress(null);
             setTimeout(() => setToast(null), 4000);
         }
     };
@@ -479,29 +474,6 @@ export const EmbyView: React.FC = () => {
                 <div className="fixed top-6 right-6 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] border-slate-700/50">
                     <CheckCircle2 size={18} className="text-green-400" />
                     {toast}
-                </div>
-            )}
-
-
-            {/* 缺集扫描进度显示 */}
-            {scanProgress && (
-                <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-purple-600/95 backdrop-blur-md text-white px-8 py-4 rounded-xl shadow-2xl z-50 border-[0.5px] border-purple-500/50 min-w-[300px]">
-                    <div className="flex items-center gap-3 mb-2">
-                        <RefreshCw size={18} className="animate-spin" />
-                        <span className="font-bold">正在扫描缺集...</span>
-                    </div>
-                    <div className="text-sm opacity-90 mb-2">
-                        当前: <span className="font-medium">{scanProgress.currentShow}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="flex-1 bg-purple-800/50 rounded-full h-2 overflow-hidden">
-                            <div
-                                className="bg-white h-full transition-all duration-300 rounded-full"
-                                style={{ width: `${(scanProgress.current / scanProgress.total) * 100}%` }}
-                            />
-                        </div>
-                        <span className="text-xs font-mono">{scanProgress.current}/{scanProgress.total}</span>
-                    </div>
                 </div>
             )}
 
