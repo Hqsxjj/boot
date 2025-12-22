@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
 import { api } from '../services/api';
 // 确保 mockConfig 存在，如果不存在请创建一个空文件或根据需求调整
 import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
-import { Save, RefreshCw, Cookie, QrCode, Smartphone, FolderInput, Gauge, Trash2, Plus, Film, Type, Globe, Cloud, Tv, LayoutList, GripVertical, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Bot, Loader2 } from 'lucide-react';
+import { Save, RefreshCw, Cookie, FolderInput, Gauge, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2 } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
+import { Cloud115Login } from '../components/Cloud115Login';
 
 const GENRES = [
    { id: '28', name: '动作 (Action)' }, { id: '12', name: '冒险 (Adventure)' }, { id: '16', name: '动画 (Animation)' },
@@ -60,44 +61,9 @@ export const CloudOrganizeView: React.FC = () => {
    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
    const [tempRule, setTempRule] = useState<ClassificationRule | null>(null);
 
-   const [qrState, setQrState] = useState<'idle' | 'loading' | 'waiting' | 'scanned' | 'success' | 'expired' | 'error'>('idle');
-   const [qrImage, setQrImage] = useState<string>('');
-   const [qrSessionId, setQrSessionId] = useState<string>('');
-   const qrTimerRef = useRef<any>(null);
-   const qrRefreshCountRef = useRef<number>(0);  // 自动刷新计数器，最多刷新10次
-   const lastQrGenTimeRef = useRef<number>(0);   // 上次生成二维码的时间戳
-
-   // 动态获取的登录终端列表（参照 EmbyNginxDK）
-   const [loginApps, setLoginApps] = useState<Array<{ key: string; ssoent: string; name: string }>>([]);
-
    useEffect(() => {
       fetchConfig();
-      fetchLoginApps();
-      return () => stopQrCheck();
    }, []);
-
-   // 获取 115 登录终端列表（参照 EmbyNginxDK 的 /v1/get_115_clients）
-   const fetchLoginApps = async () => {
-      try {
-         const apps = await api.get115LoginApps();
-         if (apps && apps.length > 0) {
-            setLoginApps(apps);
-         }
-      } catch (e) {
-         console.warn('加载登录终端列表失败，使用默认列表');
-         // 加载失败时使用默认列表
-         setLoginApps([
-            { key: 'android', ssoent: 'A1', name: '安卓' },
-            { key: 'ios', ssoent: 'D1', name: 'iOS' },
-            { key: 'ipad', ssoent: 'D2', name: 'iPad' },
-            { key: '115android', ssoent: 'A2', name: '115安卓' },
-            { key: '115ios', ssoent: 'D3', name: '115 iOS' },
-            { key: 'tv', ssoent: 'T1', name: '电视端' },
-            { key: 'qandroid', ssoent: 'Q1', name: '轻量版安卓' },
-            { key: 'harmony', ssoent: 'S1', name: '鸿蒙' },
-         ]);
-      }
-   };
 
    const fetchConfig = async () => {
       setLoading(true);
@@ -312,111 +278,6 @@ export const CloudOrganizeView: React.FC = () => {
       return tempRule?.conditions[type]?.startsWith('!') || false;
    };
 
-   // 真实 QR 逻辑 - 已修复 open_app 参数
-   const stopQrCheck = () => {
-      if (qrTimerRef.current) {
-         clearInterval(qrTimerRef.current);
-         qrTimerRef.current = null;
-      }
-   };
-
-   const generateRealQr = async () => {
-      if (!config) return;
-
-      // 1. 补丁：open_app 必须填写 AppID
-      if (
-         config.cloud115.loginMethod === 'open_app' &&
-         !config.cloud115.appId
-      ) {
-         setToast('请先填写第三方 AppID');
-         return;
-      }
-
-      stopQrCheck();
-      setQrState('loading');
-      setQrImage('');
-      setQrSessionId('');
-      // 手动触发时重置刷新计数器
-      qrRefreshCountRef.current = 0;
-
-      try {
-         // 2. 补丁：区分 qrcode / open_app 调用参数
-         const targetApp = config.cloud115.loginMethod === 'open_app' ? 'open_app' : config.cloud115.loginApp;
-         const targetAppId = config.cloud115.loginMethod === 'open_app' ? config.cloud115.appId : undefined;
-
-         const data = await api.get115QrCode(
-            targetApp,
-            config.cloud115.loginMethod as 'qrcode' | 'open_app',
-            targetAppId
-         );
-
-         setQrImage(data.qrcode);
-         setQrSessionId(data.sessionId);
-         lastQrGenTimeRef.current = Date.now(); // 记录生成时间
-         setQrState('waiting');
-
-         qrTimerRef.current = setInterval(async () => {
-            try {
-               const statusRes = await api.check115QrStatus(
-                  data.sessionId,
-                  0,
-                  ''
-               );
-               // 兼容两种响应格式：{ data: { status } } 和 { status }
-               const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
-
-               // 使用 switch 处理状态
-               switch (status) {
-                  case 'scanned':
-                     setQrState('scanned');
-                     break;
-                  case 'success':
-                     stopQrCheck();
-                     setQrState('success');
-                     fetchConfig();
-                     setToast('登录成功，Cookie 已自动保存');
-                     break;
-                  case 'expired':
-                     stopQrCheck();
-                     // 不自动刷新，保持二维码显示，用户手动点击刷新
-                     setQrState('expired');
-                     setToast('二维码已过期，请点击刷新');
-                     break;
-                  case 'error':
-                     stopQrCheck();
-                     setQrState('error');
-                     setToast((statusRes as any).error || '登录失败');
-                     break;
-                  case 'waiting':
-                     // 继续等待，不做任何操作
-                     break;
-                  default:
-                     // 未知状态，继续轮询
-                     console.log('Unknown QR status:', status);
-                     break;
-               }
-            } catch (err) {
-               console.error('QR Poll failed', err);
-               // 网络错误时不停止轮询，继续尝试
-            }
-         }, 3000);  // 3秒轮询状态，避免请求过快
-      } catch (e: any) {
-         console.error('QR Code generation failed:', e);
-         setQrState('error');
-         // 根据错误类型显示不同的消息
-         if (e.code === 'ERR_NETWORK' || e.message?.includes('Network Error')) {
-            setToast('无法连接后端服务器，请检查网络或服务状态');
-         } else if (e.response?.status === 401) {
-            setToast('登录已过期，请重新登录');
-         } else if (e.response?.data?.error) {
-            setToast(`二维码生成失败: ${e.response.data.error}`);
-         } else {
-            setToast(`二维码生成失败: ${e.message || '未知错误'}`);
-         }
-         stopQrCheck();
-      }
-   };
-
 
    const handleDirSelect = (cid: string, name: string) => {
       if (selectorTarget === 'download') { updateNested('cloud115', 'downloadPath', cid); updateNested('cloud115', 'downloadDirName', name); }
@@ -489,169 +350,24 @@ export const CloudOrganizeView: React.FC = () => {
                      <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>123 云盘</button>
                   </div>
 
-                  {/* 115 Settings */}
+                  {/* 115 Settings - 使用新组件 */}
                   {activeTab === '115' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
-                        <div className="flex flex-wrap gap-3 mb-6">
-                           {[
-                              { id: 'cookie', label: 'Cookie 导入', icon: Cookie },
-                              { id: 'qrcode', label: '扫码获取', icon: QrCode },
-                              { id: 'open_app', label: '第三方 App ID', icon: Smartphone }
-                           ].map((tab) => (
-                              <button
-                                 key={tab.id}
-                                 onClick={() => updateNested('cloud115', 'loginMethod', tab.id)}
-                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border-[0.5px] transition-all shadow-sm ${config.cloud115.loginMethod === tab.id
-                                    ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-900/20 dark:border-brand-800 dark:text-brand-400'
-                                    : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                                    }`}
-                              >
-                                 <tab.icon size={16} /> {tab.label}
-                              </button>
-                           ))}
-                        </div>
-
-                        {config.cloud115.loginMethod === 'cookie' && (
-                           <div className="space-y-3">
-                              <label className="text-sm font-medium text-slate-600 dark:text-slate-400">Cookie 字符串</label>
-                              <SensitiveInput
-                                 multiline
-                                 value={config.cloud115.cookies}
-                                 onChange={(e) => updateNested('cloud115', 'cookies', e.target.value)}
-                                 placeholder="UID=...; CID=...; SEID=..."
-                                 className={inputClass}
-                              />
-                              <button
-                                 onClick={handleSave}
-                                 disabled={isSaving || !config.cloud115.cookies}
-                                 className="px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                 {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                 登录 / 保存 Cookie
-                              </button>
-                           </div>
-                        )}
-
-                        {/* 扫码与第三方登录区域 */}
-                        {(config.cloud115.loginMethod === 'qrcode' || config.cloud115.loginMethod === 'open_app') && (
-                           <div className="border-[0.5px] border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-900/30">
-
-                              {/* 场景 A: 第三方 App ID 输入 (仅在 open_app 模式显示) */}
-                              {config.cloud115.loginMethod === 'open_app' && (
-                                 <div className="w-full max-w-sm mb-6 animate-in fade-in slide-in-from-bottom-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">App ID</label>
-                                    <SensitiveInput
-                                       value={config.cloud115.appId || ''}
-                                       onChange={(e) => updateNested('cloud115', 'appId', e.target.value)}
-                                       className={inputClass}
-                                    />
-                                 </div>
-                              )}
-
-                              {/* 场景 B: 标准扫码 - 模拟终端选择 (仅在 qrcode 模式显示) */}
-                              {config.cloud115.loginMethod === 'qrcode' && (
-                                 <div className="w-full max-w-sm mb-6 animate-in fade-in slide-in-from-bottom-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-3 block flex items-center gap-1">
-                                       <Smartphone size={14} /> 模拟登录终端 (App Type)
-                                    </label>
-                                    <select
-                                       value={config.cloud115.loginApp || 'android'}
-                                       onChange={(e) => updateNested('cloud115', 'loginApp', e.target.value)}
-                                       className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-brand-500 outline-none backdrop-blur-sm"
-                                    >
-                                       {loginApps.length > 0 ? (
-                                          loginApps.map(app => (
-                                             <option key={app.key} value={app.key}>{app.name}</option>
-                                          ))
-                                       ) : (
-                                          <>
-                                             <option value="android">安卓</option>
-                                             <option value="ios">iOS</option>
-                                             <option value="tv">电视端</option>
-                                          </>
-                                       )}
-                                    </select>
-                                 </div>
-                              )}
-
-                              {/* 二维码显示区域 (共用) */}
-                              {!qrImage && qrState !== 'loading' ? (
-                                 <button onClick={generateRealQr} className="px-6 py-3 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-brand-700 transition-colors">
-                                    <QrCode size={18} />
-                                    {config.cloud115.loginMethod === 'qrcode' ? '生成二维码' : '获取第三方登录二维码'}
-                                 </button>
-                              ) : (
-                                 <div className="text-center animate-in fade-in zoom-in duration-300 relative">
-                                    {qrState === 'loading' ? (
-                                       <div className="w-48 h-48 flex items-center justify-center"><RefreshCw className="animate-spin text-brand-500" size={32} /></div>
-                                    ) : (
-                                       <div className="relative inline-block">
-                                          <img
-                                             src={qrImage}
-                                             alt="QR"
-                                             className={`w-48 h-48 rounded-lg border-4 border-white shadow-xl mx-auto mb-2 ${qrState === 'expired' ? 'opacity-20' : ''} ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''}`}
-                                          />
-                                          {qrState === 'success' && (
-                                             <div className="absolute inset-0 flex items-center justify-center bg-green-500/80 rounded-lg animate-in fade-in zoom-in">
-                                                <Check size={64} className="text-white" />
-                                             </div>
-                                          )}
-                                          {qrState === 'scanned' && (
-                                             <div className="absolute -top-2 -right-2 bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold animate-pulse shadow-lg">
-                                                已扫描
-                                             </div>
-                                          )}
-                                       </div>
-                                    )}
-
-                                    {(qrState === 'expired' || qrState === 'error') && (
-                                       <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={generateRealQr}>
-                                          <div className="bg-slate-800/80 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1 hover:scale-105 transition-transform">
-                                             <RotateCcw size={14} /> 点击刷新
-                                          </div>
-                                       </div>
-                                    )}
-
-                                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">请使用 115 App 扫码登录</p>
-                                    <p className={`text-xs mt-1 font-bold ${qrState === 'success' ? 'text-green-500' : qrState === 'scanned' ? 'text-yellow-500' : 'text-slate-400'}`}>
-                                       {qrState === 'scanned' ? '✓ 已扫描，请在手机上确认登录' :
-                                          qrState === 'success' ? '✓ 登录成功！Cookie 已自动保存' :
-                                             qrState === 'expired' ? '二维码已过期，请刷新' :
-                                                qrState === 'error' ? '获取失败，请重试' : '等待扫描...'}
-                                    </p>
-
-                                    {/* 保存二维码按钮 */}
-                                    {qrImage && qrState !== 'loading' && qrState !== 'success' && (
-                                       <div className="mt-4 flex gap-2 justify-center">
-                                          <a
-                                             href={qrImage}
-                                             download={`115_qrcode_${Date.now()}.png`}
-                                             className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                                          >
-                                             <Save size={14} /> 保存二维码
-                                          </a>
-                                          <button
-                                             onClick={() => {
-                                                navigator.clipboard.writeText(qrImage);
-                                                setToast('二维码链接已复制到剪贴板');
-                                             }}
-                                             className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                                          >
-                                             <Cookie size={14} /> 复制链接
-                                          </button>
-                                       </div>
-                                    )}
-
-                                    {/* 提示文字 */}
-                                    {qrImage && qrState === 'waiting' && (
-                                       <p className="text-xs text-slate-400 mt-3">
-                                          💡 提示：可长按二维码保存到手机相册，在 115 App 中选择"扫一扫"识别
-                                       </p>
-                                    )}
-                                 </div>
-                              )}
-                           </div>
-                        )}
+                        <Cloud115Login
+                           loginMethod={config.cloud115.loginMethod as 'cookie' | 'qrcode' | 'open_app'}
+                           onLoginMethodChange={(method) => updateNested('cloud115', 'loginMethod', method)}
+                           selectedApp={config.cloud115.loginApp || 'android'}
+                           onAppChange={(app) => updateNested('cloud115', 'loginApp', app)}
+                           appId={config.cloud115.appId || ''}
+                           onAppIdChange={(id) => updateNested('cloud115', 'appId', id)}
+                           cookies={config.cloud115.cookies || ''}
+                           onCookiesChange={(cookies) => updateNested('cloud115', 'cookies', cookies)}
+                           onLoginSuccess={() => {
+                              fetchConfig();
+                              setToast('登录成功');
+                           }}
+                           onToast={setToast}
+                        />
 
                         <div className="flex gap-8 pt-6 border-t-[0.5px] border-slate-100 dark:border-slate-700/50">
                            <div className="flex-1">

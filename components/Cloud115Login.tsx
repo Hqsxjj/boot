@@ -1,0 +1,463 @@
+/**
+ * Cloud115Login.tsx - 115 网盘登录组件
+ * 
+ * 支持三种登录方式：
+ * 1. Cookie 导入 - 手动粘贴 Cookie 字符串
+ * 2. 扫码登录 - 选择终端类型，生成标准二维码
+ * 3. 第三方 App ID - 输入 App ID，生成 PKCE 二维码
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { api } from '../services/api';
+import {
+    Cookie,
+    QrCode,
+    Smartphone,
+    RefreshCw,
+    Save,
+    Check,
+    Copy,
+    Download,
+    Loader2
+} from 'lucide-react';
+
+// ==================== 类型定义 ====================
+
+type LoginMethod = 'cookie' | 'qrcode' | 'open_app';
+type QrState = 'idle' | 'loading' | 'waiting' | 'scanned' | 'success' | 'expired' | 'error';
+
+interface LoginApp {
+    key: string;
+    ssoent: string;
+    name: string;
+}
+
+interface Cloud115LoginProps {
+    /** 登录成功回调 */
+    onLoginSuccess?: () => void;
+    /** 显示 Toast 消息 */
+    onToast?: (message: string) => void;
+    /** 当前选择的终端类型 */
+    selectedApp?: string;
+    /** 终端类型变化回调 */
+    onAppChange?: (app: string) => void;
+    /** 当前 App ID */
+    appId?: string;
+    /** App ID 变化回调 */
+    onAppIdChange?: (id: string) => void;
+    /** 当前 Cookie */
+    cookies?: string;
+    /** Cookie 变化回调 */
+    onCookiesChange?: (cookies: string) => void;
+    /** 外部控制的 loginMethod */
+    loginMethod?: LoginMethod;
+    /** loginMethod 变化回调 */
+    onLoginMethodChange?: (method: LoginMethod) => void;
+}
+
+// ==================== 样式常量 ====================
+
+const inputClass = "w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-mono text-sm backdrop-blur-sm shadow-inner";
+const btnPrimaryClass = "px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg hover:bg-brand-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+const btnSecondaryClass = "px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors";
+
+// ==================== 主组件 ====================
+
+export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
+    onLoginSuccess,
+    onToast,
+    selectedApp = 'android',
+    onAppChange,
+    appId = '',
+    onAppIdChange,
+    cookies = '',
+    onCookiesChange,
+    loginMethod: externalLoginMethod,
+    onLoginMethodChange,
+}) => {
+    // ========== 状态管理 ==========
+    const [internalLoginMethod, setInternalLoginMethod] = useState<LoginMethod>('qrcode');
+    const loginMethod = externalLoginMethod ?? internalLoginMethod;
+
+    const [loginApps, setLoginApps] = useState<LoginApp[]>([]);
+    const [qrState, setQrState] = useState<QrState>('idle');
+    const [qrImage, setQrImage] = useState<string>('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // ========== 登录方式切换 ==========
+    const handleMethodChange = (method: LoginMethod) => {
+        if (onLoginMethodChange) {
+            onLoginMethodChange(method);
+        } else {
+            setInternalLoginMethod(method);
+        }
+        // 切换时重置二维码状态
+        stopPolling();
+        setQrState('idle');
+        setQrImage('');
+    };
+
+    // ========== 获取登录终端列表 ==========
+    useEffect(() => {
+        const fetchApps = async () => {
+            try {
+                const apps = await api.get115LoginApps();
+                if (apps && apps.length > 0) {
+                    setLoginApps(apps);
+                }
+            } catch {
+                // 使用默认列表
+                setLoginApps([
+                    { key: 'android', ssoent: 'A1', name: '安卓' },
+                    { key: 'ios', ssoent: 'D1', name: 'iOS' },
+                    { key: 'ipad', ssoent: 'D2', name: 'iPad' },
+                    { key: 'tv', ssoent: 'T1', name: '电视端' },
+                    { key: 'qandroid', ssoent: 'Q1', name: '轻量版' },
+                    { key: 'harmony', ssoent: 'S1', name: '鸿蒙' },
+                ]);
+            }
+        };
+        fetchApps();
+
+        return () => stopPolling();
+    }, []);
+
+    // ========== 轮询控制 ==========
+    const stopPolling = useCallback(() => {
+        if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+        }
+    }, []);
+
+    // ========== 生成二维码 ==========
+    const generateQrCode = async () => {
+        // 验证：open_app 模式必须有 AppID
+        if (loginMethod === 'open_app' && !appId) {
+            onToast?.('请先填写第三方 App ID');
+            return;
+        }
+
+        stopPolling();
+        setQrState('loading');
+        setQrImage('');
+
+        try {
+            const targetApp = loginMethod === 'open_app' ? 'open_app' : selectedApp;
+            const targetAppId = loginMethod === 'open_app' ? appId : undefined;
+
+            const data = await api.get115QrCode(targetApp, loginMethod, targetAppId);
+
+            setQrImage(data.qrcode);
+            setQrState('waiting');
+
+            // 开始轮询
+            pollTimerRef.current = setInterval(async () => {
+                try {
+                    const statusRes = await api.check115QrStatus(data.sessionId, 0, '');
+                    const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
+
+                    switch (status) {
+                        case 'scanned':
+                            setQrState('scanned');
+                            break;
+                        case 'success':
+                            stopPolling();
+                            setQrState('success');
+                            onToast?.('登录成功，Cookie 已自动保存');
+                            onLoginSuccess?.();
+                            break;
+                        case 'expired':
+                            stopPolling();
+                            setQrState('expired');
+                            break;
+                        case 'error':
+                            stopPolling();
+                            setQrState('error');
+                            onToast?.((statusRes as any).error || '登录失败');
+                            break;
+                    }
+                } catch (err) {
+                    console.error('QR poll error:', err);
+                }
+            }, 3000);
+
+        } catch (e: any) {
+            console.error('QR generation failed:', e);
+            setQrState('error');
+
+            if (e.code === 'ERR_NETWORK') {
+                onToast?.('无法连接后端服务器');
+            } else if (e.response?.status === 401) {
+                onToast?.('登录已过期，请重新登录');
+            } else {
+                onToast?.(`二维码生成失败: ${e.response?.data?.error || e.message}`);
+            }
+        }
+    };
+
+    // ========== Cookie 导入 ==========
+    const handleCookieImport = async () => {
+        if (!cookies.trim()) {
+            onToast?.('请输入 Cookie');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            // 调用后端保存 Cookie
+            const response = await fetch('/api/115/login/cookie', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ cookies }),
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                onToast?.('Cookie 导入成功');
+                onLoginSuccess?.();
+            } else {
+                onToast?.(result.error || 'Cookie 导入失败');
+            }
+        } catch (e: any) {
+            onToast?.(`导入失败: ${e.message}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // ========== 复制二维码链接 ==========
+    const copyQrLink = () => {
+        if (qrImage) {
+            navigator.clipboard.writeText(qrImage);
+            onToast?.('二维码链接已复制');
+        }
+    };
+
+    // ========== 渲染登录方式 Tabs ==========
+    const renderTabs = () => (
+        <div className="flex flex-wrap gap-3 mb-6">
+            {[
+                { id: 'cookie' as LoginMethod, label: 'Cookie 导入', icon: Cookie },
+                { id: 'qrcode' as LoginMethod, label: '扫码获取', icon: QrCode },
+                { id: 'open_app' as LoginMethod, label: '第三方 App', icon: Smartphone },
+            ].map((tab) => (
+                <button
+                    key={tab.id}
+                    onClick={() => handleMethodChange(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border-[0.5px] transition-all shadow-sm ${loginMethod === tab.id
+                        ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-900/20 dark:border-brand-800 dark:text-brand-400 ring-2 ring-brand-500/20'
+                        : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        }`}
+                >
+                    <tab.icon size={16} />
+                    {tab.label}
+                </button>
+            ))}
+        </div>
+    );
+
+    // ========== 渲染 Cookie 导入 ==========
+    const renderCookieImport = () => (
+        <div className="space-y-4 animate-in fade-in duration-300">
+            <div>
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    Cookie 字符串
+                </label>
+                <textarea
+                    value={cookies}
+                    onChange={(e) => onCookiesChange?.(e.target.value)}
+                    placeholder="UID=...; CID=...; SEID=..."
+                    rows={4}
+                    className={`${inputClass} resize-none`}
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                    💡 从浏览器开发者工具复制 Cookie，格式如：UID=xxx; CID=xxx; SEID=xxx
+                </p>
+            </div>
+
+            <button
+                onClick={handleCookieImport}
+                disabled={isSaving || !cookies.trim()}
+                className={btnPrimaryClass}
+            >
+                {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                导入 Cookie
+            </button>
+        </div>
+    );
+
+    // ========== 渲染扫码登录 ==========
+    const renderQrCodeLogin = () => (
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {/* 终端选择 */}
+            <div className="max-w-sm">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    <Smartphone size={14} />
+                    模拟登录终端
+                </label>
+                <select
+                    value={selectedApp}
+                    onChange={(e) => onAppChange?.(e.target.value)}
+                    className={`${inputClass} cursor-pointer`}
+                >
+                    {loginApps.map((app) => (
+                        <option key={app.key} value={app.key}>
+                            {app.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {/* 二维码区域 */}
+            {renderQrCodeArea()}
+        </div>
+    );
+
+    // ========== 渲染第三方 App 登录 ==========
+    const renderOpenAppLogin = () => (
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {/* App ID 输入 */}
+            <div className="max-w-sm">
+                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    第三方 App ID
+                </label>
+                <input
+                    type="text"
+                    value={appId}
+                    onChange={(e) => onAppIdChange?.(e.target.value)}
+                    placeholder="请输入 App ID，如 100197531"
+                    className={inputClass}
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                    💡 使用 115 开放平台申请的第三方应用 ID
+                </p>
+            </div>
+
+            {/* 二维码区域 */}
+            {renderQrCodeArea()}
+        </div>
+    );
+
+    // ========== 渲染二维码区域（共用） ==========
+    const renderQrCodeArea = () => (
+        <div className="flex flex-col items-center py-6">
+            {qrState === 'idle' && (
+                <button onClick={generateQrCode} className={btnPrimaryClass}>
+                    <QrCode size={18} />
+                    生成二维码
+                </button>
+            )}
+
+            {qrState === 'loading' && (
+                <div className="w-48 h-48 flex items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-xl">
+                    <Loader2 className="animate-spin text-brand-500" size={32} />
+                </div>
+            )}
+
+            {qrImage && qrState !== 'loading' && (
+                <div className="text-center">
+                    {/* 二维码图片 */}
+                    <div className="relative inline-block mb-4">
+                        <img
+                            src={qrImage}
+                            alt="115 登录二维码"
+                            className={`w-48 h-48 rounded-xl border-4 border-white shadow-xl transition-all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
+                                } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''}`}
+                        />
+
+                        {/* 状态覆盖层 */}
+                        {qrState === 'success' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-green-500/80 rounded-xl animate-in fade-in zoom-in">
+                                <Check size={64} className="text-white" />
+                            </div>
+                        )}
+
+                        {qrState === 'scanned' && (
+                            <div className="absolute -top-2 -right-2 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse shadow-lg">
+                                已扫描
+                            </div>
+                        )}
+
+                        {(qrState === 'expired' || qrState === 'error') && (
+                            <div
+                                className="absolute inset-0 flex items-center justify-center cursor-pointer"
+                                onClick={generateQrCode}
+                            >
+                                <div className="bg-slate-800/90 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-transform">
+                                    <RefreshCw size={14} />
+                                    点击刷新
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 状态文字 */}
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-1">
+                        请使用 115 App 扫码登录
+                    </p>
+                    <p className={`text-xs font-bold ${qrState === 'success' ? 'text-green-500' :
+                        qrState === 'scanned' ? 'text-amber-500' :
+                            qrState === 'expired' ? 'text-red-400' :
+                                qrState === 'error' ? 'text-red-400' :
+                                    'text-slate-400'
+                        }`}>
+                        {qrState === 'waiting' && '等待扫描...'}
+                        {qrState === 'scanned' && '✓ 已扫描，请在手机上确认'}
+                        {qrState === 'success' && '✓ 登录成功！'}
+                        {qrState === 'expired' && '二维码已过期'}
+                        {qrState === 'error' && '获取失败，请重试'}
+                    </p>
+
+                    {/* 操作按钮 */}
+                    {qrState !== 'success' && qrImage && (
+                        <div className="flex gap-2 justify-center mt-4">
+                            <button onClick={generateQrCode} className={btnSecondaryClass}>
+                                <RefreshCw size={14} />
+                                刷新
+                            </button>
+                            <a
+                                href={qrImage}
+                                download={`115_qrcode_${Date.now()}.png`}
+                                className={btnSecondaryClass}
+                            >
+                                <Download size={14} />
+                                保存
+                            </a>
+                            <button onClick={copyQrLink} className={btnSecondaryClass}>
+                                <Copy size={14} />
+                                复制链接
+                            </button>
+                        </div>
+                    )}
+
+                    {/* 提示 */}
+                    {qrState === 'waiting' && (
+                        <p className="text-xs text-slate-400 mt-4 max-w-xs mx-auto">
+                            💡 可长按二维码保存到相册，在 115 App 中选择「扫一扫」识别
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+
+    // ========== 主渲染 ==========
+    return (
+        <div className="w-full">
+            {renderTabs()}
+
+            {loginMethod === 'cookie' && renderCookieImport()}
+            {loginMethod === 'qrcode' && renderQrCodeLogin()}
+            {loginMethod === 'open_app' && renderOpenAppLogin()}
+        </div>
+    );
+};
+
+export default Cloud115Login;
