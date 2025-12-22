@@ -1162,3 +1162,497 @@ class EmbyService:
         result['items'] = items_with_info
         return result
 
+    # ==================== 从 EmbyNginxDK_ref 合并的方法 ====================
+
+    def get_system_info(self) -> Dict[str, Any]:
+        """
+        获取 Emby 服务器系统信息
+        
+        Returns:
+            包含服务器名称、版本、操作系统等信息
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return {}
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/System/Info',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"获取系统信息失败: {e}")
+        return {}
+
+    def get_user_count(self) -> int:
+        """获取用户数量"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return 0
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Users/Query',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                return response.json().get("TotalRecordCount", 0)
+        except Exception:
+            pass
+        return 0
+
+    def get_users(self) -> List[Dict[str, Any]]:
+        """获取所有用户列表"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Users',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception:
+            pass
+        return []
+
+    def get_admin_user(self) -> str:
+        """获取管理员用户 ID"""
+        users = self.get_users()
+        for user in users:
+            if user.get("Policy", {}).get("IsAdministrator"):
+                return user.get("Id", "")
+        return ""
+
+    def get_libraries(self, user_id: str = None) -> List[Dict[str, Any]]:
+        """
+        获取媒体库列表
+        
+        Args:
+            user_id: 可选，指定用户ID，为空则使用管理员
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        if not user_id:
+            user_id = self.get_admin_user()
+        
+        if not user_id:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Users/{user_id}/Views',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                return response.json().get("Items", [])
+        except Exception:
+            pass
+        return []
+
+    def get_tv_episodes(self, series_id: str) -> List[Dict[str, Any]]:
+        """获取电视剧的所有剧集"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not series_id or not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Shows/{series_id}/Episodes',
+                params={'api_key': api_key, 'fields': 'DateCreated'}
+            )
+            if response.status_code == 200:
+                return response.json().get("Items", [])
+        except Exception:
+            pass
+        return []
+
+    def get_medias_count(self) -> Dict[str, int]:
+        """
+        获取媒体数量统计
+        
+        Returns:
+            {'movie': 数量, 'tv': 数量, 'episode': 数量}
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        default = {"movie": 0, "tv": 0, "episode": 0}
+        
+        if not server_url or not api_key:
+            return default
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Items/Counts',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    "movie": result.get("MovieCount", 0),
+                    "tv": result.get("SeriesCount", 0),
+                    "episode": result.get("EpisodeCount", 0)
+                }
+        except Exception:
+            pass
+        return default
+
+    def get_media_play_report(self, report_type: str, user_id: str = "", days: int = 30) -> List[Dict[str, Any]]:
+        """
+        获取用户播放记录 (需要安装 Playback Reporting 插件)
+        
+        Args:
+            report_type: MoviesReport | TvShowsReport
+            user_id: 默认获取全部用户播放记录
+            days: 默认获取最近30天内
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/user_usage_stats/{report_type}',
+                params={'user_id': user_id, 'days': days, 'api_key': api_key}
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result:
+                    result.sort(key=lambda x: x.get("time", 0), reverse=True)
+                    # 格式化时间
+                    formatted = []
+                    for item in result:
+                        seconds = item.get("time", 0)
+                        hours = seconds // 3600
+                        minutes = (seconds % 3600) // 60
+                        remaining = seconds % 60
+                        formatted.append({
+                            "label": item.get("label", ""),
+                            "time": f"{hours:02}:{minutes:02}:{remaining:02}",
+                            "value": seconds
+                        })
+                    return formatted
+        except Exception:
+            pass
+        return []
+
+    def get_playing_sessions(self) -> List[Dict[str, Any]]:
+        """获取当前正在播放的会话"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Sessions',
+                params={
+                    'IncludeAllSessionsIfAdmin': 'true',
+                    'IsPlaying': 'true',
+                    'api_key': api_key
+                }
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception:
+            pass
+        return []
+
+    def get_playing_media_ids(self) -> Dict[str, List[str]]:
+        """
+        获取正在播放的媒体ID列表
+        
+        Returns:
+            {media_id: [device_id1, device_id2, ...]}
+        """
+        sessions = self.get_playing_sessions()
+        result = {}
+        for session in sessions:
+            play_state = session.get("PlayState", {})
+            media_id = play_state.get("MediaSourceId")
+            device_id = session.get("DeviceId")
+            if media_id:
+                if media_id not in result:
+                    result[media_id] = []
+                if device_id:
+                    result[media_id].append(device_id)
+        return result
+
+    def get_devices(self) -> List[Dict[str, Any]]:
+        """获取设备列表"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Devices',
+                params={
+                    'IncludeItemTypes': 'Device',
+                    'StartIndex': 0,
+                    'Limit': 200,
+                    'SortBy': 'DateLastActivity,SortName',
+                    'SortOrder': 'Descending',
+                    'api_key': api_key
+                }
+            )
+            if response.status_code == 200:
+                return response.json().get("Items", [])
+        except Exception:
+            pass
+        return []
+
+    def get_emby_playback_info(self, video_id: str, is_playback: str = "true") -> Dict[str, Any]:
+        """
+        获取视频播放信息 (用于获取直链等)
+        
+        Args:
+            video_id: 视频 ID
+            is_playback: 是否为播放请求
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return {}
+        
+        import json as json_lib
+        headers = {"Content-Type": "application/json;charset=utf-8"}
+        
+        try:
+            media_source_id = f"mediasource_{video_id}" if video_id.isdigit() else video_id
+            
+            response = self._make_request(
+                'POST',
+                f'{server_url}/Items/{video_id}/PlaybackInfo',
+                params={
+                    'IsPlayback': is_playback,
+                    'api_key': api_key,
+                    'MediaSourceId': media_source_id
+                },
+                headers=headers,
+                data=json_lib.dumps({})
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception:
+            pass
+        return {}
+
+    def get_remote_image(self, item_id: str, image_type: str = "Backdrop") -> str:
+        """
+        获取项目的远程图片 URL (从 TMDB)
+        
+        Args:
+            item_id: 项目 ID
+            image_type: Backdrop | Primary | Logo 等
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return ""
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Items/{item_id}/RemoteImages',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                images = response.json().get("Images", [])
+                for image in images:
+                    if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
+                        return image.get("Url", "")
+        except Exception:
+            pass
+        return ""
+
+    def upload_library_image(self, item_id: str, image_data: bytes, library_name: str = "") -> bool:
+        """
+        上传封面图到 Emby
+        
+        Args:
+            item_id: 项目 ID
+            image_data: 图片二进制数据
+            library_name: 媒体库名称 (用于日志)
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key or not image_data:
+            return False
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            response = self._make_request(
+                'POST',
+                f'{server_url}/Items/{item_id}/Images/Primary',
+                params={'api_key': api_key},
+                headers={"Content-Type": "image/jpeg"},
+                data=image_data
+            )
+            if response.status_code in (200, 204):
+                logger.info(f"上传 {library_name or item_id} 封面图成功")
+                return True
+            else:
+                logger.warning(f"上传封面图失败: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"上传封面图失败: {e}")
+        return False
+
+    def get_library_folders(self) -> List[Dict[str, Any]]:
+        """获取所有媒体库文件夹路径"""
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return []
+        
+        try:
+            response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Library/SelectableMediaFolders',
+                params={'api_key': api_key}
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception:
+            pass
+        return []
+
+    def parse_webhook_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        解析 Emby Webhook 消息
+        
+        Args:
+            message: Webhook 原始消息
+            
+        Returns:
+            {'title': str, 'description': str, 'picurl': str} 或 None
+        """
+        from datetime import datetime
+        
+        try:
+            if "Item" not in message:
+                return None
+            
+            event = message.get("Event", "")
+            item = message["Item"]
+            media_type = item.get("Type", "")
+            
+            event_message = {
+                "title": "",
+                "description": "",
+                "picurl": ""
+            }
+            
+            # 处理描述
+            description = message.get("Description", "").replace("\u3000\u3000", "").replace("\r", "")
+            overview = item.get("Overview", "").replace("\u3000\u3000", "").replace("\r", "")
+            
+            if description:
+                description = f"剧情：{description[:100]}..." if len(description) > 100 else f"剧情：{description}"
+            elif overview:
+                description = f"剧情：{overview[:100]}..." if len(overview) > 100 else f"剧情：{overview}"
+            
+            year = f" ({item.get('ProductionYear')})" if 'ProductionYear' in item else ""
+            
+            if event.startswith("playback"):
+                # 播放事件
+                client_info = ""
+                if "Session" in message:
+                    session = message["Session"]
+                    client_info = f"IP地址：{session.get('RemoteEndPoint', '')}\n客户端：{session.get('Client', '')} {session.get('ApplicationVersion', '')}\n"
+                
+                event_message["description"] = f"{description}\n{client_info}时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                event_message["title"] = message.get("Title", "")
+                
+                # 获取背景图
+                pic_url = self.get_remote_image(item.get("Id", ""), "Backdrop")
+                if not pic_url and media_type == "Episode":
+                    pic_url = self.get_remote_image(item.get("SeriesId", ""), "Backdrop")
+                event_message["picurl"] = pic_url
+                
+            elif event == "library.new":
+                # 新入库事件
+                event_message["description"] = f"{description}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                
+                if media_type == "Series":
+                    event_message["title"] = f"新入库剧集 {item.get('Name', '')}{year}"
+                    event_message["picurl"] = self.get_remote_image(item.get("Id", ""), "Backdrop")
+                elif media_type == "Episode":
+                    event_message["title"] = f"新入库剧集 {item.get('SeriesName', '')} S{item.get('ParentIndexNumber', '')}E{item.get('IndexNumber', '')} {item.get('Name', '')}"
+                    event_message["picurl"] = self.get_remote_image(item.get("Id", ""), "Primary") or self.get_remote_image(item.get("SeriesId", ""), "Backdrop")
+                elif media_type == "Movie":
+                    event_message["title"] = f"新入库电影 {item.get('Name', '')}{year}"
+                    event_message["picurl"] = self.get_remote_image(item.get("Id", ""), "Backdrop")
+                    
+            elif event == "library.deleted":
+                # 删除事件
+                event_message["description"] = f"{description}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                event_message["picurl"] = "https://cdn.pixabay.com/photo/2017/07/18/23/23/folder-2517423_1280.png"
+                
+                if media_type == "Folder":
+                    return None
+                elif media_type == "Movie":
+                    event_message["title"] = f"删除电影 {item.get('Name', '')}{year}"
+                elif media_type == "Episode":
+                    event_message["title"] = f"删除剧集 {item.get('SeriesName', '')} S{item.get('ParentIndexNumber', '')}E{item.get('IndexNumber', '')} {item.get('Name', '')}"
+                elif media_type == "Series":
+                    event_message["title"] = f"删除剧集 {item.get('Name', '')}{year}"
+                elif media_type == "Season":
+                    event_message["title"] = f"删除剧集 {item.get('SeriesName', '')} S{item.get('IndexNumber', '')} {item.get('Name', '')}"
+            
+            return event_message
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"解析 Webhook 消息失败: {e}")
+            return None
