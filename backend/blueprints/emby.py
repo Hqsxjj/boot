@@ -703,10 +703,19 @@ def apply_covers_to_emby():
                 cover_format = cover_config.get('format', 'png')
                 
                 # 生成参数
+                # [差异化] 基于媒体库 ID 计算唯一的主题索引，实现"每个媒体库都不一样"
+                # 用户选择的主题作为基准，ID hash 作为偏移量
+                import zlib
+                from services.cover_generator import THEMES
+                base_theme_idx = cover_config.get('theme', 0)
+                id_hash = zlib.adler32(lib_id.encode('utf-8'))
+                # 使用 hash 偏移主题，保证确定性随机
+                final_theme_idx = (base_theme_idx + id_hash) % len(THEMES)
+
                 gen_kwargs = {
                     'title': title,
                     'subtitle': subtitle,
-                    'theme_index': cover_config.get('theme', 0),
+                    'theme_index': final_theme_idx,
                     'width': width,
                     'height': height,
                     'title_size': cover_config.get('titleSize', 172),

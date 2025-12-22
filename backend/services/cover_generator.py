@@ -127,18 +127,40 @@ class CoverGenerator:
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
     def _draw_gradient_background(self, draw: ImageDraw.Draw, width: int, height: int, 
-                                   color1: str, color2: str):
-        """绘制渐变背景"""
+                                   color1: str, color2: str, color3: str = None):
+        """绘制渐变背景 (支持双色或三色插值)"""
         c1 = self._hex_to_rgb(color1)
-        c2 = self._hex_to_rgb(color2)
+        c3 = self._hex_to_rgb(color2) # End color
+        
+        has_mid = color3 is not None
+        if has_mid:
+            c2 = self._hex_to_rgb(color3) # Mid color
         
         for y in range(height):
             ratio = y / height
-            r = int(c1[0] + (c2[0] - c1[0]) * ratio)
-            g = int(c1[1] + (c2[1] - c1[1]) * ratio)
-            b = int(c1[2] + (c2[2] - c1[2]) * ratio)
+            
+            if has_mid:
+                # 三色插值: 0.0 -> 0.5 (c1->c2), 0.5 -> 1.0 (c2->c3)
+                if ratio < 0.5:
+                    # 前半段
+                    local_ratio = ratio * 2
+                    r = int(c1[0] + (c2[0] - c1[0]) * local_ratio)
+                    g = int(c1[1] + (c2[1] - c1[1]) * local_ratio)
+                    b = int(c1[2] + (c2[2] - c1[2]) * local_ratio)
+                else:
+                    # 后半段
+                    local_ratio = (ratio - 0.5) * 2
+                    r = int(c2[0] + (c3[0] - c2[0]) * local_ratio)
+                    g = int(c2[1] + (c3[1] - c2[1]) * local_ratio)
+                    b = int(c2[2] + (c3[2] - c2[2]) * local_ratio)
+            else:
+                # 双色线性插值
+                r = int(c1[0] + (c3[0] - c1[0]) * ratio)
+                g = int(c1[1] + (c3[1] - c1[1]) * ratio)
+                b = int(c1[2] + (c3[2] - c1[2]) * ratio)
+                
             draw.line([(0, y), (width, y)], fill=(r, g, b))
-    
+
     def generate_cover(
         self,
         posters: List[Image.Image],
@@ -151,35 +173,30 @@ class CoverGenerator:
         offset_x: int = 200,
         poster_scale_pct: int = 30,
         v_align_pct: int = 22,
-        font_path: str = None
+        font_path: str = None,
+        custom_theme_color: str = None
     ) -> Image.Image:
         """
         生成静态封面图
-        
-        Args:
-            posters: 海报图片列表
-            title: 主标题
-            subtitle: 副标题
-            theme_index: 主题索引
-            width: 输出宽度
-            height: 输出高度
-            title_size: 标题字号
-            offset_x: 海报水平偏移
-            poster_scale_pct: 海报缩放比例
-            v_align_pct: 标题垂直对齐比例
-            font_path: 自定义字体路径
-            
-        Returns:
-            生成的封面图片
         """
+        # 如果指定了自定义主题索引 (处理随机化逻辑外部传入)
+        if theme_index < 0:
+            import random
+            theme_index = random.randint(0, len(THEMES) - 1)
+            
         theme = THEMES[theme_index % len(THEMES)]
         
         # 创建画布
         img = Image.new("RGBA", (width, height), theme["colors"][0])
         draw = ImageDraw.Draw(img)
         
-        # 绘制渐变背景
-        self._draw_gradient_background(draw, width, height, theme["colors"][0], theme["colors"][-1])
+        # 绘制渐变背景 (使用全部三个颜色)
+        # THEME colors format: (top, mid, bottom)
+        colors = theme["colors"]
+        if len(colors) >= 3:
+            self._draw_gradient_background(draw, width, height, colors[0], colors[2], colors[1])
+        else:
+            self._draw_gradient_background(draw, width, height, colors[0], colors[-1])
         
         # === 背景混合色 (Ambient Light / Mesh Gradient 模拟) ===
         # 在背景左上角和右下角添加淡淡的混合光斑，使背景不那么单调
