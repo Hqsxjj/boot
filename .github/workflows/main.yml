@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 1. 配置 QEMU (支持 ARM64)
       - name: Set up QEMU
