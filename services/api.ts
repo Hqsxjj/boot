@@ -18,7 +18,7 @@ type CloudDirectoryEntry = {
 const apiClient = axios.create({
   // 必须是 /api，配合 vite.config.ts 的 proxy 转发到 8000 端口
   baseURL: '/api',
-  timeout: 15000,
+  timeout: 30000,
 });
 
 // 请求拦截器：自动携带 Token

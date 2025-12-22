@@ -157,8 +157,10 @@ export const EmbyView: React.FC = () => {
             setToast('配置已保存');
             checkConnection(); // 保存后重新测试连接
             setTimeout(() => setToast(null), 3000);
-        } catch (e) {
-            setToast('保存失败');
+        } catch (e: any) {
+            const errorMsg = e.response?.data?.error || e.message || '保存失败';
+            console.error("Config save failed:", e);
+            setToast(`保存失败: ${errorMsg}`);
         } finally {
             setIsSaving(false);
         }
