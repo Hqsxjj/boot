@@ -119,7 +119,7 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // 批量生成并替换封面 (后台静默处理)
+    // 批量生成并替换封面 (后台任务，刷新页面不中断)
     const handleBatchApply = async () => {
         if (batchSelection.size === 0) {
             setToast('请至少选择一个媒体库');
@@ -131,7 +131,6 @@ export const EmbyView: React.FC = () => {
         }
 
         setIsGenerating(true);
-        setToast('正在后台处理封面生成，请稍候...');
 
         try {
             const libraryIds = Array.from(batchSelection);
@@ -144,18 +143,23 @@ export const EmbyView: React.FC = () => {
                 vAlign,
                 spacing,
                 angleScale,
+                posterCount,
                 useBackdrop,
                 format: coverFormat,
                 theme: selectedTheme
             };
 
-            // 一次性提交所有库，后端逐个处理并记录日志
-            const result = await api.batchApplyCovers(libraryIds, coverConfig) as any;
+            // 启动后台任务
+            const result = await api.startCoverBatchBackground(libraryIds, coverConfig);
 
-            if (result.success) {
-                setToast(`处理完成: 成功 ${result.success_count} / ${result.processed}`);
+            if (!result.success) {
+                if (result.error?.includes('正在进行中')) {
+                    setToast('封面批量生成正在后台运行中，请稍后');
+                } else {
+                    setToast(result.error || '启动失败');
+                }
             } else {
-                setToast(`处理失败: ${result.error || '未知错误'}`);
+                setToast('封面批量生成已在后台启动，进度请查看运行日志。刷新页面不会中断生成。');
             }
         } catch (e: any) {
             const errorMsg = e.response?.data?.error || e.message || '网络错误';

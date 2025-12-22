@@ -637,6 +637,14 @@ export const api = {
     return res.data;
   },
 
+  startCoverBatchBackground: async (libraryIds: string[], config: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/cover/batch/start', {
+      library_ids: libraryIds,
+      config
+    });
+    return res.data;
+  },
+
   saveBotConfig: async (config: any) => {
     const res = await apiClient.post<ApiResponse<any>>('/bot/config', config);
     return res.data;

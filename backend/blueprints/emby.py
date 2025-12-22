@@ -1035,3 +1035,124 @@ def generate_cover():
         logging.error(f"生成封面失败: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@emby_bp.route('/cover/batch/start', methods=['POST'])
+@require_auth
+def start_cover_batch_background():
+    """Start batch cover generation in background (survives page refresh)."""
+    import logging
+    from services.background_tasks import get_background_service
+    from services.cover_generator import get_cover_generator
+    
+    logger = logging.getLogger(__name__)
+    bg_service = get_background_service()
+    
+    # Check if batch is already running
+    running = bg_service.get_running_tasks(task_type='cover_batch')
+    if running:
+        return jsonify({
+            'success': False,
+            'error': '封面批量生成正在进行中',
+            'task': running[0]
+        }), 200
+    
+    data = request.get_json() or {}
+    library_ids = data.get('library_ids', [])
+    config = data.get('config', {})
+    
+    if not library_ids:
+        return jsonify({
+            'success': False,
+            'error': '请至少选择一个媒体库'
+        }), 400
+    
+    if not _emby_service:
+        return jsonify({
+            'success': False,
+            'error': 'Emby 服务未初始化'
+        }), 500
+    
+    # Create background task
+    task = bg_service.create_task('cover_batch', f'批量生成封面 ({len(library_ids)} 个库)')
+    
+    def batch_job(task):
+        """Background job for batch cover generation."""
+        generator = get_cover_generator()
+        
+        # Get Emby config
+        full_config = _store.get_config() if _store else {}
+        emby_config = full_config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '').rstrip('/')
+        api_key = emby_config.get('apiKey', '').strip()
+        
+        if emby_url and api_key:
+            generator.set_emby_config(emby_url, api_key)
+        
+        total = len(library_ids)
+        success_count = 0
+        
+        for i, lib_id in enumerate(library_ids):
+            lib_name = lib_id  # Will be updated if we can fetch name
+            
+            try:
+                # Get library info
+                libs = generator.get_libraries()
+                lib_info = next((l for l in libs if l.get('Id') == lib_id), None)
+                if lib_info:
+                    lib_name = lib_info.get('Name', lib_id)
+                
+                bg_service.update_progress(task, i + 1, total, lib_name)
+                
+                # Get posters
+                poster_count = config.get('posterCount', 5)
+                posters = generator.get_library_posters(lib_id, limit=poster_count)
+                
+                if not posters:
+                    logger.warning(f"[封面生成] {lib_name}: 无海报，跳过")
+                    continue
+                
+                # Generate cover
+                title = lib_info.get('Name', '媒体库') if lib_info else '媒体库'
+                subtitle = 'MEDIA COLLECTION'
+                
+                cover_img = generator.generate_cover(
+                    posters=posters,
+                    title=title,
+                    subtitle=subtitle,
+                    theme_index=config.get('theme', 0),
+                    title_size=config.get('titleSize', 192),
+                    offset_x=config.get('offsetX', 40),
+                    poster_scale_pct=config.get('posterScale', 30),
+                    v_align_pct=config.get('vAlign', 60),
+                    spacing=config.get('spacing', 3.0),
+                    angle_scale=config.get('angleScale', 1.0),
+                    use_backdrop=config.get('useBackdrop', False),
+                    backdrop_img=None
+                )
+                
+                # Upload to Emby
+                import io
+                buffer = io.BytesIO()
+                cover_img.save(buffer, format='PNG')
+                image_data = buffer.getvalue()
+                
+                upload_result = generator.upload_cover(lib_id, image_data, "image/png")
+                
+                if upload_result:
+                    logger.info(f"[封面生成] {lib_name}: 上传成功")
+                    success_count += 1
+                else:
+                    logger.warning(f"[封面生成] {lib_name}: 上传失败")
+                    
+            except Exception as e:
+                logger.error(f"[封面生成] {lib_name}: 错误 - {e}")
+        
+        return {'success_count': success_count, 'total': total}
+    
+    bg_service.run_task(task, batch_job)
+    
+    return jsonify({
+        'success': True,
+        'message': f'批量封面生成已在后台启动 ({len(library_ids)} 个库)',
+        'task': task.to_dict()
+    }), 200
