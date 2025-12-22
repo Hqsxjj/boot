@@ -39,11 +39,11 @@ THEMES = [
 # 海报布局阶段 (模拟 3D 堆叠效果 - 增强版)
 # 加大远近差异，增强立体透视感
 STAGES = [
-    {"x": 880,  "y": 410, "scale": 0.60, "angle": -35, "brightness": 0.4, "opacity": 0.3, "z": 10},
-    {"x": 1000, "y": 450, "scale": 0.72, "angle": -24, "brightness": 0.6, "opacity": 0.6, "z": 30},
-    {"x": 1140, "y": 490, "scale": 0.85, "angle": -14, "brightness": 0.85, "opacity": 0.85, "z": 60},
+    {"x": 880,  "y": 410, "scale": 0.60, "angle": -30, "brightness": 0.4, "opacity": 0.3, "z": 10},
+    {"x": 1000, "y": 450, "scale": 0.72, "angle": -20, "brightness": 0.6, "opacity": 0.6, "z": 30},
+    {"x": 1140, "y": 490, "scale": 0.85, "angle": -10, "brightness": 0.85, "opacity": 0.85, "z": 60},
     {"x": 1300, "y": 530, "scale": 1.00, "angle": 0,   "brightness": 1.0, "opacity": 1.0,  "z": 100},
-    {"x": 1480, "y": 570, "scale": 1.15, "angle": 12,  "brightness": 1.05, "opacity": 1.0, "z": 120},
+    {"x": 1480, "y": 570, "scale": 1.15, "angle": 10,  "brightness": 1.05, "opacity": 1.0, "z": 120},
 ]
 
 class CoverGenerator:
