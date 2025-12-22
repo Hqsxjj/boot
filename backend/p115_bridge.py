@@ -53,7 +53,7 @@ SUPPORTED_APPS = list(LOGIN_APPS.keys())
 class OpenAppClientHolder:
     """115 开放平台 (Open AppID) 客户端持有者 - PKCE 模式"""
 
-    def __init__(self, client_id: str = "", client_secret: str = ""):
+    def __init__(self, client_id: str = "", client_secret: str = "", secret_store=None):
         self.client: Optional[P115Client] = None
         self.client_id = client_id
         self.client_secret = client_secret
@@ -62,9 +62,48 @@ class OpenAppClientHolder:
         self._refresh_token: Optional[str] = None
         self._expires_at: float = 0.0
         self._lock = threading.RLock()
+        self._secret_store = secret_store
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
+        # 从存储加载 Token
+        self._load_from_store()
+
+    def _load_from_store(self):
+        """从 SecretStore 加载 access_token/refresh_token"""
+        if not self._secret_store:
+            return
+        try:
+            saved = self._secret_store.get_secret('cloud115_open_token')
+            if saved:
+                data = json.loads(saved)
+                self._access_token = data.get('access_token')
+                self._refresh_token = data.get('refresh_token')
+                self._expires_at = data.get('expires_at', 0)
+                logger.info(f"[115 Open] 从存储加载 Token (expires_at: {self._expires_at})")
+                # 检查是否需要刷新
+                if self._access_token and time.time() < self._expires_at:
+                    self.init_with_token(self._access_token)
+                elif self._refresh_token:
+                    logger.info("[115 Open] Token 已过期，尝试刷新...")
+                    self.refresh_access_token()
+        except Exception as e:
+            logger.warning(f"[115 Open] 加载 Token 失败: {e}")
+
+    def _save_to_store(self):
+        """保存 access_token/refresh_token 到 SecretStore"""
+        if not self._secret_store:
+            return
+        try:
+            data = {
+                'access_token': self._access_token,
+                'refresh_token': self._refresh_token,
+                'expires_at': self._expires_at
+            }
+            self._secret_store.set_secret('cloud115_open_token', json.dumps(data))
+            logger.info("[115 Open] 已保存 Token 到存储")
+        except Exception as e:
+            logger.error(f"[115 Open] 保存 Token 失败: {e}")
 
     def start_open_qrcode(self) -> Dict[str, Any]:
         """获取 OpenID 二维码"""
@@ -137,6 +176,8 @@ class OpenAppClientHolder:
                         self._refresh_token = data["refresh_token"]
                         self._expires_at = time.time() + data.get("expires_in", 7200)
                         self.init_with_token(self._access_token)
+                        # 持久化保存 Token
+                        self._save_to_store()
 
                         return {
                             "state": True,
@@ -185,6 +226,9 @@ class OpenAppClientHolder:
                 self._refresh_token = data["refresh_token"]
                 self._expires_at = time.time() + data.get("expires_in", 7200)
                 self.init_with_token(self._access_token)
+                # 持久化保存刷新后的 Token
+                self._save_to_store()
+                logger.info("[115 Open] Token 刷新成功并已保存")
                 return self._access_token
         except Exception as e:
             logger.error(f"Refresh Token Error: {e}")
@@ -505,7 +549,7 @@ class P115Service:
 
     def _ensure_open_holder(self, client_id: str = "", client_secret: str = "") -> OpenAppClientHolder:
         if not self._open_holder or (client_id and self._open_holder.client_id != client_id):
-            self._open_holder = OpenAppClientHolder(client_id, client_secret)
+            self._open_holder = OpenAppClientHolder(client_id, client_secret, self._secret_store)
         return self._open_holder
 
     def start_qr_login(self, login_app: str = "tv", login_method: str = "qrcode", app_id: str = None) -> Dict[str, Any]:
