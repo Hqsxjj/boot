@@ -55,6 +55,7 @@ export const EmbyView: React.FC = () => {
     const [offsetX, setOffsetX] = useState(50);          // 海报水平位移 (X) 默认 50
     const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
+    const [spacing, setSpacing] = useState(1.0);         // 堆叠间距系数
 
     // 批量选择 (用 Set 存储选中的 ID)
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
@@ -139,6 +140,7 @@ export const EmbyView: React.FC = () => {
                 offsetX,
                 posterScale,
                 vAlign,
+                spacing,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -361,6 +363,7 @@ export const EmbyView: React.FC = () => {
                 offsetX,
                 posterScale,
                 vAlign,
+                spacing,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -864,6 +867,20 @@ export const EmbyView: React.FC = () => {
                                             max={65}
                                             value={vAlign}
                                             onChange={(e) => setVAlign(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            堆叠间距系数: {spacing}x
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={0.5}
+                                            max={2.0}
+                                            step={0.1}
+                                            value={spacing}
+                                            onChange={(e) => setSpacing(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
                                         />
                                     </div>

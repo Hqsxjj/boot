@@ -113,7 +113,8 @@ class CoverGenerator:
                     
                 # 获取海报图片
                 img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
-                img_params = {"api_key": self.api_key, "maxWidth": 400}
+                # 用户要求更高清，提升 maxWidth 从 400 到 1000
+                img_params = {"api_key": self.api_key, "maxWidth": 1000}
                 
                 try:
                     img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
@@ -144,20 +145,7 @@ class CoverGenerator:
         noise = noise.convert("RGBA")
         
         # 叠加噪点 (Overlay 模式或者简单的 alpha blend)
-        # 这里使用 alpha blend，噪点层 alpha 很低
-        # Image.effect_noise 生成的是 L 模式 (黑白)
-        # 我们把它变成半透明的白色或黑色噪点可能更好，但简单叠加也行
-        
-        # 更好的方法：创建一个全灰层，加上噪点，然后用 Overlay 混合
-        # 但 PIL 的 blend modes 比较有限。
-        # 简单方案：直接把 noise 作为一个 alpha mask 或者极低透明度的层覆盖上去
-        
-        # 将 noise 也就是 L 模式直接作为 alpha 通道的一部分？
-        # 还是直接 blend。
-        
         # 方案：创建一张纯黑图，用 noise 作为 alpha
-        noise_layer = Image.new("RGBA", (width, height), (0,0,0,0))
-        # 只有噪点中有值的地方有颜色
         # 这是一个简单的实现：
         overlay = Image.blend(img, noise.convert("RGBA"), 0.05) # 5% 噪点混合
         return overlay
@@ -235,10 +223,12 @@ class CoverGenerator:
         poster_scale_pct: int = 30,
         v_align_pct: int = 22,
         font_path: str = None,
-        custom_theme_color: str = None
+        custom_theme_color: str = None,
+        spacing: float = 1.0
     ) -> Image.Image:
         """
         生成静态封面图
+        spacing: 堆叠间距系数，默认 1.0 (100%)
         """
         # 如果指定了自定义主题索引 (处理随机化逻辑外部传入)
         if theme_index < 0:
@@ -296,7 +286,17 @@ class CoverGenerator:
                 
             poster = posters[i].copy()
             
+            # --- 间距调整 ---
+            # 焦点海报的 x 坐标 (z=100 的那个) 假设在 1300 左右
+            # 我们以 1300 为中心进行缩放
+            center_x = 1300
+            current_x = config["x"]
+            # 应用间距系数:
+            # new_dist = old_dist * spacing
+            final_stage_x = center_x + (current_x - center_x) * spacing
+            
             # 缩放
+
             sw, sh = int(p_base_w * config["scale"]), int(p_base_h * config["scale"])
             poster = poster.resize((sw, sh), Image.Resampling.LANCZOS)
             
@@ -348,7 +348,7 @@ class CoverGenerator:
             shift_x = pivot_offset * math.sin(rad)
             shift_y = pivot_offset * (1 - math.cos(rad))
             
-            base_x = config["x"] + offset_x
+            base_x = final_stage_x + offset_x
             base_y = config["y"]
             
             final_cx = base_x + shift_x
