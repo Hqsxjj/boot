@@ -47,10 +47,93 @@ STAGES = [
 ]
 
 class CoverGenerator:
-    # ... __init__ ... can be skipped if not changing, but we need to keep context for replace.
-    # Actually I should verify where to start replacing.
+    """Emby 封面图生成器"""
+    
+    def __init__(self, emby_url: str = None, api_key: str = None):
+        self.emby_url = emby_url
+        self.api_key = api_key
+        
+    def set_emby_config(self, emby_url: str, api_key: str):
+        """设置 Emby 连接配置"""
+        self.emby_url = emby_url.rstrip('/')
+        self.api_key = api_key
+        
+    def get_libraries(self) -> List[Dict[str, Any]]:
+        """获取 Emby 媒体库列表"""
+        if not self.emby_url or not self.api_key:
+            return []
+            
+        try:
+            url = f"{self.emby_url}/emby/Library/VirtualFolders"
+            params = {"api_key": self.api_key}
+            resp = requests.get(url, params=params, timeout=10, verify=False)
+            resp.raise_for_status()
+            
+            libraries = []
+            for lib in resp.json():
+                libraries.append({
+                    "id": lib.get("ItemId", ""),
+                    "name": lib.get("Name", ""),
+                    "type": lib.get("CollectionType", ""),
+                    "path": lib.get("Locations", [""])[0] if lib.get("Locations") else ""
+                })
+            return libraries
+        except Exception as e:
+            logger.error(f"获取媒体库列表失败: {e}")
+            return []
+    
+    def get_library_posters(self, library_id: str, limit: int = 10) -> List[Image.Image]:
+        """获取媒体库中的海报图片"""
+        if not self.emby_url or not self.api_key:
+            return []
+            
+        try:
+            # 获取媒体库中的项目
+            url = f"{self.emby_url}/emby/Items"
+            params = {
+                "api_key": self.api_key,
+                "ParentId": library_id,
+                "Limit": limit,
+                "SortBy": "DateCreated,SortName",
+                "SortOrder": "Descending",
+                "ImageTypes": "Primary",
+                "Recursive": True,
+                "IncludeItemTypes": "Movie,Series"
+            }
+            resp = requests.get(url, params=params, timeout=10, verify=False)
+            resp.raise_for_status()
+            
+            items = resp.json().get("Items", [])
+            posters = []
+            
+            for item in items[:limit]:
+                item_id = item.get("Id")
+                if not item_id:
+                    continue
+                    
+                # 获取海报图片
+                img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
+                img_params = {"api_key": self.api_key, "maxWidth": 400}
+                
+                try:
+                    img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+                    if img_resp.status_code == 200:
+                        img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
+                        posters.append(img)
+                except Exception as e:
+                    logger.warning(f"获取海报失败: {item_id} - {e}")
+                    
+            return posters
+        except Exception as e:
+            logger.error(f"获取媒体库海报失败: {e}")
+            return []
 
-    # ... (skipping methods I don't need to change significantly)
+    def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
+        """将十六进制颜色转换为 RGB"""
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 3:
+            hex_color = ''.join([c*2 for c in hex_color])
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
     def _add_noise(self, img: Image.Image, intensity: int = 20) -> Image.Image:
         """添加噪点纹理"""
