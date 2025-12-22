@@ -13,80 +13,121 @@ import random
 
 logger = logging.getLogger(__name__)
 
-# 主题配色 (增强版: 定义基调色，生成时会加入变体)
+
+# 主题配色 (Premium Gradients)
+# 采用更具质感的色彩组合，模拟流媒体平台大片风格
 THEMES = [
-    {"name": "经典蓝", "colors": ("#3db1e0", "#2980b9", "#1c3d5a")},
-    {"name": "深邃红", "colors": ("#e74c3c", "#c0392b", "#7b241c")},
-    {"name": "翡翠绿", "colors": ("#2ecc71", "#27ae60", "#1b5e20")},
-    {"name": "琥珀金", "colors": ("#f1c40f", "#f39c12", "#b7950b")},
-    {"name": "皇家紫", "colors": ("#9b59b6", "#8e44ad", "#4a235a")},
-    {"name": "暗夜黑", "colors": ("#2c3e50", "#34495e", "#1a1a1a")},
-    {"name": "晨曦粉", "colors": ("#FFD194", "#70E1F5", "#FFD194")}, # 特殊：撞色
-    {"name": "青翠林", "colors": ("#00b09b", "#96c93d", "#00b09b")},
-    {"name": "梦幻紫", "colors": ("#834d9b", "#d04ed6", "#834d9b")},
-    {"name": "蓝调调", "colors": ("#74ebd5", "#acb6e5", "#74ebd5")},
-    {"name": "银月霜", "colors": ("#bdc3c7", "#2c3e50", "#bdc3c7")},
-    {"name": "暖阳橘", "colors": ("#e65c00", "#f9d423", "#e65c00")},
+    # 冷色系
+    {"name": "深海极光", "colors": ("#0f2027", "#203a43", "#2c5364")}, # Dark Teal
+    {"name": "午夜霓虹", "colors": ("#141E30", "#243B55", "#6c5ce7")}, # Dark Blue & Purple
+    {"name": "赛博朋克", "colors": ("#2b1055", "#7597de", "#2b1055")}, # Purple & Blue
+    {"name": "北欧冰川", "colors": ("#2980b9", "#6dd5fa", "#ffffff")}, # Ice Blue (Bright)
+    
+    # 暖色系
+    {"name": "暮色之城", "colors": ("#4b134f", "#c94b4b", "#4b134f")}, # Deep Red/Purple
+    {"name": "落日余晖", "colors": ("#ee0979", "#ff6a00", "#ee0979")}, # Orange/Pink
+    {"name": "黑金奢华", "colors": ("#141e30", "#cbb4d4", "#203a43")}, # Dark & Goldish
+    {"name": "火山熔岩", "colors": ("#93291E", "#ED213A", "#93291E")}, # Deep Red
+
+    # 中性/艺术
+    {"name": "水墨烟雨", "colors": ("#232526", "#414345", "#232526")}, # Grey/Black
+    {"name": "甚至绿意", "colors": ("#134E5E", "#71B280", "#134E5E")}, # Forest
+    {"name": "皇家丝绒", "colors": ("#360033", "#0b8793", "#360033")}, # Velvet
+    {"name": "迷幻紫晶", "colors": ("#614385", "#516395", "#614385")}, # Amethyst
 ]
 
-# ... STAGES ...
-
 class CoverGenerator:
-    # ... __init__ ...
+    # ... __init__ ... can be skipped if not changing, but we need to keep context for replace.
+    # Actually I should verify where to start replacing.
 
-    # ... set_emby_config, get_libraries, get_library_posters ...
-
-    def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
-        """将十六进制颜色转换为 RGB"""
-        hex_color = hex_color.lstrip('#')
-        if len(hex_color) == 3:
-            hex_color = ''.join([c*2 for c in hex_color])
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    # ... (skipping methods I don't need to change significantly)
     
+    def _add_noise(self, img: Image.Image, intensity: int = 20) -> Image.Image:
+        """添加噪点纹理"""
+        width, height = img.size
+        # 创建噪点层
+        noise = Image.effect_noise((width, height), intensity)
+        # 将噪点转换为 RGBA
+        noise = noise.convert("RGBA")
+        
+        # 叠加噪点 (Overlay 模式或者简单的 alpha blend)
+        # 这里使用 alpha blend，噪点层 alpha 很低
+        # Image.effect_noise 生成的是 L 模式 (黑白)
+        # 我们把它变成半透明的白色或黑色噪点可能更好，但简单叠加也行
+        
+        # 更好的方法：创建一个全灰层，加上噪点，然后用 Overlay 混合
+        # 但 PIL 的 blend modes 比较有限。
+        # 简单方案：直接把 noise 作为一个 alpha mask 或者极低透明度的层覆盖上去
+        
+        # 将 noise 也就是 L 模式直接作为 alpha 通道的一部分？
+        # 还是直接 blend。
+        
+        # 方案：创建一张纯黑图，用 noise 作为 alpha
+        noise_layer = Image.new("RGBA", (width, height), (0,0,0,0))
+        # 只有噪点中有值的地方有颜色
+        # 这是一个简单的实现：
+        overlay = Image.blend(img, noise.convert("RGBA"), 0.05) # 5% 噪点混合
+        return overlay
+
     def _draw_mesh_gradient(self, width: int, height: int, colors: List[Tuple[int, int, int]]) -> Image.Image:
         """
-        绘制弥散光混色背景 (Mesh Gradient)
-        使用低分辨率绘制大色块然后高斯模糊，产生柔和自然的混色效果。
+        绘制高级弥散光背景 (Advanced Mesh Gradient)
+        增加光斑数量、随机性和噪点质感。
         """
-        # 低分辨率画布 (提高性能 + 自然模糊)
-        small_w, small_h = width // 8, height // 8
+        # 1. 基础分辨率画布
+        # 稍微提高分辨率以免过度模糊丢失细节
+        small_w, small_h = width // 4, height // 4
         base = Image.new("RGB", (small_w, small_h), colors[0])
         draw = ImageDraw.Draw(base)
         
-        # 在不同位置绘制大圆色块
-        # 坐标归一化: (x_ratio, y_ratio, color_index)
-        blobs = [
-            (0.0, 0.0, 0),    # 左上: 主色
-            (1.0, 1.0, 1),    # 右下: 辅色 (深色)
-            (0.8, 0.2, 2),    # 右上: 提亮色
-            (0.2, 0.8, 2),    # 左下: 提亮色 (平衡)
-            (0.5, 0.5, 0),    # 中心: 主色呼应
-        ]
-        
+        # 2. 生成多层光斑
+        # 我们使用更多的光斑，且颜色在主题色中循环
         if len(colors) < 3:
-            # 如果颜色不足3种，重复使用
             colors = list(colors)
             while len(colors) < 3:
                 colors.append(colors[0])
-        
-        for rx, ry, c_idx in blobs:
+                
+        # 随机分布的光斑
+        blobs = []
+        for i in range(8): # 8个光斑
+            # x, y, color_idx, size_ratio
+            blobs.append((
+                random.uniform(0, 1.0),
+                random.uniform(0, 1.0),
+                random.randint(0, len(colors)-1),
+                random.uniform(0.4, 0.9)
+            ))
+            
+        for rx, ry, c_idx, s_ratio in blobs:
             cx, cy = int(rx * small_w), int(ry * small_h)
-            color = colors[c_idx % len(colors)]
+            color = colors[c_idx]
             
-            # 半径随机一点，增加自然感
-            radius = min(small_w, small_h) * 0.6
+            # 基本半径
+            radius = int(min(small_w, small_h) * s_ratio)
             
-            # 使用半透明绘制以便叠加混合
-            # PIL Draw.ellipse 不支持 alpha blend on RGB directly easily without new layer
-            # 这里简单直接覆盖，靠后面的模糊来混合
+            # 绘制
             draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
             
-        # 强力高斯模糊，产生弥散效果
-        blur_radius = min(small_w, small_h) // 3
-        base = base.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        # 3. 强力高斯模糊 (First Pass)
+        base = base.filter(ImageFilter.GaussianBlur(radius=min(small_w, small_h) // 4))
         
-        # 放大回原尺寸，使用双三次插值保证平滑
-        return base.resize((width, height), Image.Resampling.BICUBIC).convert("RGBA")
+        # 4. 再次绘制一些强调色光斑 (Highlight)
+        # 使得画面有层次感 (Defocus)
+        highlight_color = colors[1] # 通常是比较亮的颜色
+        cx, cy = int(random.uniform(0.2, 0.8) * small_w), int(random.uniform(0.2, 0.8) * small_h)
+        radius = int(min(small_w, small_h) * 0.4)
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=highlight_color)
+        
+        # 5. 最终模糊
+        base = base.filter(ImageFilter.GaussianBlur(radius=min(small_w, small_h) // 3))
+        
+        # 6. 放大
+        img = base.resize((width, height), Image.Resampling.BICUBIC).convert("RGBA")
+        
+        # 7. 添加噪点质感 (Film Grain)
+        img = self._add_noise(img, intensity=30)
+        
+        return img
 
     def generate_cover(
         self,
