@@ -66,10 +66,10 @@ export const EmbyView: React.FC = () => {
                 const data = await api.getConfig();
                 if (data?.emby) {
                     setConfig(data);
-                    // 如果获取到了配置，顺便测试一下连接
+                    // 如果获取到了配置，并行测试连接和加载媒体库 (不阻塞)
                     if (data.emby.serverUrl && data.emby.apiKey) {
-                        checkConnection(data);
-                        // 自动加载媒体库
+                        // 并行执行，不等待结果
+                        testConnectionOnly();
                         loadCoverData();
                     }
                 } else {
@@ -78,15 +78,27 @@ export const EmbyView: React.FC = () => {
             } catch (err) {
                 console.error("加载配置失败:", err);
                 setConfig(DEFAULT_CONFIG);
-                // 静默处理
-                setTimeout(() => setToast(null), 3000);
             }
         };
 
         initConfig();
     }, []);
 
-    // 测试 Emby 连接
+    // 仅测试连接 (不保存配置，用于初始化)
+    const testConnectionOnly = async () => {
+        try {
+            const result = await api.testEmbyConnection();
+            setConnectionStatus({
+                success: result.data.success,
+                latency: result.data.latency,
+                msg: result.data.msg
+            });
+        } catch (e) {
+            setConnectionStatus({ success: false, latency: 0, msg: "网络错误" });
+        }
+    };
+
+    // 测试 Emby 连接 (保存配置后测试，用于手动保存)
     const checkConnection = async (cfg: AppConfig = config!) => {
         if (!cfg?.emby?.serverUrl) return;
         try {
