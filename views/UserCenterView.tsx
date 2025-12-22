@@ -469,84 +469,84 @@ export const UserCenterView: React.FC = () => {
                 保存设置
               </button>
             </div>
+          </div>
 
-            <div className="p-6 transition-all duration-300">
-              <div className="space-y-5">
-                {/* 第一行：类型 + 主机 + 端口 */}
-                {/* Row 1: Type & Port */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">代理类型 (Protocol)</label>
-                    <div className="relative">
-                      <select
-                        value={config?.proxy?.type || 'http'}
-                        onChange={(e) => updateNested('proxy', 'type', e.target.value)}
-                        className={`${inputClass} appearance-none cursor-pointer`}
-                      >
-                        <option value="http">HTTP</option>
-                        <option value="https">HTTPS</option>
-                        <option value="socks5">SOCKS5</option>
-                      </select>
-                      <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
-                        <Globe size={14} />
-                      </div>
+          <div className="p-6 transition-all duration-300">
+            <div className="space-y-5">
+              {/* Row 1: Type & Port */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">代理类型 (Protocol)</label>
+                  <div className="relative">
+                    <select
+                      value={config?.proxy?.type || 'http'}
+                      onChange={(e) => updateNested('proxy', 'type', e.target.value)}
+                      className={`${inputClass} appearance-none cursor-pointer`}
+                    >
+                      <option value="http">HTTP</option>
+                      <option value="https">HTTPS</option>
+                      <option value="socks5">SOCKS5</option>
+                    </select>
+                    <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
+                      <Globe size={14} />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口 (Port)</label>
-                    <input
-                      type="text"
-                      value={config?.proxy?.port || ''}
-                      onChange={(e) => updateNested('proxy', 'port', e.target.value)}
-                      placeholder="例如: 7890"
-                      className={`${inputClass} font-mono`}
-                    />
-                  </div>
                 </div>
-
-                {/* Row 2: Host (Full Width) */}
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址 (Server Host)</label>
-                    <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1.5 font-bold px-2 py-1 rounded hover:bg-brand-50 transition-colors">
-                      <Zap size={12} />
-                      填入本机 IP
-                    </button>
-                  </div>
-                  <div className="relative group">
-                    <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors">
-                      <HardDrive size={16} />
-                    </div>
-                    <input
-                      type="text"
-                      value={config?.proxy?.host || ''}
-                      onChange={(e) => updateNested('proxy', 'host', e.target.value)}
-                      placeholder="请输入代理服务器 IP 或域名，例如: 192.168.1.5"
-                      className={`${inputClass} pl-10 font-mono text-base`}
-                    />
-                  </div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口 (Port)</label>
+                  <input
+                    type="text"
+                    value={config?.proxy?.port || ''}
+                    onChange={(e) => updateNested('proxy', 'port', e.target.value)}
+                    placeholder="例如: 7890"
+                    className={`${inputClass} font-mono`}
+                  />
                 </div>
+              </div>
 
-                {/* 第二行：不走代理的地址 */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase">不走代理的地址</label>
-                    <span className="text-[10px] text-slate-400">多个地址用逗号分隔</span>
+              {/* Row 2: Host (Full Width) */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址 (Server Host)</label>
+                  <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1.5 font-bold px-2 py-1 rounded hover:bg-brand-50 transition-colors">
+                    <Zap size={12} />
+                    填入本机 IP
+                  </button>
+                </div>
+                <div className="relative group">
+                  <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors">
+                    <HardDrive size={16} />
                   </div>
                   <input
                     type="text"
-                    value={config?.proxy?.noProxyHosts || '115.com,123pan.com,123pan.cn'}
-                    onChange={(e) => updateNested('proxy', 'noProxyHosts', e.target.value)}
-                    placeholder="115.com,123pan.com,123pan.cn,localhost"
-                    className={`${inputClass} font-mono text-xs`}
+                    value={config?.proxy?.host || ''}
+                    onChange={(e) => updateNested('proxy', 'host', e.target.value)}
+                    placeholder="请输入代理服务器 IP 或域名，例如: 192.168.1.5"
+                    className={`${inputClass} pl-10 font-mono text-base`}
                   />
-                  <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                    115 网盘和 123 云盘 API 默认不走代理，避免连接问题
-                  </p>
                 </div>
               </div>
+
+              {/* Row 3: No Proxy */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">不走代理的地址</label>
+                  <span className="text-[10px] text-slate-400">多个地址用逗号分隔</span>
+                </div>
+                <input
+                  type="text"
+                  value={config?.proxy?.noProxyHosts || '115.com,123pan.com,123pan.cn'}
+                  onChange={(e) => updateNested('proxy', 'noProxyHosts', e.target.value)}
+                  placeholder="115.com,123pan.com,123pan.cn,localhost"
+                  className={`${inputClass} font-mono text-xs`}
+                />
+                <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  115 网盘和 123 云盘 API 默认不走代理，避免连接问题
+                </p>
+              </div>
             </div>
+          </div>
         </section>
 
         {/* WebDAV Server */}
