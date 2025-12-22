@@ -57,6 +57,7 @@ export const EmbyView: React.FC = () => {
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
     const [spacing, setSpacing] = useState(1.0);         // 堆叠间距系数
     const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数
+    const [useBackdrop, setUseBackdrop] = useState(false); // 是否使用横幅背景
 
     // 批量选择 (用 Set 存储选中的 ID)
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
@@ -143,6 +144,7 @@ export const EmbyView: React.FC = () => {
                 vAlign,
                 spacing,
                 angleScale,
+                useBackdrop,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -367,6 +369,7 @@ export const EmbyView: React.FC = () => {
                 vAlign,
                 spacing,
                 angleScale,
+                useBackdrop,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -807,6 +810,14 @@ export const EmbyView: React.FC = () => {
                                         <Palette size={12} /> 主题配色
                                     </label>
                                     <div className="flex flex-wrap gap-2">
+                                        <button
+                                            key="auto"
+                                            onClick={() => setSelectedTheme(-1)}
+                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${selectedTheme === -1 ? 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white border-transparent ring-2 ring-offset-2 ring-purple-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-purple-500'}`}
+                                            title="自动从海报提取颜色"
+                                        >
+                                            自动混色
+                                        </button>
                                         {coverThemes.map(theme => (
                                             <button
                                                 key={theme.index}
@@ -817,6 +828,19 @@ export const EmbyView: React.FC = () => {
                                             />
                                         ))}
                                     </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="useBackdrop"
+                                        checked={useBackdrop}
+                                        onChange={(e) => setUseBackdrop(e.target.checked)}
+                                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 dark:border-slate-600"
+                                    />
+                                    <label htmlFor="useBackdrop" className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                                        使用媒体库横幅做背景 (Use Library Backdrop)
+                                    </label>
                                 </div>
 
                                 {/* 参数滑块 - 匹配 Python Tkinter 参数 */}

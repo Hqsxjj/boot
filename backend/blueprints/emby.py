@@ -844,6 +844,7 @@ def generate_cover():
         v_align = cover_config.get('vAlign') or data.get('vAlign', 22)
         spacing = cover_config.get('spacing') or data.get('spacing', 1.0)
         angle_scale = cover_config.get('angleScale') or data.get('angleScale', 1.0)
+        use_backdrop = cover_config.get('useBackdrop') or data.get('useBackdrop', False)
         
         generator = get_cover_generator()
         
@@ -854,6 +855,11 @@ def generate_cover():
         posters = []
         if library_id:
             posters = generator.get_library_posters(library_id, limit=5)
+            
+        # 获取背景图 (如果要用)
+        backdrop_img = None
+        if use_backdrop and library_id:
+            backdrop_img = generator.get_library_backdrop(library_id)
         
         if not posters:
             return jsonify({'success': False, 'error': '未能获取海报图片'}), 400
@@ -899,7 +905,9 @@ def generate_cover():
                 poster_scale_pct=poster_scale,
                 v_align_pct=v_align,
                 spacing=spacing,
-                angle_scale=angle_scale
+                angle_scale=angle_scale,
+                use_backdrop=use_backdrop,
+                backdrop_img=backdrop_img
             )
             # 保存到本地缓存
             cover_img.save(local_file_path, format='PNG')

@@ -129,6 +129,31 @@ class CoverGenerator:
             logger.error(f"获取媒体库海报失败: {e}")
             return []
 
+    def get_library_backdrop(self, library_id: str) -> Optional[Image.Image]:
+        """获取媒体库的背景图 (Backdrop/Art/Thumb)"""
+        if not self.emby_url or not self.api_key:
+            return None
+            
+        try:
+            # 尝试获取 Backdrop 0
+            img_url = f"{self.emby_url}/emby/Items/{library_id}/Images/Backdrop/0"
+            img_params = {"api_key": self.api_key, "maxWidth": 2000} # 高清
+            
+            img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+            if img_resp.status_code == 200:
+                return Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
+            
+            # 如果没有 Backdrop，尝试 Thumb (某些库只有Thumb)
+            img_url = f"{self.emby_url}/emby/Items/{library_id}/Images/Thumb/0"
+            img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+            if img_resp.status_code == 200:
+                return Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
+                
+            return None
+        except Exception as e:
+            logger.warning(f"获取媒体库背景失败: {library_id} - {e}")
+            return None
+
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """将十六进制颜色转换为 RGB"""
         hex_color = hex_color.lstrip('#')
@@ -225,30 +250,97 @@ class CoverGenerator:
         font_path: str = None,
         custom_theme_color: str = None,
         spacing: float = 1.0,
-        angle_scale: float = 1.0
+        angle_scale: float = 1.0,
+        use_backdrop: bool = False,
+        backdrop_img: Image.Image = None
     ) -> Image.Image:
         """
         生成静态封面图
         spacing: 堆叠间距系数，默认 1.0
         angle_scale: 旋转角度系数，默认 1.0
+        use_backdrop: 是否使用横幅背景
+        backdrop_img: 传入的横幅背景图对象
         """
-        # 如果指定了自定义主题索引 (处理随机化逻辑外部传入)
-        if theme_index < 0:
-            import random
-            theme_index = random.randint(0, len(THEMES) - 1)
+        
+        base_colors = []
+        
+        # === 1. 颜色策略 ===
+        # 如果 theme_index == -1，启用"自动混色"模式 (从海报提取颜色)
+        if theme_index == -1:
+            # 从每张海报提取一个主色调
+            for p in posters[:5]: # 最多采5张
+                # 缩放到 1x1 获取平均色
+                avg = p.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
+                # 剔除 alpha 如果有
+                if isinstance(avg, int): # Grayscale
+                    base_colors.append((avg, avg, avg))
+                else:
+                    base_colors.append(avg[:3])
             
-        theme = THEMES[theme_index % len(THEMES)]
+            # 如果凑不够3个颜色，补一些随机变种
+            while len(base_colors) < 3:
+                import random
+                base_colors.append((
+                    random.randint(50, 200),
+                    random.randint(50, 200),
+                    random.randint(50, 200)
+                ))
+        else:
+            # 使用预设主题
+            theme = THEMES[theme_index % len(THEMES)]
+            base_colors = [self._hex_to_rgb(c) for c in theme["colors"]]
         
-        # 准备颜色
-        base_colors = [self._hex_to_rgb(c) for c in theme["colors"]]
+        # === 2. 绘制背景 ===
+        img = None
         
-        # 绘制弥散光背景 (Mesh Gradient)
-        img = self._draw_mesh_gradient(width, height, base_colors)
-        
+        if use_backdrop and backdrop_img:
+            # 模式 A: 使用 Emby 横幅背景
+            # 裁剪并模糊
+            bg = backdrop_img.copy()
+            # 居中裁剪到 16:9
+            bg_w, bg_h = bg.size
+            target_ratio = width / height
+            curr_ratio = bg_w / bg_h
+            
+            if curr_ratio > target_ratio:
+                # 图片太宽，裁两边
+                new_w = int(bg_h * target_ratio)
+                left = (bg_w - new_w) // 2
+                bg = bg.crop((left, 0, left + new_w, bg_h))
+            else:
+                # 图片太高，裁上下
+                new_h = int(bg_w / target_ratio)
+                top = (bg_h - new_h) // 2
+                bg = bg.crop((0, top, bg_w, top + new_h))
+                
+            bg = bg.resize((width, height), Image.Resampling.LANCZOS)
+            
+            # 高斯模糊
+            bg = bg.filter(ImageFilter.GaussianBlur(radius=40))
+            
+            # 压暗处理 (Overlay 一个半透明黑色层)
+            darken = Image.new("RGBA", (width, height), (0, 0, 0, 100)) # 40% 黑色
+            
+            # 如果也是自动混色，可以再叠一层淡淡的 Mesh Gradient 做色调统一
+            if theme_index == -1:
+                 # 极淡的彩色光晕 (alpha 40)
+                 mesh = self._draw_mesh_gradient(width, height, base_colors)
+                 mesh.putalpha(80) # 30% 混合
+                 bg = bg.convert("RGBA")
+                 bg = Image.alpha_composite(bg, mesh)
+            
+            bg = bg.convert("RGBA")
+            bg = Image.alpha_composite(bg, darken)
+            img = bg.convert("RGB") # 转回 RGB
+            
+        else:
+            # 模式 B: 纯 Mesh Gradient 背景
+            img = self._draw_mesh_gradient(width, height, base_colors)
+            
         # 创建 Draw 对象用于后续绘制
         draw = ImageDraw.Draw(img)
 
-        # === 2. 玻璃材质层 (第二层级) ===
+        # === 3. 玻璃材质层 (第二层级) ===
         # 在背景之上，内容之下，加一层淡淡的玻璃质感
         # 创建一个覆盖大部分区域的圆角矩形，模拟玻璃面板
         glass_margin = 60
@@ -256,12 +348,16 @@ class CoverGenerator:
         glass_draw = ImageDraw.Draw(glass_layer)
         
         # 玻璃板区域
-        # 玻璃板区域
         g_box = [glass_margin, glass_margin, width - glass_margin, height - glass_margin]
         
-        # 提取主题强调色 (使用中间色 theme["colors"][1])
-        accent_rgb = self._hex_to_rgb(theme["colors"][1])
-        
+        # 决定玻璃板色调
+        if theme_index == -1 and len(base_colors) > 0:
+            accent_rgb = base_colors[0] # 取色板第一个颜色
+        elif 'theme' in locals():
+             accent_rgb = self._hex_to_rgb(theme["colors"][1])
+        else:
+             accent_rgb = (255, 255, 255)
+
         # 填充: 主题色淡混 (alpha 15) + 白色微混
         # 这里的 fill 只是底色，为了更通透，我们使用极淡的主题色
         glass_fill = accent_rgb + (15,)
