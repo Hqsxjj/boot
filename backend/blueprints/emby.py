@@ -820,15 +820,19 @@ def generate_cover():
         api_key = emby_config.get('apiKey', '')
         
         data = request.get_json() or {}
+        
+        # 支持两种格式：直接参数或嵌套在 config 中
+        cover_config = data.get('config', {})
+        
         library_id = data.get('libraryId')
-        title = data.get('title', '电影收藏')
-        subtitle = data.get('subtitle', 'MOVIE COLLECTION')
-        theme_index = data.get('themeIndex', 0)
-        output_format = data.get('format', 'png')  # 'png' or 'gif'
-        title_size = data.get('titleSize', 130)
-        offset_x = data.get('offsetX', 200)
-        poster_scale = data.get('posterScale', 30)
-        v_align = data.get('vAlign', 22)
+        title = cover_config.get('title') or data.get('title', '电影收藏')
+        subtitle = cover_config.get('subtitle') or data.get('subtitle', 'MOVIE COLLECTION')
+        theme_index = cover_config.get('theme') or data.get('themeIndex', 0)
+        output_format = cover_config.get('format') or data.get('format', 'png')  # 'png' or 'gif'
+        title_size = cover_config.get('titleSize') or data.get('titleSize', 130)
+        offset_x = cover_config.get('offsetX') or data.get('offsetX', 200)
+        poster_scale = cover_config.get('posterScale') or data.get('posterScale', 30)
+        v_align = cover_config.get('vAlign') or data.get('vAlign', 22)
         
         generator = get_cover_generator()
         
@@ -842,6 +846,16 @@ def generate_cover():
         
         if not posters:
             return jsonify({'success': False, 'error': '未能获取海报图片'}), 400
+        
+        # 创建预览缓存目录
+        import os
+        cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'covers', 'preview')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 清理标题用于文件名
+        safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip() or 'cover'
+        file_ext = 'gif' if output_format.lower() == 'gif' else 'png'
+        local_file_path = os.path.join(cache_dir, f"{safe_title}.{file_ext}")
         
         # 生成封面
         if output_format.lower() == 'gif':
@@ -857,6 +871,9 @@ def generate_cover():
                 frame_count=len(posters) * 4,
                 duration_ms=150
             )
+            # 保存到本地缓存
+            with open(local_file_path, 'wb') as f:
+                f.write(gif_data)
             result_b64 = generator.bytes_to_base64(gif_data, "image/gif")
         else:
             cover_img = generator.generate_cover(
@@ -869,13 +886,19 @@ def generate_cover():
                 poster_scale_pct=poster_scale,
                 v_align_pct=v_align
             )
+            # 保存到本地缓存
+            cover_img.save(local_file_path, format='PNG')
             result_b64 = generator.cover_to_base64(cover_img)
+        
+        import logging
+        logging.getLogger(__name__).info(f"封面预览已保存到本地: {local_file_path}")
         
         return jsonify({
             'success': True,
             'data': {
                 'image': result_b64,
-                'format': output_format
+                'format': output_format,
+                'localPath': local_file_path
             }
         }), 200
     except Exception as e:
