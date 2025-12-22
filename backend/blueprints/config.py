@@ -158,6 +158,79 @@ def _sync_ai_credentials_from_config(payload: dict, secret_store: SecretStore | 
         secret_store.set_secret('llm_provider', ai.get('provider', ''))
 
 
+def _populate_secrets_from_cache(config: dict, secrets_cache: dict) -> dict:
+    """[性能优化] 使用预获取的缓存填充敏感字段，不再查询数据库。"""
+    # 1. 115 Cookies
+    cookies_json = secrets_cache.get('cloud115_cookies')
+    if cookies_json:
+        try:
+            cookies = json.loads(cookies_json)
+            if isinstance(cookies, dict):
+                cookie_str = '; '.join([f"{k}={v}" for k, v in cookies.items()])
+                if 'cloud115' not in config:
+                    config['cloud115'] = {}
+                config['cloud115']['cookies'] = cookie_str
+        except:
+            pass
+
+    # 2. 123 Password Credentials
+    pwd_creds_json = secrets_cache.get('cloud123_password_credentials')
+    if pwd_creds_json:
+        try:
+            creds = json.loads(pwd_creds_json)
+            if 'cloud123' not in config:
+                config['cloud123'] = {}
+            if creds.get('passport'):
+                config['cloud123']['passport'] = creds.get('passport')
+            if creds.get('password'):
+                config['cloud123']['password'] = creds.get('password')
+        except:
+            pass
+
+    # 3. 123 OAuth Credentials
+    oauth_creds_json = secrets_cache.get('cloud123_oauth_credentials')
+    if oauth_creds_json:
+        try:
+            creds = json.loads(oauth_creds_json)
+            if 'cloud123' not in config:
+                config['cloud123'] = {}
+            if creds.get('clientId'):
+                config['cloud123']['clientId'] = creds.get('clientId')
+            if creds.get('clientSecret'):
+                config['cloud123']['clientSecret'] = creds.get('clientSecret')
+        except:
+            pass
+            
+    # 4. LLM API Key
+    llm_key = secrets_cache.get('llm_api_key')
+    if llm_key:
+        if 'organize' not in config:
+            config['organize'] = {}
+        if 'ai' not in config['organize']:
+            config['organize']['ai'] = {}
+        config['organize']['ai']['apiKey'] = llm_key
+
+    return config
+
+
+def _add_session_flags_from_cache(config: dict, secrets_cache: dict) -> dict:
+    """[性能优化] 使用预获取的缓存添加会话标志，不再查询数据库。"""
+    # 115 Session
+    cookies_json = secrets_cache.get('cloud115_cookies')
+    if 'cloud115' not in config:
+        config['cloud115'] = {}
+    config['cloud115']['hasValidSession'] = bool(cookies_json)
+    
+    # 123 Session
+    token_json = secrets_cache.get('cloud123_token')
+    cookies_123_json = secrets_cache.get('cloud123_cookies')
+    oauth_credentials = secrets_cache.get('cloud123_oauth_credentials')
+    if 'cloud123' not in config:
+        config['cloud123'] = {}
+    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials)
+    
+    return config
+
 
 def _populate_secrets_to_config(config: dict, secret_store: SecretStore) -> dict:
     """Populate sensitive fields in config from SecretStore."""
@@ -295,16 +368,32 @@ def get_config():
     try:
         config = config_bp.store.get_config()
 
-        # Bootstrap SecretStore from persisted config for frontend compatibility
+        # [性能优化] 一次性批量获取所有需要的秘密，避免多次数据库查询
+        secrets_cache = {}
+        if config_bp.secret_store:
+            # 批量获取所有可能需要的 key（只查询一次数据库）
+            secret_keys = [
+                'cloud115_cookies',
+                'cloud123_token',
+                'cloud123_cookies', 
+                'cloud123_oauth_credentials',
+                'cloud123_password_credentials',
+                'llm_api_key'
+            ]
+            for key in secret_keys:
+                secrets_cache[key] = config_bp.secret_store.get_secret(key)
+        
+        # Bootstrap SecretStore from persisted config (使用缓存)
         if config_bp.secret_store:
             # 同步115 cookies
-            if not config_bp.secret_store.get_secret('cloud115_cookies'):
+            if not secrets_cache.get('cloud115_cookies'):
                 cloud115 = config.get('cloud115') if isinstance(config, dict) else None
                 if isinstance(cloud115, dict) and isinstance(cloud115.get('cookies'), str) and cloud115.get('cookies').strip():
                     _sync_cloud115_cookies_from_config(config, config_bp.secret_store)
+                    secrets_cache['cloud115_cookies'] = config_bp.secret_store.get_secret('cloud115_cookies')
             
             # 同步123云盘凭证
-            if not config_bp.secret_store.get_secret('cloud123_oauth_credentials'):
+            if not secrets_cache.get('cloud123_oauth_credentials'):
                 cloud123 = config.get('cloud123') if isinstance(config, dict) else None
                 if isinstance(cloud123, dict):
                     client_id = cloud123.get('clientId', '').strip() if isinstance(cloud123.get('clientId'), str) else ''
@@ -313,17 +402,17 @@ def get_config():
                         _sync_cloud123_credentials_from_config(config, config_bp.secret_store)
             
             # 同步 AI 凭证
-            if not config_bp.secret_store.get_secret('llm_api_key'):
+            if not secrets_cache.get('llm_api_key'):
                  _sync_ai_credentials_from_config(config, config_bp.secret_store)
         
-        # Populate secrets FROM store TO config response (so frontend sees persisted state)
+        # Populate secrets FROM cache TO config response (使用缓存，不再查询数据库)
         if config_bp.secret_store:
-            config = _populate_secrets_to_config(config, config_bp.secret_store)
+            config = _populate_secrets_from_cache(config, secrets_cache)
         
-        # Add session health flags
-        config = _add_session_flags(config, config_bp.secret_store)
+        # Add session health flags (使用缓存)
+        config = _add_session_flags_from_cache(config, secrets_cache)
         
-        # Mask sensitive data if 2FA is enabled (detected by presence of secret)
+        # Mask sensitive data if 2FA is enabled
         if config.get('twoFactorSecret'):
             config = _mask_sensitive_data(config)
         
