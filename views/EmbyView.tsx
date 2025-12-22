@@ -184,61 +184,39 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // 扫描缺集 (按电视剧逐个处理)
+    // 扫描缺集 (后台任务，刷新页面不中断)
     const handleScan = async () => {
         setIsScanning(true);
         setMissingData([]);  // 清空之前的结果
 
         try {
-            // 1. 获取所有电视剧列表
-            const listResult = await api.getSeriesList();
-            if (!listResult.success || !listResult.data) {
-                setToast(`获取剧集列表失败: ${(listResult as any).error || '未知错误'}`);
-                setIsScanning(false);
-                return;
-            }
+            // 启动后台扫描任务
+            const result = await api.startMissingScanBackground();
 
-            const seriesList = listResult.data;
-            const total = seriesList.length;
-
-            if (total === 0) {
-                setToast('未找到任何电视剧');
-                setIsScanning(false);
-                return;
-            }
-
-            let foundMissingCount = 0;
-
-            // 2. 逐个扫描每部剧
-            for (let i = 0; i < seriesList.length; i++) {
-                const series = seriesList[i];
-
-                // 进度在后端日志中记录，不在前端显示
-
-                try {
-                    const scanResult = await api.scanSingleSeries(series.id);
-
-                    if (scanResult.success && scanResult.data && scanResult.data.length > 0) {
-                        // 有缺集，追加到结果列表
-                        setMissingData(prev => [...prev, ...scanResult.data]);
-                        foundMissingCount += scanResult.data.length;
-                    }
-                } catch (err) {
-                    console.error(`扫描 ${series.name} 失败:`, err);
+            if (!result.success) {
+                // 如果任务已在运行，显示提示
+                if (result.error?.includes('正在进行中')) {
+                    setToast('缺集扫描正在后台运行中，请稍后查看结果');
+                } else {
+                    setToast(result.error || '启动扫描失败');
                 }
-
-                // 短暂延迟避免请求过快
-                await new Promise(resolve => setTimeout(resolve, 100));
+                setIsScanning(false);
+                return;
             }
 
-            setToast(`扫描完成: 共检查 ${total} 部剧，发现 ${foundMissingCount} 个缺集`);
+            setToast('缺集扫描已在后台启动，进度请查看运行日志。刷新页面不会中断扫描。');
+
+            // 扫描在后台运行，前端只需要显示"已启动"
+            // 用户可以刷新页面，扫描仍会继续
+            setIsScanning(false);
+
         } catch (e: any) {
             const errorMsg = e?.response?.data?.error || e?.message || '网络错误';
-            setToast(`扫描失败: ${errorMsg}`);
-            console.error('Scan error:', e);
-        } finally {
+            setToast(`启动扫描失败: ${errorMsg}`);
+            console.error('Scan start error:', e);
             setIsScanning(false);
-            setTimeout(() => setToast(null), 4000);
+        } finally {
+            setTimeout(() => setToast(null), 5000);
         }
     };
 

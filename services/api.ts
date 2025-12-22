@@ -619,6 +619,24 @@ export const api = {
     return res.data;
   },
 
+  // --- 后台任务 ---
+  startMissingScanBackground: async () => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/scan-missing/start');
+    return res.data;
+  },
+
+  getBackgroundTasks: async (taskType?: string) => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/emby/bg-tasks/status', {
+      params: taskType ? { type: taskType } : {}
+    });
+    return res.data;
+  },
+
+  getBackgroundTask: async (taskId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/emby/bg-tasks/${taskId}`);
+    return res.data;
+  },
+
   saveBotConfig: async (config: any) => {
     const res = await apiClient.post<ApiResponse<any>>('/bot/config', config);
     return res.data;

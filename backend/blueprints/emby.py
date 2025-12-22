@@ -116,6 +116,106 @@ def scan_missing_episodes():
         }), 500
 
 
+@emby_bp.route('/scan-missing/start', methods=['POST'])
+@require_auth
+def start_missing_scan_background():
+    """Start missing episode scan in background (doesn't block, survives page refresh)."""
+    import logging
+    from services.background_tasks import get_background_service
+    
+    logger = logging.getLogger(__name__)
+    bg_service = get_background_service()
+    
+    # Check if scan is already running
+    running = bg_service.get_running_tasks(task_type='missing_scan')
+    if running:
+        return jsonify({
+            'success': False,
+            'error': '缺集扫描正在进行中',
+            'task': running[0]
+        }), 200
+    
+    if not _emby_service:
+        return jsonify({
+            'success': False,
+            'error': 'Emby 服务未初始化'
+        }), 500
+    
+    # Create and run background task
+    task = bg_service.create_task('missing_scan', '缺集扫描')
+    
+    def scan_job(task):
+        """Background job for missing episode scan."""
+        series_list = _emby_service.get_series_list()
+        if not series_list.get('success'):
+            raise Exception(series_list.get('error', '获取剧集列表失败'))
+        
+        series = series_list.get('data', [])
+        total = len(series)
+        all_missing = []
+        
+        for i, s in enumerate(series):
+            bg_service.update_progress(task, i + 1, total, s.get('name', s.get('id')))
+            
+            try:
+                result = _emby_service.scan_single_series(s.get('id'))
+                if result.get('success') and result.get('data'):
+                    all_missing.extend(result['data'])
+            except Exception as e:
+                logger.warning(f"扫描 {s.get('name')} 失败: {e}")
+        
+        return {'missing': all_missing, 'total_series': total}
+    
+    bg_service.run_task(task, scan_job)
+    
+    return jsonify({
+        'success': True,
+        'message': '扫描已在后台启动',
+        'task': task.to_dict()
+    }), 200
+
+
+@emby_bp.route('/bg-tasks/status', methods=['GET'])
+@require_auth
+def get_background_tasks_status():
+    """Get status of all background tasks."""
+    from services.background_tasks import get_background_service
+    
+    bg_service = get_background_service()
+    task_type = request.args.get('type')
+    
+    if task_type:
+        tasks = bg_service.get_running_tasks(task_type)
+    else:
+        tasks = bg_service.get_all_tasks()
+    
+    return jsonify({
+        'success': True,
+        'data': tasks
+    }), 200
+
+
+@emby_bp.route('/bg-tasks/<task_id>', methods=['GET'])
+@require_auth
+def get_background_task(task_id: str):
+    """Get status of a specific background task."""
+    from services.background_tasks import get_background_service
+    
+    bg_service = get_background_service()
+    task = bg_service.get_task(task_id)
+    
+    if not task:
+        return jsonify({
+            'success': False,
+            'error': 'Task not found'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'data': task.to_dict()
+    }), 200
+
+
 @emby_bp.route('/series-list', methods=['GET'])
 @require_auth
 def get_series_list():
