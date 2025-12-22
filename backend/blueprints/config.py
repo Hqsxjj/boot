@@ -380,8 +380,8 @@ def get_config():
                 'cloud123_password_credentials',
                 'llm_api_key'
             ]
-            for key in secret_keys:
-                secrets_cache[key] = config_bp.secret_store.get_secret(key)
+            # 使用批量查询，只创建一次数据库连接
+            secrets_cache = config_bp.secret_store.get_secrets_batch(secret_keys)
         
         # Bootstrap SecretStore from persisted config (使用缓存)
         if config_bp.secret_store:

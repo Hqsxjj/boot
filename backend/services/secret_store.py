@@ -143,6 +143,39 @@ class SecretStore:
             logger.error(f'Failed to get secret {key}: {e}')
             return None
     
+    def get_secrets_batch(self, keys: list) -> dict:
+        """[性能优化] 批量获取多个秘密，只使用一次数据库连接。"""
+        result = {key: None for key in keys}
+        
+        if not keys:
+            return result
+        
+        try:
+            session: Session = self.session_factory()
+            # 单次查询获取所有需要的 key
+            secrets = session.query(Secret).filter(Secret.key.in_(keys)).all()
+            session.close()
+            
+            for secret in secrets:
+                key = secret.key
+                stored_value = secret.encrypted_value
+                
+                # 云盘凭证不解密
+                if not self._should_encrypt(key):
+                    result[key] = stored_value
+                else:
+                    # 尝试解密
+                    try:
+                        result[key] = self._cipher.decrypt(stored_value.encode()).decode()
+                    except Exception:
+                        result[key] = stored_value
+            
+            logger.debug(f'Batch retrieved {len(secrets)} secrets for {len(keys)} keys')
+            return result
+        except Exception as e:
+            logger.error(f'Failed to batch get secrets: {e}')
+            return result
+    
     def delete_secret(self, key: str) -> bool:
         """Delete a secret."""
         try:
