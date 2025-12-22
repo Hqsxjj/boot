@@ -24,6 +24,7 @@ from blueprints.resource_search import resource_search_bp, init_resource_search_
 from blueprints.keywords import keywords_bp, set_keyword_store
 from blueprints.subscription import subscription_bp, init_subscription_service
 from blueprints.sources import sources_bp
+from blueprints.proxy import proxy_bp
 from services.subscription_service import SubscriptionService
 from services.pan_search_service import get_pan_search_service
 import threading
@@ -202,6 +203,9 @@ def create_app(config=None):
     
     # Initialize Sources Blueprint (来源管理)
     app.register_blueprint(sources_bp)
+
+    # Initialize Proxy Blueprint
+    app.register_blueprint(proxy_bp)
     
     # Initialize Organize Blueprint (TMDB 重命名整理)
     from blueprints.organize import organize_bp, init_organize_blueprint

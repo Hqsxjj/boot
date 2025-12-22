@@ -666,6 +666,12 @@ export const api = {
       target_id: targetId,
     });
     return res.data;
+  },
+
+  // --- Proxy ---
+  testProxy: async (config: { type: string; host: string; port: string; username?: string; password?: string }) => {
+    const res = await apiClient.post<ApiResponse<{ latency: number; message: string }>>('/proxy/test', config);
+    return res.data;
   }
 };
 

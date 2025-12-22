@@ -15,6 +15,14 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
   twoFactorSecret: ''
 };
 
+// [新增] 代理测试相关 Helper
+const getLatencyColor = (latency: number | null) => {
+  if (latency === null) return 'text-slate-400 bg-slate-100 dark:bg-slate-800';
+  if (latency < 200) return 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20 border-green-200/50 dark:border-green-800/50';
+  if (latency < 500) return 'text-yellow-600 bg-yellow-50 dark:text-yellow-400 dark:bg-yellow-900/20 border-yellow-200/50 dark:border-yellow-800/50';
+  return 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20 border-red-200/50 dark:border-red-800/50';
+};
+
 export const UserCenterView: React.FC = () => {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +42,10 @@ export const UserCenterView: React.FC = () => {
   // PWA State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+
+  // Proxy Latency State
+  const [proxyLatency, setProxyLatency] = useState<number | null>(null);
+  const [isTestingProxy, setIsTestingProxy] = useState(false);
 
 
 
@@ -69,6 +81,43 @@ export const UserCenterView: React.FC = () => {
       // 静默处理，不显示错误提示
     } finally {
       setLoading(false);
+    }
+  };
+
+  // [新增] 代理测试逻辑
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (config?.proxy?.enabled || (config?.proxy?.host && config?.proxy?.port)) {
+        testProxyConnection();
+      }
+    }, 1000); // Debounce 1s
+    return () => clearTimeout(timer);
+  }, [config?.proxy?.host, config?.proxy?.port, config?.proxy?.type]);
+
+  const testProxyConnection = async () => {
+    if (!config?.proxy?.host || !config?.proxy?.port) {
+      setProxyLatency(null);
+      return;
+    }
+
+    setIsTestingProxy(true);
+    try {
+      const res = await api.testProxy({
+        type: config.proxy.type,
+        host: config.proxy.host,
+        port: config.proxy.port,
+        username: config.proxy.username,
+        password: config.proxy.password
+      });
+      if (res.success) {
+        setProxyLatency(res.data.latency);
+      } else {
+        setProxyLatency(9999); // Error
+      }
+    } catch (e) {
+      setProxyLatency(9999);
+    } finally {
+      setIsTestingProxy(false);
     }
   };
 
@@ -325,7 +374,7 @@ export const UserCenterView: React.FC = () => {
                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">当前密钥</label>
                 <SensitiveInput
                   value={config?.twoFactorSecret || ''}
-                  onChange={(e) => { }}
+                  onChange={() => { }}
                   className={inputClass + " font-mono"}
                 />
               </div>
@@ -394,12 +443,21 @@ export const UserCenterView: React.FC = () => {
 
             <div className="flex items-center gap-4">
               {config?.proxy?.host && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-800/50">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                  <span className="text-[10px] font-mono font-medium text-green-600 dark:text-green-400">
-                    {config.proxy.type?.toUpperCase()} · {config.proxy.host}:{config.proxy.port || '7890'}
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-800/50">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-[10px] font-mono font-medium text-green-600 dark:text-green-400">
+                      {config.proxy.type?.toUpperCase()} · {config.proxy.host}:{config.proxy.port || '7890'}
+                    </span>
+                  </div>
+
+                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${getLatencyColor(proxyLatency)}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isTestingProxy ? 'bg-slate-400 animate-pulse' : (proxyLatency && proxyLatency < 9999 ? 'bg-current' : 'bg-red-500')}`}></div>
+                    <span className="text-[10px] font-mono font-medium">
+                      {isTestingProxy ? 'Testing...' : (proxyLatency && proxyLatency < 9999 ? `${proxyLatency}ms` : (proxyLatency === 9999 ? 'Error' : 'Unknown'))}
+                    </span>
+                  </div>
+                </>
               )}
 
               <button
@@ -411,85 +469,84 @@ export const UserCenterView: React.FC = () => {
                 保存设置
               </button>
             </div>
-          </div>
 
-          <div className="p-6 transition-all duration-300">
-            <div className="space-y-5">
-              {/* 第一行：类型 + 主机 + 端口 */}
-              {/* Row 1: Type & Port */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">代理类型 (Protocol)</label>
-                  <div className="relative">
-                    <select
-                      value={config?.proxy?.type || 'http'}
-                      onChange={(e) => updateNested('proxy', 'type', e.target.value)}
-                      className={`${inputClass} appearance-none cursor-pointer`}
-                    >
-                      <option value="http">HTTP</option>
-                      <option value="https">HTTPS</option>
-                      <option value="socks5">SOCKS5</option>
-                    </select>
-                    <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
-                      <Globe size={14} />
+            <div className="p-6 transition-all duration-300">
+              <div className="space-y-5">
+                {/* 第一行：类型 + 主机 + 端口 */}
+                {/* Row 1: Type & Port */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">代理类型 (Protocol)</label>
+                    <div className="relative">
+                      <select
+                        value={config?.proxy?.type || 'http'}
+                        onChange={(e) => updateNested('proxy', 'type', e.target.value)}
+                        className={`${inputClass} appearance-none cursor-pointer`}
+                      >
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                        <option value="socks5">SOCKS5</option>
+                      </select>
+                      <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
+                        <Globe size={14} />
+                      </div>
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口 (Port)</label>
+                    <input
+                      type="text"
+                      value={config?.proxy?.port || ''}
+                      onChange={(e) => updateNested('proxy', 'port', e.target.value)}
+                      placeholder="例如: 7890"
+                      className={`${inputClass} font-mono`}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">端口 (Port)</label>
-                  <input
-                    type="text"
-                    value={config?.proxy?.port || ''}
-                    onChange={(e) => updateNested('proxy', 'port', e.target.value)}
-                    placeholder="例如: 7890"
-                    className={`${inputClass} font-mono`}
-                  />
-                </div>
-              </div>
 
-              {/* Row 2: Host (Full Width) */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址 (Server Host)</label>
-                  <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1.5 font-bold px-2 py-1 rounded hover:bg-brand-50 transition-colors">
-                    <Zap size={12} />
-                    填入本机 IP
-                  </button>
+                {/* Row 2: Host (Full Width) */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址 (Server Host)</label>
+                    <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1.5 font-bold px-2 py-1 rounded hover:bg-brand-50 transition-colors">
+                      <Zap size={12} />
+                      填入本机 IP
+                    </button>
+                  </div>
+                  <div className="relative group">
+                    <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors">
+                      <HardDrive size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={config?.proxy?.host || ''}
+                      onChange={(e) => updateNested('proxy', 'host', e.target.value)}
+                      placeholder="请输入代理服务器 IP 或域名，例如: 192.168.1.5"
+                      className={`${inputClass} pl-10 font-mono text-base`}
+                    />
+                  </div>
                 </div>
-                <div className="relative group">
-                  <div className="absolute left-3 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors">
-                    <HardDrive size={16} />
+
+                {/* 第二行：不走代理的地址 */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">不走代理的地址</label>
+                    <span className="text-[10px] text-slate-400">多个地址用逗号分隔</span>
                   </div>
                   <input
                     type="text"
-                    value={config?.proxy?.host || ''}
-                    onChange={(e) => updateNested('proxy', 'host', e.target.value)}
-                    placeholder="请输入代理服务器 IP 或域名，例如: 192.168.1.5"
-                    className={`${inputClass} pl-10 font-mono text-base`}
+                    value={config?.proxy?.noProxyHosts || '115.com,123pan.com,123pan.cn'}
+                    onChange={(e) => updateNested('proxy', 'noProxyHosts', e.target.value)}
+                    placeholder="115.com,123pan.com,123pan.cn,localhost"
+                    className={`${inputClass} font-mono text-xs`}
                   />
+                  <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    115 网盘和 123 云盘 API 默认不走代理，避免连接问题
+                  </p>
                 </div>
-              </div>
-
-              {/* 第二行：不走代理的地址 */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">不走代理的地址</label>
-                  <span className="text-[10px] text-slate-400">多个地址用逗号分隔</span>
-                </div>
-                <input
-                  type="text"
-                  value={config?.proxy?.noProxyHosts || '115.com,123pan.com,123pan.cn'}
-                  onChange={(e) => updateNested('proxy', 'noProxyHosts', e.target.value)}
-                  placeholder="115.com,123pan.com,123pan.cn,localhost"
-                  className={`${inputClass} font-mono text-xs`}
-                />
-                <p className="text-[10px] text-slate-400 mt-2 flex items-center gap-1">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                  115 网盘和 123 云盘 API 默认不走代理，避免连接问题
-                </p>
               </div>
             </div>
-          </div>
         </section>
 
         {/* WebDAV Server */}
