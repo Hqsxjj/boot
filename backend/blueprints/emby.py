@@ -888,7 +888,9 @@ def generate_cover():
                 frame_count=len(posters) * 4,
                 duration_ms=150,
                 spacing=spacing,
-                angle_scale=angle_scale
+                angle_scale=angle_scale,
+                use_backdrop=use_backdrop,
+                backdrop_img=backdrop_img
             )
             # 保存到本地缓存
             with open(local_file_path, 'wb') as f:

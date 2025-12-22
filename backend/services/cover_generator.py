@@ -496,7 +496,8 @@ class CoverGenerator:
                     pass
             
             # === 1. 阴影 (Shadow) with Depth ===
-            if config.get("z", 0) > 0:
+            # 仅对非最后一张(非最顶层)海报生成阴影
+            if config.get("z", 0) > 0 and i < len(posters) - 1:
                 shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 0))
                 # 颜色随深度变淡 (但Z越大离观众越近，阴影应该更深/更清晰？不，这取决于光源)
                 # 假设光源在正前方：物体越近，阴影越散、越远
