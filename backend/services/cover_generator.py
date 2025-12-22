@@ -36,6 +36,16 @@ THEMES = [
     {"name": "迷幻紫晶", "colors": ("#614385", "#516395", "#614385")}, # Amethyst
 ]
 
+# 海报布局阶段 (模拟 3D 堆叠效果 - 增强版)
+# 加大远近差异，增强立体透视感
+STAGES = [
+    {"x": 880,  "y": 410, "scale": 0.60, "angle": -35, "brightness": 0.4, "opacity": 0.3, "z": 10},
+    {"x": 1000, "y": 450, "scale": 0.72, "angle": -24, "brightness": 0.6, "opacity": 0.6, "z": 30},
+    {"x": 1140, "y": 490, "scale": 0.85, "angle": -14, "brightness": 0.85, "opacity": 0.85, "z": 60},
+    {"x": 1300, "y": 530, "scale": 1.00, "angle": 0,   "brightness": 1.0, "opacity": 1.0,  "z": 100},
+    {"x": 1480, "y": 570, "scale": 1.15, "angle": 12,  "brightness": 1.05, "opacity": 1.0, "z": 120},
+]
+
 class CoverGenerator:
     # ... __init__ ... can be skipped if not changing, but we need to keep context for replace.
     # Actually I should verify where to start replacing.
@@ -267,22 +277,69 @@ class CoverGenerator:
             # 兼容性处理: 如果 rotated 尺寸超过画布，进行裁剪或调整
             # 简单方式: 直接 paste (PIL 会自动处理边界)
             
-            # 绘制阴影 (带高斯模糊)
+            # === 0. 倒影 (Reflection) ===
+            # 仅对不完全透明的海报生成倒影
+            if opacity > 0.3:
+                try:
+                    reflection = rotated.copy().transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+                    # 挤压倒影 (垂直方向压缩，使透视更自然)
+                    ref_h = int(reflection.height * 0.6)
+                    reflection = reflection.resize((reflection.width, ref_h))
+                    
+                    # 渐变蒙版
+                    ref_mask = Image.new("L", reflection.size, 0)
+                    ref_draw = ImageDraw.Draw(ref_mask)
+                    # 垂直线性渐变 (上部不透明 -> 下部透明)
+                    for y in range(ref_h):
+                        ref_alpha = int(120 * (1 - y / ref_h) * opacity * config["scale"]) 
+                        ref_draw.line([(0, y), (reflection.width, y)], fill=ref_alpha)
+                        
+                    # 应用蒙版
+                    r_r, r_g, r_b, r_a = reflection.split()
+                    from PIL import ImageChops
+                    r_a = ImageChops.multiply(r_a, ref_mask)
+                    reflection.putalpha(r_a)
+                    
+                    # 绘制倒影 (位置稍微向下一点)
+                    # Z越小(越远)，倒影离得越近视觉上
+                    ref_y = py + rotated.height - int(10 * config["scale"])
+                    img.paste(reflection, (px, ref_y), reflection)
+                except Exception:
+                    pass
+            
+            # === 1. 阴影 (Shadow) with Depth ===
             if config.get("z", 0) > 0:
                 shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 0))
-                # 创建阴影 mask，使用 alpha 通道
-                shadow.paste((0,0,0,150), (0,0), rotated)
-                # 模糊
-                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=15))
+                # 颜色随深度变淡 (但Z越大离观众越近，阴影应该更深/更清晰？不，这取决于光源)
+                # 假设光源在正前方：物体越近，阴影越散、越远
+                # 传统UI阴影：物体浮起越高(Z大)，阴影越模糊、位移越大、透明度越低
                 
-                # 阴影偏移
-                sx = px + 10
-                sy = py + 20
+                # Z: 20(远) -> 100(近)
+                z_factor = config["z"] / 100.0
+                
+                shadow_alpha = int(180 * (config["opacity"] + 0.1))
+                shadow_alpha = min(shadow_alpha, 200)
+                
+                shadow.paste((0,0,0,shadow_alpha), (0,0), rotated)
+                
+                # 模糊半径
+                blur_r = int(10 + config["z"] * 0.25)
+                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=blur_r))
+                
+                # 偏移量
+                off_d = int(5 + config["z"] * 0.35)
+                sx = px + off_d
+                sy = py + off_d + 15
+                
                 img.paste(shadow, (sx, sy), shadow)
             
             # 粘贴海报 (使用 alpha_composite 或 paste mask)
             # 这里的 rotated 已经是 RGBA，直接 paste 即可利用其 alpha 通道进行混合
             img.paste(rotated, (px, py), rotated)
+            
+            # === 2. 镜面高光 (Specular Highlight) ===
+            # (已整合到玻璃边缘效果和整体光照中，此处无需额外叠加复杂图层，保持画面整洁)
+
         
         # 字体加载逻辑 - 优先使用粗体
         font_candidates = [
