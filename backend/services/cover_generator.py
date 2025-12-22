@@ -39,11 +39,11 @@ THEMES = [
 # 海报布局阶段 (模拟 3D 堆叠效果 - 增强版)
 # 加大远近差异，增强立体透视感
 STAGES = [
-    {"x": 880,  "y": 410, "scale": 0.60, "angle": -40, "brightness": 0.4, "opacity": 0.3, "z": 10},
-    {"x": 1000, "y": 450, "scale": 0.72, "angle": -30, "brightness": 0.6, "opacity": 0.6, "z": 30},
-    {"x": 1140, "y": 490, "scale": 0.85, "angle": -20, "brightness": 0.85, "opacity": 0.85, "z": 60},
-    {"x": 1300, "y": 530, "scale": 1.00, "angle": -10,   "brightness": 1.0, "opacity": 1.0,  "z": 100},
-    {"x": 1480, "y": 570, "scale": 1.15, "angle": 0,  "brightness": 1.05, "opacity": 1.0, "z": 120},
+    {"x": 880,  "y": 410, "scale": 0.60, "angle": -40, "brightness": 0.6, "opacity": 0.7, "z": 10},  # 提亮，降低透明度
+    {"x": 1000, "y": 450, "scale": 0.72, "angle": -30, "brightness": 0.7, "opacity": 0.8, "z": 30},
+    {"x": 1140, "y": 490, "scale": 0.85, "angle": -20, "brightness": 0.85, "opacity": 0.9, "z": 60},
+    {"x": 1300, "y": 530, "scale": 1.00, "angle": -10, "brightness": 1.0, "opacity": 1.0,  "z": 100},
+    {"x": 1480, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.0, "z": 120},
 ]
 
 class CoverGenerator:
@@ -561,8 +561,17 @@ class CoverGenerator:
         # === 文字效果 (扁平化) ===
         
         # 1. 主标题
-        # 移除 3D 阴影，仅保留一个柔和的投影以保证可读性
-        draw.text((tx + 2, ty + 2), title, font=m_font, fill=(0, 0, 0, 100))
+        # 增强 3D 立体阴影
+        # 多层叠加产生厚度感
+        for off in range(1, 6):
+            alpha = int(200 - off * 30) # 越远越淡
+            draw.text((tx + off, ty + off), title, font=m_font, fill=(0, 0, 0, alpha))
+            
+        # 额外的柔和弥散阴影
+        # (由于 PIL 模糊文字比较复杂，这里用多重微小偏移模拟模糊)
+        draw.text((tx + 2, ty + 4), title, font=m_font, fill=(0, 0, 0, 80))
+        draw.text((tx + 4, ty + 2), title, font=m_font, fill=(0, 0, 0, 80))
+
         draw.text((tx, ty), title, font=m_font, fill="white")
         
         # 2. 副标题
