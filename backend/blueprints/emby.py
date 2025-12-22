@@ -843,6 +843,7 @@ def generate_cover():
         poster_scale = cover_config.get('posterScale') or data.get('posterScale', 30)
         v_align = cover_config.get('vAlign') or data.get('vAlign', 22)
         spacing = cover_config.get('spacing') or data.get('spacing', 1.0)
+        angle_scale = cover_config.get('angleScale') or data.get('angleScale', 1.0)
         
         generator = get_cover_generator()
         
@@ -880,7 +881,8 @@ def generate_cover():
                 v_align_pct=v_align,
                 frame_count=len(posters) * 4,
                 duration_ms=150,
-                spacing=spacing
+                spacing=spacing,
+                angle_scale=angle_scale
             )
             # 保存到本地缓存
             with open(local_file_path, 'wb') as f:
@@ -896,7 +898,8 @@ def generate_cover():
                 offset_x=offset_x,
                 poster_scale_pct=poster_scale,
                 v_align_pct=v_align,
-                spacing=spacing
+                spacing=spacing,
+                angle_scale=angle_scale
             )
             # 保存到本地缓存
             cover_img.save(local_file_path, format='PNG')

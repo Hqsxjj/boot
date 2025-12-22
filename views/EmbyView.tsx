@@ -56,6 +56,7 @@ export const EmbyView: React.FC = () => {
     const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
     const [spacing, setSpacing] = useState(1.0);         // 堆叠间距系数
+    const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数
 
     // 批量选择 (用 Set 存储选中的 ID)
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
@@ -141,6 +142,7 @@ export const EmbyView: React.FC = () => {
                 posterScale,
                 vAlign,
                 spacing,
+                angleScale,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -364,6 +366,7 @@ export const EmbyView: React.FC = () => {
                 posterScale,
                 vAlign,
                 spacing,
+                angleScale,
                 format: coverFormat,
                 theme: selectedTheme
             };
@@ -881,6 +884,20 @@ export const EmbyView: React.FC = () => {
                                             step={0.1}
                                             value={spacing}
                                             onChange={(e) => setSpacing(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            旋转角度系数: {angleScale}x
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={0.0}
+                                            max={2.0}
+                                            step={0.1}
+                                            value={angleScale}
+                                            onChange={(e) => setAngleScale(Number(e.target.value))}
                                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
                                         />
                                     </div>

@@ -224,11 +224,13 @@ class CoverGenerator:
         v_align_pct: int = 22,
         font_path: str = None,
         custom_theme_color: str = None,
-        spacing: float = 1.0
+        spacing: float = 1.0,
+        angle_scale: float = 1.0
     ) -> Image.Image:
         """
         生成静态封面图
-        spacing: 堆叠间距系数，默认 1.0 (100%)
+        spacing: 堆叠间距系数，默认 1.0
+        angle_scale: 旋转角度系数，默认 1.0
         """
         # 如果指定了自定义主题索引 (处理随机化逻辑外部传入)
         if theme_index < 0:
@@ -296,7 +298,6 @@ class CoverGenerator:
             final_stage_x = center_x + (current_x - center_x) * spacing
             
             # 缩放
-
             sw, sh = int(p_base_w * config["scale"]), int(p_base_h * config["scale"])
             poster = poster.resize((sw, sh), Image.Resampling.LANCZOS)
             
@@ -308,24 +309,18 @@ class CoverGenerator:
             mask_draw.rounded_rectangle([0, 0, sw, sh], radius=corner_radius, fill=255)
             
             # 1. 透明度渐变处理
-            # 遮罩的 alpha 值决定了最终图片的 alpha
-            # 如果配置中有 opacity，则将遮罩的 alpha 值乘以此系数
             opacity = config.get("opacity", 1.0)
             if opacity < 1.0:
-                # 获取 mask 数据
                 mask_data = mask.getdata()
-                # 重新计算 alpha
                 new_data = [int(p * opacity) for p in mask_data]
                 mask.putdata(new_data)
             
-            # 应用遮罩 (此时 mask 已经被调整过 alpha)
+            # 应用遮罩
             poster.putalpha(mask)
             
             # === 海报玻璃边缘感 ===
-            # 在海报上叠加一个内发光/描边效果
             border_layer = Image.new("RGBA", (sw, sh), (0,0,0,0))
             border_draw = ImageDraw.Draw(border_layer)
-            # 外部描边 (白色半透明) - 透明度也需要随整体 opacity 调整
             border_alpha = int(100 * opacity)
             border_draw.rounded_rectangle([0, 0, sw-1, sh-1], radius=corner_radius, outline=(255, 255, 255, border_alpha), width=2)
             
@@ -337,7 +332,9 @@ class CoverGenerator:
                 poster = enhancer.enhance(config["brightness"])
             
             # 旋转处理
-            rot_angle = -config["angle"]
+            # 应用角度系数
+            rot_angle = -config["angle"] * angle_scale
+
             # 注意: 旋转带 Alpha 通道的图像，expand=True 会自动处理透明背景
             rotated = poster.rotate(rot_angle, expand=True, resample=Image.Resampling.BICUBIC)
             
