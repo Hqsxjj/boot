@@ -717,7 +717,7 @@ def apply_covers_to_emby():
                 
                 # 3. 创建本地缓存目录
                 import os
-                cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'covers', safe_lib_name)
+                cache_dir = os.path.join('/data', 'covers', safe_lib_name)
                 os.makedirs(cache_dir, exist_ok=True)
                 
                 # 4. 生成封面并保存到本地
@@ -849,7 +849,7 @@ def generate_cover():
         
         # 创建预览缓存目录
         import os
-        cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'covers', 'preview')
+        cache_dir = os.path.join('/data', 'covers', 'preview')
         os.makedirs(cache_dir, exist_ok=True)
         
         # 清理标题用于文件名
