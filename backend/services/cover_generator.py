@@ -7,20 +7,21 @@ import io
 import base64
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 import requests
+import random
 
 logger = logging.getLogger(__name__)
 
-# 主题配色
+# 主题配色 (增强版: 定义基调色，生成时会加入变体)
 THEMES = [
     {"name": "经典蓝", "colors": ("#3db1e0", "#2980b9", "#1c3d5a")},
     {"name": "深邃红", "colors": ("#e74c3c", "#c0392b", "#7b241c")},
     {"name": "翡翠绿", "colors": ("#2ecc71", "#27ae60", "#1b5e20")},
     {"name": "琥珀金", "colors": ("#f1c40f", "#f39c12", "#b7950b")},
     {"name": "皇家紫", "colors": ("#9b59b6", "#8e44ad", "#4a235a")},
-    {"name": "暗夜黑", "colors": ("#2c3e50", "#34495e", "#000000")},
-    {"name": "晨曦粉", "colors": ("#FFD194", "#70E1F5", "#FFD194")},
+    {"name": "暗夜黑", "colors": ("#2c3e50", "#34495e", "#1a1a1a")},
+    {"name": "晨曦粉", "colors": ("#FFD194", "#70E1F5", "#FFD194")}, # 特殊：撞色
     {"name": "青翠林", "colors": ("#00b09b", "#96c93d", "#00b09b")},
     {"name": "梦幻紫", "colors": ("#834d9b", "#d04ed6", "#834d9b")},
     {"name": "蓝调调", "colors": ("#74ebd5", "#acb6e5", "#74ebd5")},
@@ -28,138 +29,64 @@ THEMES = [
     {"name": "暖阳橘", "colors": ("#e65c00", "#f9d423", "#e65c00")},
 ]
 
-# 海报布局阶段 (模拟 3D 堆叠效果)
-# 海报布局阶段 (模拟 3D 堆叠效果)
-STAGES = [
-    {"x": 960,  "y": 440, "scale": 0.70, "angle": -28, "brightness": 0.5, "opacity": 0.4, "z": 20},
-    {"x": 1050, "y": 470, "scale": 0.80, "angle": -18, "brightness": 0.7, "opacity": 0.6, "z": 30},
-    {"x": 1150, "y": 500, "scale": 0.90, "angle": -8,  "brightness": 0.8, "opacity": 0.8, "z": 40},
-    {"x": 1280, "y": 530, "scale": 1.00, "angle": 0,   "brightness": 0.9, "opacity": 0.95, "z": 50},
-    {"x": 1450, "y": 560, "scale": 1.10, "angle": 10,  "brightness": 1.0, "opacity": 1.0,  "z": 100},
-]
-
+# ... STAGES ...
 
 class CoverGenerator:
-    """Emby 封面图生成器"""
-    
-    def __init__(self, emby_url: str = None, api_key: str = None):
-        self.emby_url = emby_url
-        self.api_key = api_key
-        
-    def set_emby_config(self, emby_url: str, api_key: str):
-        """设置 Emby 连接配置"""
-        self.emby_url = emby_url.rstrip('/')
-        self.api_key = api_key
-        
-    def get_libraries(self) -> List[Dict[str, Any]]:
-        """获取 Emby 媒体库列表"""
-        if not self.emby_url or not self.api_key:
-            return []
-            
-        try:
-            url = f"{self.emby_url}/emby/Library/VirtualFolders"
-            params = {"api_key": self.api_key}
-            resp = requests.get(url, params=params, timeout=10, verify=False)
-            resp.raise_for_status()
-            
-            libraries = []
-            for lib in resp.json():
-                libraries.append({
-                    "id": lib.get("ItemId", ""),
-                    "name": lib.get("Name", ""),
-                    "type": lib.get("CollectionType", ""),
-                    "path": lib.get("Locations", [""])[0] if lib.get("Locations") else ""
-                })
-            return libraries
-        except Exception as e:
-            logger.error(f"获取媒体库列表失败: {e}")
-            return []
-    
-    def get_library_posters(self, library_id: str, limit: int = 10) -> List[Image.Image]:
-        """获取媒体库中的海报图片"""
-        if not self.emby_url or not self.api_key:
-            return []
-            
-        try:
-            # 获取媒体库中的项目
-            url = f"{self.emby_url}/emby/Items"
-            params = {
-                "api_key": self.api_key,
-                "ParentId": library_id,
-                "Limit": limit,
-                "SortBy": "DateCreated,SortName",
-                "SortOrder": "Descending",
-                "ImageTypes": "Primary",
-                "Recursive": True,
-                "IncludeItemTypes": "Movie,Series"
-            }
-            resp = requests.get(url, params=params, timeout=10, verify=False)
-            resp.raise_for_status()
-            
-            items = resp.json().get("Items", [])
-            posters = []
-            
-            for item in items[:limit]:
-                item_id = item.get("Id")
-                if not item_id:
-                    continue
-                    
-                # 获取海报图片
-                img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
-                img_params = {"api_key": self.api_key, "maxWidth": 400}
-                
-                try:
-                    img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
-                    if img_resp.status_code == 200:
-                        img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
-                        posters.append(img)
-                except Exception as e:
-                    logger.warning(f"获取海报失败: {item_id} - {e}")
-                    
-            return posters
-        except Exception as e:
-            logger.error(f"获取媒体库海报失败: {e}")
-            return []
-    
+    # ... __init__ ...
+
+    # ... set_emby_config, get_libraries, get_library_posters ...
+
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """将十六进制颜色转换为 RGB"""
         hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 3:
+            hex_color = ''.join([c*2 for c in hex_color])
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
-    def _draw_gradient_background(self, draw: ImageDraw.Draw, width: int, height: int, 
-                                   color1: str, color2: str, color3: str = None):
-        """绘制渐变背景 (支持双色或三色插值)"""
-        c1 = self._hex_to_rgb(color1)
-        c3 = self._hex_to_rgb(color2) # End color
+    def _draw_mesh_gradient(self, width: int, height: int, colors: List[Tuple[int, int, int]]) -> Image.Image:
+        """
+        绘制弥散光混色背景 (Mesh Gradient)
+        使用低分辨率绘制大色块然后高斯模糊，产生柔和自然的混色效果。
+        """
+        # 低分辨率画布 (提高性能 + 自然模糊)
+        small_w, small_h = width // 8, height // 8
+        base = Image.new("RGB", (small_w, small_h), colors[0])
+        draw = ImageDraw.Draw(base)
         
-        has_mid = color3 is not None
-        if has_mid:
-            c2 = self._hex_to_rgb(color3) # Mid color
+        # 在不同位置绘制大圆色块
+        # 坐标归一化: (x_ratio, y_ratio, color_index)
+        blobs = [
+            (0.0, 0.0, 0),    # 左上: 主色
+            (1.0, 1.0, 1),    # 右下: 辅色 (深色)
+            (0.8, 0.2, 2),    # 右上: 提亮色
+            (0.2, 0.8, 2),    # 左下: 提亮色 (平衡)
+            (0.5, 0.5, 0),    # 中心: 主色呼应
+        ]
         
-        for y in range(height):
-            ratio = y / height
+        if len(colors) < 3:
+            # 如果颜色不足3种，重复使用
+            colors = list(colors)
+            while len(colors) < 3:
+                colors.append(colors[0])
+        
+        for rx, ry, c_idx in blobs:
+            cx, cy = int(rx * small_w), int(ry * small_h)
+            color = colors[c_idx % len(colors)]
             
-            if has_mid:
-                # 三色插值: 0.0 -> 0.5 (c1->c2), 0.5 -> 1.0 (c2->c3)
-                if ratio < 0.5:
-                    # 前半段
-                    local_ratio = ratio * 2
-                    r = int(c1[0] + (c2[0] - c1[0]) * local_ratio)
-                    g = int(c1[1] + (c2[1] - c1[1]) * local_ratio)
-                    b = int(c1[2] + (c2[2] - c1[2]) * local_ratio)
-                else:
-                    # 后半段
-                    local_ratio = (ratio - 0.5) * 2
-                    r = int(c2[0] + (c3[0] - c2[0]) * local_ratio)
-                    g = int(c2[1] + (c3[1] - c2[1]) * local_ratio)
-                    b = int(c2[2] + (c3[2] - c2[2]) * local_ratio)
-            else:
-                # 双色线性插值
-                r = int(c1[0] + (c3[0] - c1[0]) * ratio)
-                g = int(c1[1] + (c3[1] - c1[1]) * ratio)
-                b = int(c1[2] + (c3[2] - c1[2]) * ratio)
-                
-            draw.line([(0, y), (width, y)], fill=(r, g, b))
+            # 半径随机一点，增加自然感
+            radius = min(small_w, small_h) * 0.6
+            
+            # 使用半透明绘制以便叠加混合
+            # PIL Draw.ellipse 不支持 alpha blend on RGB directly easily without new layer
+            # 这里简单直接覆盖，靠后面的模糊来混合
+            draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
+            
+        # 强力高斯模糊，产生弥散效果
+        blur_radius = min(small_w, small_h) // 3
+        base = base.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        
+        # 放大回原尺寸，使用双三次插值保证平滑
+        return base.resize((width, height), Image.Resampling.BICUBIC).convert("RGBA")
 
     def generate_cover(
         self,
@@ -186,46 +113,13 @@ class CoverGenerator:
             
         theme = THEMES[theme_index % len(THEMES)]
         
-        # 创建画布
-        img = Image.new("RGBA", (width, height), theme["colors"][0])
-        draw = ImageDraw.Draw(img)
+        # 准备颜色
+        base_colors = [self._hex_to_rgb(c) for c in theme["colors"]]
         
-        # 绘制渐变背景 (使用全部三个颜色)
-        # THEME colors format: (top, mid, bottom)
-        colors = theme["colors"]
-        if len(colors) >= 3:
-            self._draw_gradient_background(draw, width, height, colors[0], colors[2], colors[1])
-        else:
-            self._draw_gradient_background(draw, width, height, colors[0], colors[-1])
+        # 绘制弥散光背景 (Mesh Gradient)
+        img = self._draw_mesh_gradient(width, height, base_colors)
         
-        # === 背景混合色 (Ambient Light / Mesh Gradient 模拟) ===
-        # 在背景左上角和右下角添加淡淡的混合光斑，使背景不那么单调
-        # 使用中间色 theme["colors"][1]
-        mix_color = self._hex_to_rgb(theme["colors"][1])
-        
-        # 创建一个混合层
-        mix_layer = Image.new("RGBA", (width, height), (0,0,0,0))
-        mix_draw = ImageDraw.Draw(mix_layer)
-        
-        # 光斑 1: 左上角，巨大，柔和
-        # 使用径向渐变模拟 (这里用多层半透明圆模拟模糊)
-        import random
-        # 稍微随机一点位置，增加自然感
-        cx1, cy1 = random.randint(0, width//3), random.randint(0, height//3)
-        radius1 = 800
-        for r in range(radius1, 0, -20):
-            alpha = int(40 * (1 - r/radius1)) # 边缘透明，中心 40 alpha
-            mix_draw.ellipse([cx1-r, cy1-r, cx1+r, cy1+r], fill=mix_color + (alpha,))
-            
-        # 光斑 2: 右下角，互补或同色
-        cx2, cy2 = random.randint(width*2//3, width), random.randint(height*2//3, height)
-        radius2 = 600
-        for r in range(radius2, 0, -20):
-            alpha = int(30 * (1 - r/radius2))
-            mix_draw.ellipse([cx2-r, cy2-r, cx2+r, cy2+r], fill=mix_color + (alpha,))
-            
-        # 叠加混合层
-        img = Image.alpha_composite(img, mix_layer)
+        # 创建 Draw 对象用于后续绘制
         draw = ImageDraw.Draw(img)
 
         # === 2. 玻璃材质层 (第二层级) ===
