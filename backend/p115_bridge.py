@@ -53,7 +53,7 @@ SUPPORTED_APPS = list(LOGIN_APPS.keys())
 class OpenAppClientHolder:
     """115 开放平台 (Open AppID) 客户端持有者 - PKCE 模式"""
 
-    def __init__(self, client_id: str = "", client_secret: str = "", secret_store=None):
+    def __init__(self, client_id: str = "", client_secret: str = "", token_service=None):
         self.client: Optional[P115Client] = None
         self.client_id = client_id
         self.client_secret = client_secret
@@ -61,26 +61,34 @@ class OpenAppClientHolder:
         self._access_token: Optional[str] = None
         self._refresh_token: Optional[str] = None
         self._expires_at: float = 0.0
+        self._user_name: Optional[str] = None
+        self._user_id: Optional[str] = None
         self._lock = threading.RLock()
-        self._secret_store = secret_store
+        self._token_service = token_service
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        # 从存储加载 Token
-        self._load_from_store()
+        # 从数据库加载 Token
+        self._load_from_db()
 
-    def _load_from_store(self):
-        """从 SecretStore 加载 access_token/refresh_token"""
-        if not self._secret_store:
+    def _load_from_db(self):
+        """从数据库加载 access_token/refresh_token"""
+        if not self._token_service:
             return
         try:
-            saved = self._secret_store.get_secret('cloud115_open_token')
-            if saved:
-                data = json.loads(saved)
-                self._access_token = data.get('access_token')
-                self._refresh_token = data.get('refresh_token')
-                self._expires_at = data.get('expires_at', 0)
-                logger.info(f"[115 Open] 从存储加载 Token (expires_at: {self._expires_at})")
+            token_data = self._token_service.get_active_open_token()
+            if token_data:
+                self._access_token = token_data.get('accessToken')
+                self._refresh_token = token_data.get('refreshToken')
+                expires_at_str = token_data.get('expiresAt')
+                if expires_at_str:
+                    from datetime import datetime
+                    self._expires_at = datetime.fromisoformat(expires_at_str).timestamp()
+                else:
+                    self._expires_at = 0
+                self._user_name = token_data.get('userName')
+                self._user_id = token_data.get('userId')
+                logger.info(f"[115 Open] 从数据库加载 Token: {token_data.get('name')}")
                 # 检查是否需要刷新
                 if self._access_token and time.time() < self._expires_at:
                     self.init_with_token(self._access_token)
@@ -90,18 +98,23 @@ class OpenAppClientHolder:
         except Exception as e:
             logger.warning(f"[115 Open] 加载 Token 失败: {e}")
 
-    def _save_to_store(self):
-        """保存 access_token/refresh_token 到 SecretStore"""
-        if not self._secret_store:
+    def _save_to_db(self):
+        """保存 access_token/refresh_token 到数据库"""
+        if not self._token_service:
             return
         try:
-            data = {
-                'access_token': self._access_token,
-                'refresh_token': self._refresh_token,
-                'expires_at': self._expires_at
-            }
-            self._secret_store.set_secret('cloud115_open_token', json.dumps(data))
-            logger.info("[115 Open] 已保存 Token 到存储")
+            from datetime import datetime
+            expires_at = datetime.fromtimestamp(self._expires_at) if self._expires_at else None
+            name = f"open_{self._user_name or 'default'}"
+            self._token_service.save_open_token(
+                name=name,
+                access_token=self._access_token,
+                refresh_token=self._refresh_token,
+                expires_at=expires_at,
+                app_id=self.client_id,
+                user_id=self._user_id,
+                user_name=self._user_name
+            )
         except Exception as e:
             logger.error(f"[115 Open] 保存 Token 失败: {e}")
 
@@ -177,7 +190,7 @@ class OpenAppClientHolder:
                         self._expires_at = time.time() + data.get("expires_in", 7200)
                         self.init_with_token(self._access_token)
                         # 持久化保存 Token
-                        self._save_to_store()
+                        self._save_to_db()
 
                         return {
                             "state": True,
@@ -227,7 +240,7 @@ class OpenAppClientHolder:
                 self._expires_at = time.time() + data.get("expires_in", 7200)
                 self.init_with_token(self._access_token)
                 # 持久化保存刷新后的 Token
-                self._save_to_store()
+                self._save_to_db()
                 logger.info("[115 Open] Token 刷新成功并已保存")
                 return self._access_token
         except Exception as e:
@@ -246,49 +259,53 @@ class OpenAppClientHolder:
 class StandardClientHolder:
     """115 标准 (Cookie/扫码) 客户端持有者"""
 
-    def __init__(self, secret_store=None):
+    def __init__(self, token_service=None):
         self.client: Optional[P115Client] = None
         self.cookies: Optional[str] = None
         self.user_info: Dict[str, Any] = {}
         self._qr_token: Optional[dict] = None
         self._lock = threading.RLock()
-        self._secret_store = secret_store
+        self._token_service = token_service
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer": "https://115.com/"
         }
 
-        # 尝试从持久化存储加载 Cookie
-        self._load_from_store()
+        # 尝试从数据库加载 Cookie
+        self._load_from_db()
 
-    def _load_from_store(self):
-        """从 SecretStore 加载 Cookie"""
-        if not self._secret_store:
+    def _load_from_db(self):
+        """从数据库加载 Cookie"""
+        if not self._token_service:
             return
         try:
-            for key in ['cloud115_qr_cookies', 'cloud115_manual_cookies', 'cloud115_cookies']:
-                saved_cookies = self._secret_store.get_secret(key)
-                if saved_cookies:
-                    logger.info(f"从 {key} 加载 115 cookies (len: {len(saved_cookies)})")
-                    if saved_cookies.startswith('{'):
-                        cookies_dict = json.loads(saved_cookies)
-                        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-                    else:
-                        cookie_str = saved_cookies
+            token_data = self._token_service.get_active_cookie_token()
+            if token_data:
+                cookie_str = token_data.get('cookie', '')
+                if cookie_str:
+                    logger.info(f"[115 Cookie] 从数据库加载: {token_data.get('name')}")
                     self.init_with_cookie(cookie_str, save=False)
-                    break
         except Exception as e:
-            logger.warning(f"加载 115 cookies 失败: {e}")
+            logger.warning(f"[115 Cookie] 加载失败: {e}")
 
-    def _save_to_store(self, cookies_dict: dict):
-        """保存 Cookie 到 SecretStore"""
-        if self._secret_store and cookies_dict:
-            try:
-                self._secret_store.set_secret('cloud115_qr_cookies', json.dumps(cookies_dict))
-                self._secret_store.set_secret('cloud115_cookies', json.dumps(cookies_dict))
-                logger.info("已保存 115 cookies 到存储")
-            except Exception as e:
-                logger.error(f"保存 115 cookies 失败: {e}")
+    def _save_to_db(self, cookies_dict: dict, client_app: str = None):
+        """保存 Cookie 到数据库"""
+        if not self._token_service or not cookies_dict:
+            return
+        try:
+            cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
+            user_id = self.user_info.get('user_id')
+            user_name = self.user_info.get('user_name', 'default')
+            name = f"cookie_{user_name}"
+            self._token_service.save_cookie_token(
+                name=name,
+                cookie=cookie_str,
+                client=client_app,
+                user_id=str(user_id) if user_id else None,
+                user_name=user_name
+            )
+        except Exception as e:
+            logger.error(f"[115 Cookie] 保存失败: {e}")
 
     def start_qrcode(self, app: str = "tv") -> dict:
         """获取扫码二维码"""
@@ -416,7 +433,7 @@ class StandardClientHolder:
 
                         logger.info(f"[115 QR] 登录成功: {self.user_info.get('user_name', 'Unknown')}")
                         # 保存 Cookie
-                        self._save_to_store(cookies_dict)
+                        self._save_to_db(cookies_dict, target_app)
                         return {"state": True, "status": "success", "cookies": cookies_dict, "user": self.user_info}
                     else:
                         return {"state": False, "status": "error", "msg": f"获取 cookie 失败: {result}"}
@@ -441,14 +458,14 @@ class StandardClientHolder:
                     self.client = cli
                     self.cookies = clean_cookies
                     self.user_info = ui["data"]
-                    if save and self._secret_store:
+                    if save and self._token_service:
                         # 将 cookie 字符串转为字典保存
                         cookies_dict = {}
                         for part in clean_cookies.split(';'):
                             if '=' in part:
                                 k, v = part.strip().split('=', 1)
                                 cookies_dict[k] = v
-                        self._save_to_store(cookies_dict)
+                        self._save_to_db(cookies_dict)
                     return True
             except Exception as e:
                 logger.error(f"Init Cookie Error: {e}")
@@ -535,8 +552,8 @@ class StandardClientHolder:
 class P115Service:
     """115 网盘服务"""
 
-    def __init__(self, secret_store=None):
-        self._secret_store = secret_store
+    def __init__(self, token_service=None):
+        self._token_service = token_service
         self._standard_holder: Optional[StandardClientHolder] = None
         self._open_holder: Optional[OpenAppClientHolder] = None
         self._session_cache: Dict[str, dict] = {}
@@ -544,12 +561,12 @@ class P115Service:
 
     def _ensure_standard_holder(self) -> StandardClientHolder:
         if not self._standard_holder:
-            self._standard_holder = StandardClientHolder(self._secret_store)
+            self._standard_holder = StandardClientHolder(self._token_service)
         return self._standard_holder
 
     def _ensure_open_holder(self, client_id: str = "", client_secret: str = "") -> OpenAppClientHolder:
         if not self._open_holder or (client_id and self._open_holder.client_id != client_id):
-            self._open_holder = OpenAppClientHolder(client_id, client_secret, self._secret_store)
+            self._open_holder = OpenAppClientHolder(client_id, client_secret, self._token_service)
         return self._open_holder
 
     def start_qr_login(self, login_app: str = "tv", login_method: str = "qrcode", app_id: str = None) -> Dict[str, Any]:
@@ -707,22 +724,24 @@ class P115Service:
 _p115_service: Optional[P115Service] = None
 
 
-def get_p115_service(secret_store=None) -> P115Service:
+def get_p115_service(token_service=None) -> P115Service:
     """获取全局 P115Service 实例"""
     global _p115_service
     if _p115_service is None:
-        _p115_service = P115Service(secret_store)
-    elif secret_store is not None and _p115_service._secret_store is None:
-        # 如果已存在但没有 secret_store，更新它
-        _p115_service._secret_store = secret_store
+        _p115_service = P115Service(token_service)
+    elif token_service is not None and _p115_service._token_service is None:
+        # 如果已存在但没有 token_service，更新它
+        _p115_service._token_service = token_service
         # 同时更新已存在的 holder
         if _p115_service._standard_holder:
-            _p115_service._standard_holder._secret_store = secret_store
+            _p115_service._standard_holder._token_service = token_service
+        if _p115_service._open_holder:
+            _p115_service._open_holder._token_service = token_service
     return _p115_service
 
 
-def init_p115_service(secret_store) -> P115Service:
+def init_p115_service(token_service) -> P115Service:
     """初始化 P115Service 并设置全局实例"""
     global _p115_service
-    _p115_service = P115Service(secret_store)
+    _p115_service = P115Service(token_service)
     return _p115_service
