@@ -38,15 +38,14 @@ THEMES = [
 
 # 海报布局阶段 (模拟 3D 堆叠效果 - 增强版)
 # 加大远近差异，增强立体透视感
-STAGES = [
-    {"x": 900,  "y": 410, "scale": 0.55, "angle": -60, "brightness": 0.4, "opacity": 0.70, "z": 10},
-    {"x": 975,  "y": 436, "scale": 0.65, "angle": -50, "brightness": 0.5, "opacity": 0.75, "z": 30},
-    {"x": 1050, "y": 462, "scale": 0.75, "angle": -40, "brightness": 0.6, "opacity": 0.80, "z": 50},
-    {"x": 1125, "y": 488, "scale": 0.85, "angle": -30, "brightness": 0.7, "opacity": 0.85, "z": 70},
-    {"x": 1200, "y": 514, "scale": 0.95, "angle": -20, "brightness": 0.85, "opacity": 0.90, "z": 90},
-    {"x": 1275, "y": 542, "scale": 1.05, "angle": -10, "brightness": 1.0, "opacity": 0.95,  "z": 110},
-    {"x": 1350, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.00, "z": 130},
-]
+# 海报布局配置 (动态生成)
+# STAGES 将由 generate_layout 方法动态生成
+STAGES_CONFIG = {
+    # 最远端 (First Poster)
+    "start": {"x": 900, "y": 410, "scale": 0.55, "angle": -60, "brightness": 0.4, "opacity": 0.70, "z": 10},
+    # 最近端 (Last Poster) - 锚点
+    "end":   {"x": 1350, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.00, "z": 130}
+}
 
 class CoverGenerator:
     """Emby 封面图生成器"""
@@ -59,6 +58,37 @@ class CoverGenerator:
         """设置 Emby 连接配置"""
         self.emby_url = emby_url.rstrip('/')
         self.api_key = api_key
+        
+    def _generate_layout(self, count: int) -> List[dict]:
+        """根据海报数量动态生成布局 STAGES"""
+        if count < 1: return []
+        if count == 1:
+            # 只有一张，直接用 end 状态 (最清晰的大图)
+            return [STAGES_CONFIG["end"].copy()]
+        
+        stages = []
+        start = STAGES_CONFIG["start"]
+        end = STAGES_CONFIG["end"]
+        
+        for i in range(count):
+            # t: 插值系数 0.0 -> 1.0
+            t = i / (count - 1)
+            
+            # 线性插值辅助函数
+            def lerp(k):
+                return start[k] + (end[k] - start[k]) * t
+            
+            stage = {
+                "x": int(lerp("x")),
+                "y": int(lerp("y")),
+                "scale": lerp("scale"),
+                "angle": lerp("angle"),
+                "brightness": lerp("brightness"),
+                "opacity": lerp("opacity"),
+                "z": int(lerp("z"))
+            }
+            stages.append(stage)
+        return stages
         
     def get_libraries(self) -> List[Dict[str, Any]]:
         """获取 Emby 媒体库列表"""
@@ -390,7 +420,10 @@ class CoverGenerator:
         import math
         from PIL import ImageFilter, ImageOps
 
-        for i, config in enumerate(STAGES):
+        # 动态生成布局
+        current_stages = self._generate_layout(len(posters))
+
+        for i, config in enumerate(current_stages):
             if i >= len(posters):
                 break
                 
@@ -670,7 +703,7 @@ class CoverGenerator:
             offset = frame_idx % num_posters
             rotated_posters = posters[offset:] + posters[:offset]
             
-            # 渲染全分辨率帧以保持布局一致性 (STAGES 坐标基于 1920x1080)
+            # 渲染全分辨率帧以保持布局一致性
             full_frame = self.generate_cover(
                 rotated_posters,
                 title,

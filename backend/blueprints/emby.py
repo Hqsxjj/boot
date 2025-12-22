@@ -850,11 +850,14 @@ def generate_cover():
         
         if emby_url and api_key:
             generator.set_emby_config(emby_url, api_key)
+            use_backdrop = data.get('useBackdrop', False)
+        poster_count = int(data.get('posterCount', 5))
+        poster_count = max(3, min(7, poster_count))
         
         # 获取海报
         posters = []
         if library_id:
-            posters = generator.get_library_posters(library_id, limit=7)
+            posters = generator.get_library_posters(library_id, limit=poster_count)
             
         # 获取背景图 (如果要用)
         backdrop_img = None

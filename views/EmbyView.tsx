@@ -57,10 +57,13 @@ export const EmbyView: React.FC = () => {
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
     const [spacing, setSpacing] = useState(3.0);         // 堆叠间距系数 3.0
     const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数 1.0
+    const [posterCount, setPosterCount] = useState(5);   // 海报数量 (3-7)
     const [useBackdrop, setUseBackdrop] = useState(false); // 是否使用横幅背景
 
     // 批量选择 (用 Set 存储选中的 ID)
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
+    // 批量预览结果 (LibID -> Image URL)
+    const [batchPreviews, setBatchPreviews] = useState<Record<string, string>>({});
 
     // 加载配置
     useEffect(() => {
@@ -352,12 +355,71 @@ export const EmbyView: React.FC = () => {
     };
 
     const handleGenerateCover = async () => {
+        // 如果有批量选择，进行批量预览生成 (限制前6个以防卡顿)
+        if (batchSelection.size > 0) {
+            setIsGenerating(true);
+            setBatchPreviews({}); // 清空旧预览
+            setCoverPreview(null); // 清空单图预览
+
+            try {
+                // 构建配置参数
+                const coverConfig = {
+                    titleSize,
+                    offsetX,
+                    posterScale,
+                    vAlign,
+                    spacing,
+                    angleScale,
+                    posterCount,
+                    useBackdrop,
+                    format: coverFormat,
+                    theme: selectedTheme
+                };
+
+                const targetIds = Array.from(batchSelection).slice(0, 6); // 限制前6个
+
+                // 串行生成以避免后端压力过大 (或者可以用 Promise.all 限制并发)
+                for (const libId of targetIds) {
+                    // 查找库信息以获取正确标题 (可选)
+                    const lib = coverLibraries.find(l => l.id === libId);
+                    const currentTitle = lib ? lib.name : "未知库";
+
+                    // 简单的类型映射
+                    let currentSubtitle = "MEDIA COLLECTION";
+                    if (lib && lib.type) {
+                        const typeMap: Record<string, string> = {
+                            'movies': 'MOVIE COLLECTION', 'tvshows': 'TV SHOWS',
+                            'music': 'MUSIC COLLECTION', 'homevideos': 'HOME VIDEOS',
+                            'books': 'BOOK COLLECTION', 'photos': 'PHOTO ALBUM', 'musicvideos': 'MUSIC VIDEOS'
+                        };
+                        currentSubtitle = typeMap[lib.type.toLowerCase()] || lib.type.toUpperCase();
+                    }
+
+                    const result = await api.generateCover({
+                        libraryId: libId,
+                        config: { ...coverConfig, title: currentTitle, subtitle: currentSubtitle }
+                    });
+
+                    if (result.success) {
+                        setBatchPreviews(prev => ({ ...prev, [libId]: result.data.image }));
+                    }
+                }
+                setToast(`批量预览生成完成 (已显示前${targetIds.length}个)`);
+            } catch (e) {
+                setToast('批量生成部分失败');
+            } finally {
+                setIsGenerating(false);
+            }
+            return;
+        }
+
         if (!selectedLibrary) {
             setToast('请先选择媒体库');
             setTimeout(() => setToast(null), 3000);
             return;
         }
         setIsGenerating(true);
+        setBatchPreviews({}); // 清空批量预览
         try {
             // 构建配置参数
             const coverConfig = {
@@ -369,6 +431,7 @@ export const EmbyView: React.FC = () => {
                 vAlign,
                 spacing,
                 angleScale,
+                posterCount,
                 useBackdrop,
                 format: coverFormat,
                 theme: selectedTheme
@@ -873,6 +936,20 @@ export const EmbyView: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                            海报数量: {posterCount}
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min={3}
+                                            max={7}
+                                            step={1}
+                                            value={posterCount}
+                                            onChange={(e) => setPosterCount(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                                             整体缩放比例 (%): {posterScale}
                                         </label>
                                         <input
@@ -954,7 +1031,7 @@ export const EmbyView: React.FC = () => {
                                         className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20"
                                     >
                                         {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Image size={16} />}
-                                        {isGenerating ? '生成中...' : '生成当前预览'}
+                                        {isGenerating ? '生成中...' : (batchSelection.size > 0 ? `批量预览 (${batchSelection.size > 6 ? '前6个' : batchSelection.size})` : '生成当前预览')}
                                     </button>
 
                                     <button
@@ -980,7 +1057,26 @@ export const EmbyView: React.FC = () => {
 
                             {/* Right: Preview (16:9 Rounded Box) */}
                             <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex items-center justify-center min-h-[400px]">
-                                {coverPreview ? (
+                                {Object.keys(batchPreviews).length > 0 ? (
+                                    <div className="grid grid-cols-2 gap-4 w-full h-full overflow-y-auto max-h-[600px] p-2">
+                                        {Object.entries(batchPreviews).map(([libId, imgUrl]) => {
+                                            const libName = coverLibraries.find(l => l.id === libId)?.name || libId;
+                                            return (
+                                                <div key={libId} className="relative aspect-video rounded-xl overflow-hidden shadow-lg ring-1 ring-black/10 group">
+                                                    <img src={imgUrl} alt={libName} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                                                        <span className="text-white text-xs font-bold truncate">{libName}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {isGenerating && (
+                                            <div className="aspect-video rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse flex items-center justify-center">
+                                                <RefreshCw className="animate-spin text-slate-400" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : coverPreview ? (
                                     <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-black/10 group">
                                         <img
                                             src={coverPreview}
