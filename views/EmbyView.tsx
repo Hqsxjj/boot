@@ -52,7 +52,7 @@ export const EmbyView: React.FC = () => {
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     // 参数滑块 (匹配 Python Tkinter 参数)
     const [titleSize, setTitleSize] = useState(172);     // 主标题文字大小 9.0vw (1920*0.09 ~= 172)
-    const [offsetX, setOffsetX] = useState(50);          // 海报水平位移 (X) 默认 50
+    const [offsetX, setOffsetX] = useState(40);          // 海报水平位移 (X) 默认 40
     const [posterScale, setPosterScale] = useState(32);  // 整体缩放比例 32% (保持不变)
     const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
     const [spacing, setSpacing] = useState(1.0);         // 堆叠间距系数
@@ -864,7 +864,7 @@ export const EmbyView: React.FC = () => {
                                         </label>
                                         <input
                                             type="range"
-                                            min={50}
+                                            min={0}
                                             max={225}
                                             value={offsetX}
                                             onChange={(e) => setOffsetX(Number(e.target.value))}
