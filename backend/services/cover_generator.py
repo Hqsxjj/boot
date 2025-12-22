@@ -39,11 +39,13 @@ THEMES = [
 # 海报布局阶段 (模拟 3D 堆叠效果 - 增强版)
 # 加大远近差异，增强立体透视感
 STAGES = [
-    {"x": 900,  "y": 410, "scale": 0.60, "angle": -40, "brightness": 0.6, "opacity": 0.7, "z": 10},  # x-30
-    {"x": 1020, "y": 450, "scale": 0.72, "angle": -30, "brightness": 0.7, "opacity": 0.8, "z": 30},
-    {"x": 1160, "y": 490, "scale": 0.85, "angle": -20, "brightness": 0.85, "opacity": 0.9, "z": 60},
-    {"x": 1320, "y": 530, "scale": 1.00, "angle": -10, "brightness": 1.0, "opacity": 1.0,  "z": 100},
-    {"x": 1500, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.0, "z": 120},
+    {"x": 925,  "y": 410, "scale": 0.55, "angle": -60, "brightness": 0.4, "opacity": 0.70, "z": 10},
+    {"x": 1000, "y": 410, "scale": 0.60, "angle": -50, "brightness": 0.5, "opacity": 0.75, "z": 30},
+    {"x": 1075, "y": 450, "scale": 0.68, "angle": -40, "brightness": 0.6, "opacity": 0.80, "z": 50},
+    {"x": 1150, "y": 450, "scale": 0.76, "angle": -30, "brightness": 0.7, "opacity": 0.85, "z": 70},
+    {"x": 1225, "y": 490, "scale": 0.84, "angle": -20, "brightness": 0.85, "opacity": 0.90, "z": 90},
+    {"x": 1300, "y": 530, "scale": 0.96, "angle": -10, "brightness": 1.0, "opacity": 0.95,  "z": 110},
+    {"x": 1375, "y": 570, "scale": 1.15, "angle": 0,   "brightness": 1.05, "opacity": 1.00, "z": 130},
 ]
 
 class CoverGenerator:
@@ -268,7 +270,7 @@ class CoverGenerator:
         # 如果 theme_index == -1，启用"自动混色"模式 (从海报提取颜色)
         if theme_index == -1:
             # 从每张海报提取一个主色调
-            for p in posters[:5]: # 最多采5张
+            for p in posters[:7]: # 最多采7张
                 # 缩放到 1x1 获取平均色
                 avg = p.resize((1, 1), Image.Resampling.LANCZOS).getpixel((0, 0))
                 # 剔除 alpha 如果有

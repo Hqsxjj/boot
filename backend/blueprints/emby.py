@@ -854,7 +854,7 @@ def generate_cover():
         # 获取海报
         posters = []
         if library_id:
-            posters = generator.get_library_posters(library_id, limit=5)
+            posters = generator.get_library_posters(library_id, limit=7)
             
         # 获取背景图 (如果要用)
         backdrop_img = None
