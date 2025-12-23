@@ -123,7 +123,7 @@ class DataStore:
                 }
             },
             'organize': {
-                'enabled': False,
+                'enabled': True,  # 默认启用整理工作流
                 'sourceCid': '0',
                 'sourceDirName': '根目录',
                 'targetCid': '0',

@@ -751,6 +751,17 @@ export const api = {
   listOrganizeTasks: async () => {
     const res = await apiClient.get<ApiResponse<any[]>>('/organize/tasks');
     return res.data;
+  },
+
+  // 整理进程滚动日志
+  getOrganizeLogs: async (limit: number = 100) => {
+    const res = await apiClient.get<ApiResponse<any>>('/organize/logs', { params: { limit } });
+    return res.data;
+  },
+
+  clearOrganizeLogs: async () => {
+    const res = await apiClient.delete<ApiResponse<any>>('/organize/logs');
+    return res.data;
   }
 };
 

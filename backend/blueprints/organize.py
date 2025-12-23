@@ -601,3 +601,83 @@ def list_organize_tasks():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@organize_bp.route('/logs', methods=['GET'])
+@optional_auth
+def get_organize_logs():
+    """
+    获取整理进程滚动日志
+    
+    Query Params:
+        limit: 返回条数限制（默认100）
+    
+    Response:
+        {
+            "success": true,
+            "data": [
+                {
+                    "source_dir": "/downloads",
+                    "original_name": "原文件名.mkv",
+                    "new_name": "重命名后名称.mkv",
+                    "target_path": "/movies/2024/电影名",
+                    "status": "success",
+                    "timestamp": "2024-01-01T12:00:00",
+                    "formatted": "源目录/原文件名 》 新文件名 》 目标路径 #成功"
+                }
+            ],
+            "stats": {
+                "total": 100,
+                "success": 95,
+                "failed": 5,
+                "minutes": 60
+            }
+        }
+    """
+    try:
+        from services.organize_log_service import get_organize_log_service
+        
+        limit = request.args.get('limit', 100, type=int)
+        
+        log_service = get_organize_log_service()
+        logs = log_service.get_logs(limit=limit)
+        stats = log_service.get_recent_count(minutes=60)
+        
+        return jsonify({
+            'success': True,
+            'data': logs,
+            'stats': stats
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取整理日志失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@organize_bp.route('/logs', methods=['DELETE'])
+@require_auth
+def clear_organize_logs():
+    """
+    清空整理日志
+    """
+    try:
+        from services.organize_log_service import get_organize_log_service
+        
+        log_service = get_organize_log_service()
+        log_service.clear()
+        
+        return jsonify({
+            'success': True,
+            'message': '整理日志已清空'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"清空整理日志失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+

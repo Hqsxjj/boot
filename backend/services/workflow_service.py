@@ -475,15 +475,44 @@ class WorkflowService:
             # 获取 TMDB 信息 (如果没有 ID，MediaOrganizer 会尝试搜索)
             # 这里简化直接调用 preview_organize 看效果，然后执行 real organize
             # 但 MediaOrganizer 目前 API 不太适合直接在这里调用完整流程
-            # 我们先模拟一个简单的整理
+            
+            # 记录整理日志
+            from services.organize_log_service import get_organize_log_service
+            organize_log = get_organize_log_service()
+            
+            target_path = f"/Organized/{media_info.title}/{file_name}"
+            source_dir = self._get_save_dir(task.target_cloud)
+            
+            organize_log.log_success(
+                source_dir=source_dir,
+                original_name=file_name,
+                new_name=file_name,  # 这里暂时使用相同名称
+                target_path=target_path,
+                cloud_type=task.target_cloud
+            )
             
             return {
-                'path': f"/Organized/{media_info.title}/{file_name}",
+                'path': target_path,
                 'media_info': media_info.to_dict()
             }
 
         except Exception as e:
             logger.error(f"整理失败: {e}")
+            # 记录失败日志
+            try:
+                from services.organize_log_service import get_organize_log_service
+                organize_log = get_organize_log_service()
+                source_dir = self._get_save_dir(task.target_cloud) if task else ''
+                organize_log.log_failure(
+                    source_dir=source_dir,
+                    original_name='Unknown',
+                    new_name='',
+                    target_path='',
+                    error=str(e),
+                    cloud_type=task.target_cloud if task else '115'
+                )
+            except:
+                pass
             return None
     
     def _generate_strm(self, task: WorkflowTask) -> None:

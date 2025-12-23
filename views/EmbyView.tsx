@@ -161,7 +161,7 @@ const DEFAULT_CONFIG: AppConfig = {
         apiKey: "",
         refreshAfterOrganize: false,
         notifications: {
-            forwardToTelegram: false,
+            forwardToTelegram: true,  // 默认启用
             playbackReportingFreq: "daily"
         },
         missingEpisodes: {
@@ -180,11 +180,13 @@ export const EmbyView: React.FC = () => {
     const [missingData, setMissingData] = useState<any[]>([]);
 
     // === Shared States ===
-    const [selectedLibrary, setSelectedLibrary] = useState<string>('');
+    const [selectedLibraries, setSelectedLibraries] = useState<Set<string>>(new Set());
+    const [currentPreviewLib, setCurrentPreviewLib] = useState<string>(''); // 当前预览的媒体库
     const [coverTitle, setCoverTitle] = useState('电影收藏');
     const [coverSubtitle, setCoverSubtitle] = useState('MOVIE COLLECTION');
     const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     // === Classic Generator States ===
     const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
@@ -199,7 +201,7 @@ export const EmbyView: React.FC = () => {
     const [vAlign, setVAlign] = useState(60);
     const [spacing, setSpacing] = useState(3.0);
     const [angleScale, setAngleScale] = useState(1.0);
-    const [posterCount, setPosterCount] = useState(5);
+    const [posterCount, setPosterCount] = useState(3);
     const [useBackdrop, setUseBackdrop] = useState(false);
     // Batch
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
@@ -330,7 +332,8 @@ export const EmbyView: React.FC = () => {
                 setCoverLibraries(librariesRes.data);
                 if (librariesRes.data.length > 0) {
                     const firstLib = librariesRes.data[0];
-                    setSelectedLibrary(firstLib.id);
+                    setCurrentPreviewLib(firstLib.id);
+                    setSelectedLibraries(new Set([firstLib.id])); // 默认选中第一个
                     setCoverTitle(firstLib.name);
                     updateSubtitle(firstLib.type);
 
@@ -356,8 +359,8 @@ export const EmbyView: React.FC = () => {
         if (!libId) return;
 
         try {
-            // 请求 24 张海报以填充网格
-            const res = await api.getLibraryPosters(libId, 24);
+            // 请求 25 张海报以填充 5x5 的网格或 6 张堆叠图
+            const res = await api.getLibraryPosters(libId, 25);
             if (res.success && res.data && res.data.length > 0) {
                 setStudioPosters(res.data);
             } else {
@@ -369,9 +372,9 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // Classic Generator Trigger
+    // Classic Generator Trigger (预览当前媒体库)
     const handleGenerateClassic = async () => {
-        if (!selectedLibrary) return showToast('请先选择媒体库');
+        if (!currentPreviewLib) return showToast('请先预览一个媒体库');
         setIsGenerating(true);
         try {
             const coverConfig = {
@@ -379,10 +382,10 @@ export const EmbyView: React.FC = () => {
                 titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
                 format: coverFormat, theme: selectedTheme
             };
-            const result = await api.generateCover({ libraryId: selectedLibrary, config: coverConfig });
+            const result = await api.generateCover({ libraryId: currentPreviewLib, config: coverConfig });
             if (result.success) {
                 setCoverPreview(result.data.image);
-                showToast('生成成功');
+                showToast('预览生成成功');
             } else {
                 showToast(result.error || '生成失败', true);
             }
@@ -390,16 +393,53 @@ export const EmbyView: React.FC = () => {
         finally { setIsGenerating(false); }
     };
 
+    // 批量上传到选中的媒体库
+    const handleBatchUpload = async () => {
+        if (selectedLibraries.size === 0) return showToast('请先勾选要上传的媒体库');
+        if (!coverPreview && generatorMode === 'classic') return showToast('请先生成预览图');
+
+        setIsUploading(true);
+        const libs = Array.from(selectedLibraries);
+        let successCount = 0;
+
+        for (const libId of libs) {
+            try {
+                const lib = coverLibraries.find(l => l.id === libId);
+                const libName = lib?.name ?? libId;
+                showToast(`正在处理: ${libName}...`);
+
+                // 为每个库获取海报并生成封面
+                const coverConfig = {
+                    title: lib?.name ?? coverTitle,
+                    subtitle: lib?.type?.toUpperCase() ?? coverSubtitle,
+                    titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
+                    format: coverFormat, theme: selectedTheme
+                };
+
+                const result = await api.generateCover({ libraryId: libId, config: coverConfig });
+                if (result.success) {
+                    successCount++;
+                }
+            } catch (e) {
+                console.error(`上传 ${libId} 失败:`, e);
+            }
+        }
+
+        setIsUploading(false);
+        showToast(`成功上传 ${successCount}/${libs.length} 个媒体库封面`);
+    };
+
+
     // Studio Generator Trigger (Upload)
     const handleGenerateStudio = async () => {
-        if (!selectedLibrary) return showToast('请先选择媒体库');
+        if (!currentPreviewLib) return showToast('请先预览一个媒体库');
         const element = document.getElementById('studio-canvas');
         if (!element) return;
 
         setIsGenerating(true);
-        showToast('正在渲染 4K 封面...');
+        showToast('正在渲染封面...');
         try {
-            const canvas = await html2canvas(element, { useCORS: true, scale: 2, backgroundColor: null });
+            const canvas = await html2canvas(element, { useCORS: true, backgroundColor: null });
 
             canvas.toBlob(async (blob) => {
                 if (!blob) {
@@ -409,9 +449,9 @@ export const EmbyView: React.FC = () => {
                 }
 
                 try {
-                    const res = await api.uploadRenderedCover(selectedLibrary, blob, coverTitle);
+                    const res = await api.uploadRenderedCover(currentPreviewLib, blob, coverTitle);
                     if (res.success) {
-                        showToast('已上传并备份到 ' + (res.localPath || '本地'));
+                        showToast('已上传并备份到本地');
                     } else {
                         showToast(res.error || '上传失败', true);
                     }
@@ -428,14 +468,34 @@ export const EmbyView: React.FC = () => {
         }
     };
 
-    // Library Selection Handler
-    const handleSelectLibrary = (libId: string) => {
-        setSelectedLibrary(libId);
+    // 多选/单选媒体库处理
+    const toggleLibrarySelection = (libId: string) => {
+        setSelectedLibraries(prev => {
+            const next = new Set(prev);
+            if (next.has(libId)) {
+                next.delete(libId);
+            } else {
+                next.add(libId);
+            }
+            return next;
+        });
+    };
+
+    const selectAllLibraries = () => {
+        if (selectedLibraries.size === coverLibraries.length) {
+            setSelectedLibraries(new Set());
+        } else {
+            setSelectedLibraries(new Set(coverLibraries.map(l => l.id)));
+        }
+    };
+
+    // 预览指定媒体库
+    const handlePreviewLibrary = (libId: string) => {
+        setCurrentPreviewLib(libId);
         const lib = coverLibraries.find(l => l.id === libId);
         if (lib) {
             setCoverTitle(lib.name);
             updateSubtitle(lib.type);
-            // Fetch posters for studio
             fetchStudioPosters(libId);
         }
     };
@@ -503,10 +563,6 @@ export const EmbyView: React.FC = () => {
                             <code className="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 break-all border border-slate-200/50 shadow-inner">
                                 http://{window.location.hostname}:{window.location.port || '18080'}/api/emby/webhook
                             </code>
-                        </div>
-                        <div className="flex justify-between items-center p-2">
-                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">转发通知到 Telegram</span>
-                            <input type="checkbox" checked={config.emby.notifications?.forwardToTelegram} onChange={e => updateNotifications('forwardToTelegram', e.target.checked)} className="accent-sky-500 w-4 h-4" />
                         </div>
                     </div>
                 </section>
@@ -583,23 +639,49 @@ export const EmbyView: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex flex-col xl:flex-row h-[800px] xl:h-[600px] divide-y xl:divide-y-0 xl:divide-x divide-slate-200/50 dark:divide-slate-700/50">
+                    <div className="flex flex-col xl:flex-row h-auto min-h-[900px] xl:h-[800px] divide-y xl:divide-y-0 xl:divide-x divide-slate-200/50 dark:divide-slate-700/50">
                         {/* Left: Controls Pane */}
                         <div className="w-full xl:w-[400px] flex flex-col bg-slate-50/50 dark:bg-slate-900/30 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
-                            {/* Library Selector */}
+                            {/* Library Selector - 多选模式 */}
                             <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50">
-                                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">选择媒体库</label>
-                                <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">选择媒体库</label>
+                                    <button
+                                        onClick={selectAllLibraries}
+                                        className="text-[10px] text-amber-600 font-bold hover:underline"
+                                    >
+                                        {selectedLibraries.size === coverLibraries.length ? '取消全选' : '全选'}
+                                    </button>
+                                </div>
+                                <div className="space-y-1 max-h-[200px] overflow-y-auto">
                                     {coverLibraries.map(lib => (
                                         <div
                                             key={lib.id}
-                                            onClick={() => handleSelectLibrary(lib.id)}
-                                            className={`px-3 py-2 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${selectedLibrary === lib.id ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                                            className={`px-3 py-2 rounded-lg flex items-center gap-3 transition-colors ${currentPreviewLib === lib.id ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                                         >
-                                            <span className="text-sm">{lib.name}</span>
-                                            <span className="text-[10px] opacity-70 uppercase border border-current px-1 rounded">{lib.type}</span>
+                                            {/* 勾选框 */}
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedLibraries.has(lib.id)}
+                                                onChange={() => toggleLibrarySelection(lib.id)}
+                                                className="accent-amber-500 w-4 h-4 cursor-pointer"
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                            {/* 点击名称则预览 */}
+                                            <div
+                                                onClick={() => handlePreviewLibrary(lib.id)}
+                                                className="flex-1 flex items-center justify-between cursor-pointer"
+                                            >
+                                                <span className={`text-sm ${currentPreviewLib === lib.id ? 'font-bold' : ''}`}>{lib.name}</span>
+                                                <span className="text-[10px] opacity-70 uppercase border border-current px-1 rounded">{lib.type}</span>
+                                            </div>
                                         </div>
                                     ))}
+                                </div>
+                                {/* 选中统计 */}
+                                <div className="mt-2 text-xs text-slate-500">
+                                    已选: {selectedLibraries.size}/{coverLibraries.length} |
+                                    预览: {currentPreviewLib ? coverLibraries.find(l => l.id === currentPreviewLib)?.name : '无'}
                                 </div>
                             </div>
 
@@ -736,11 +818,11 @@ export const EmbyView: React.FC = () => {
                         </div>
 
                         {/* Right: Preview Pane */}
-                        <div className="flex-1 bg-slate-100 dark:bg-black p-8 flex items-center justify-center relative overflow-hidden">
+                        <div className="flex-1 bg-slate-100 dark:bg-black p-2 flex items-center justify-center relative overflow-hidden">
                             {/* Background Grid Pattern */}
                             <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
-                            <div className="w-full max-w-[900px] shadow-2xl rounded-2xl overflow-hidden ring-4 ring-slate-900/10 dark:ring-white/10 transition-all duration-500 hover:scale-[1.01]">
+                            <div className="w-full h-full max-w-none shadow-2xl rounded-2xl overflow-hidden ring-4 ring-slate-900/10 dark:ring-white/10 transition-all duration-500 hover:scale-[1.005]">
                                 {generatorMode === 'classic' ? (
                                     <div className="aspect-video bg-black flex items-center justify-center relative">
                                         {coverPreview ? (

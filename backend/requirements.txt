@@ -17,7 +17,7 @@ pydantic==2.12.5
 python-dotenv
 httpx[http2]
 qrcode
-Pillow
+Pillow>=9.1.0
 beautifulsoup4
 lxml
 openai>=1.0.0

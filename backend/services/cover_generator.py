@@ -140,22 +140,25 @@ class CoverGenerator:
             return []
     
     def get_library_posters(self, library_id: str, limit: int = 10) -> List[Image.Image]:
-        """获取媒体库中的海报图片"""
+        """获取媒体库中的海报图片 (优先获取已刮削有封面的)"""
         if not self.emby_url or not self.api_key:
             return []
             
         try:
             # 获取媒体库中的项目
+            # 增加 HasPrimaryImage 过滤确保只获取有海报的项目
             url = f"{self.emby_url}/emby/Items"
             params = {
                 "api_key": self.api_key,
                 "ParentId": library_id,
-                "Limit": limit,
+                "Limit": limit * 2,  # 获取两倍数量以备某些图片下载失败
                 "SortBy": "DateCreated,SortName",
                 "SortOrder": "Descending",
-                "ImageTypes": "Primary",
+                "IncludeItemTypes": "Movie,Series",
                 "Recursive": True,
-                "IncludeItemTypes": "Movie,Series"
+                "Fields": "PrimaryImageTag,ImageTags",
+                "ImageTypes": "Primary",
+                "HasPrimaryImage": True # 核心：只抓取已经成功刮削有海报的
             }
             resp = self._make_request('GET', url, params=params)
             resp.raise_for_status()
@@ -163,15 +166,22 @@ class CoverGenerator:
             items = resp.json().get("Items", [])
             posters = []
             
-            for item in items[:limit]:
+            # 使用列表随机化以增加视觉多样性 (如果是大批量墙幕)
+            if limit > 10:
+                random.shuffle(items)
+            
+            for item in items:
+                if len(posters) >= limit:
+                    break
+                    
                 item_id = item.get("Id")
                 if not item_id:
                     continue
                     
                 # 获取海报图片
+                # maxWidth=600 对于预览来说已经足够清晰且兼顾性能
                 img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
-                # 用户要求更高清，提升 maxWidth 从 400 到 1000
-                img_params = {"api_key": self.api_key, "maxWidth": 1000}
+                img_params = {"api_key": self.api_key, "maxWidth": 600}
                 
                 try:
                     img_resp = self._make_request('GET', img_url, params=img_params)
@@ -685,43 +695,42 @@ class CoverGenerator:
         **kwargs
     ) -> bytes:
         """
-        生成动态 GIF 封面
+        生成动态 APNG 封面
         
-        通过在帧之间轮换海报位置来创建动态效果
+        默认输出 400x225 分辨率（16:9）的 APNG 格式动态图
+        文件后缀使用 .png
         
         Args:
             posters: 海报图片列表
             title: 主标题
             subtitle: 副标题
             theme_index: 主题索引
-            width: 输出宽度
-            height: 输出高度
+            width: 渲染宽度（用于布局计算）
+            height: 渲染高度（用于布局计算）
             frame_count: 帧数
             duration_ms: 每帧持续时间(毫秒)
             **kwargs: 传递给 generate_cover 的其他参数
             
         Returns:
-            GIF 图片的二进制数据
+            APNG 图片的二进制数据
         """
+        # 固定输出规格：400x225 (16:9) APNG 格式
+        output_width = 400
+        output_height = 225
+        
         if len(posters) < 2:
-            # 海报太少，返回单帧 GIF (保持格式一致)
+            # 海报太少，返回单帧 APNG
             static_img = self.generate_cover(posters, title, subtitle, theme_index, width, height, **kwargs)
-            # 缩小到 GIF 尺寸
-            gif_width = min(width, 960)
-            gif_height = int(gif_width * height / width)
-            static_img = static_img.resize((gif_width, gif_height), Image.Resampling.LANCZOS)
-            # 转换为 P 模式 (GIF 要求)
-            static_img = static_img.convert("P", palette=Image.ADAPTIVE, colors=256)
+            # 缩小到输出尺寸
+            static_img = static_img.resize((output_width, output_height), Image.Resampling.LANCZOS)
+            # 转换为 RGBA 确保透明度
+            static_img = static_img.convert("RGBA")
             buffer = io.BytesIO()
-            static_img.save(buffer, format="GIF")
+            static_img.save(buffer, format="PNG")
             return buffer.getvalue()
         
         frames = []
         num_posters = len(posters)
-        
-        # 使用较小分辨率生成 GIF 以减小文件大小 (Emby 推荐封面 GIF 宽度在 600px 左右以避免客户端卡顿)
-        gif_width = min(width, 600)
-        gif_height = int(gif_width * height / width)
         
         for frame_idx in range(frame_count):
             # 每帧轮换海报顺序
@@ -739,23 +748,22 @@ class CoverGenerator:
                 **kwargs
             )
             
-            # 缩放到 GIF 尺寸
-            frame = full_frame.resize((gif_width, gif_height), Image.Resampling.LANCZOS)
+            # 缩放到输出尺寸 (400x225)
+            frame = full_frame.resize((output_width, output_height), Image.Resampling.LANCZOS)
             
-            # 转换为 RGB (GIF 不支持 RGBA)
-            frame_rgb = frame.convert("P", palette=Image.ADAPTIVE, colors=256)
-            frames.append(frame_rgb)
+            # 保持 RGBA 格式 (APNG 支持透明)
+            frame_rgba = frame.convert("RGBA")
+            frames.append(frame_rgba)
         
-        # 保存为 GIF
+        # 保存为 APNG 格式
         buffer = io.BytesIO()
         frames[0].save(
             buffer,
-            format="GIF",
+            format="PNG",
             save_all=True,
             append_images=frames[1:],
             duration=duration_ms,
-            loop=0,
-            optimize=True
+            loop=0
         )
         
         return buffer.getvalue()

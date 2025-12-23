@@ -1620,9 +1620,6 @@ const SourceManager: React.FC<{
                         保存
                     </button>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                    搜索资源时使用的 API 接口地址，留空则使用默认接口: {pansouDefaultUrl || 'https://pan.jivon.de'}
-                </p>
             </div>
 
             {/* Info */}

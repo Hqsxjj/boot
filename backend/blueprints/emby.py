@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from middleware.auth import require_auth
+from middleware.auth import require_auth, optional_auth
 from services.emby_service import EmbyService
 from persistence.store import DataStore
 from models import MissingEpisode
@@ -22,7 +22,7 @@ def init_emby_blueprint(store: DataStore):
 
 
 @emby_bp.route('/missing', methods=['GET'])
-@require_auth
+@optional_auth
 def get_missing_episodes():
     """
     Get all missing episodes records from database.
@@ -900,9 +900,10 @@ def apply_covers_to_emby():
                 os.makedirs(cache_dir, exist_ok=True)
                 
                 # 4. 生成封面并保存到本地
-                file_ext = 'gif' if cover_format == 'gif' else 'png'
+                # APNG 格式使用 .png 扩展名
+                file_ext = 'png'  # 静态和动态都使用 .png
                 local_file_path = os.path.join(cache_dir, f"{safe_lib_name}.{file_ext}")
-                content_type = 'image/gif' if cover_format == 'gif' else 'image/png'
+                content_type = 'image/png'
                 
                 if cover_format == 'gif':
                     image_data = generator.generate_animated_cover(
@@ -1048,12 +1049,14 @@ def generate_cover():
         
         # 清理标题用于文件名
         safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip() or 'cover'
-        file_ext = 'gif' if output_format.lower() == 'gif' else 'png'
+        # 注意：动态封面现在使用 APNG 格式，文件后缀统一为 .png
+        file_ext = 'png'  # 静态和动态都使用 .png
         local_file_path = os.path.join(cache_dir, f"{safe_title}.{file_ext}")
         
         # 生成封面
         if output_format.lower() == 'gif':
-            gif_data = generator.generate_animated_cover(
+            # 生成动态 APNG (400x225 16:9)
+            apng_data = generator.generate_animated_cover(
                 posters=posters,
                 title=title,
                 subtitle=subtitle,
@@ -1071,8 +1074,8 @@ def generate_cover():
             )
             # 保存到本地缓存
             with open(local_file_path, 'wb') as f:
-                f.write(gif_data)
-            result_b64 = generator.bytes_to_base64(gif_data, "image/gif")
+                f.write(apng_data)
+            result_b64 = generator.bytes_to_base64(apng_data, "image/png")
         else:
             cover_img = generator.generate_cover(
                 posters=posters,

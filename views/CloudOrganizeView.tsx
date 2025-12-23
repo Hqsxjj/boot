@@ -3,9 +3,10 @@ import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
 import { api } from '../services/api';
 // 确保 mockConfig 存在，如果不存在请创建一个空文件或根据需求调整
 import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
-import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2 } from 'lucide-react';
+import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2, FileText } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
+import { OrganizeLogs } from '../components/OrganizeLogs';
 
 
 const GENRES = [
@@ -72,6 +73,7 @@ export const CloudOrganizeView: React.FC = () => {
    const [activeRuleTab, setActiveRuleTab] = useState<'movie' | 'tv'>('movie');
    const [fileSelectorOpen, setFileSelectorOpen] = useState(false);
    const [selectorTarget, setSelectorTarget] = useState<'download' | 'download123' | 'source' | 'target' | null>(null);
+   const [showOrganizeLogs, setShowOrganizeLogs] = useState(false);
 
    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
    const [tempRule, setTempRule] = useState<ClassificationRule | null>(null);
@@ -334,8 +336,16 @@ export const CloudOrganizeView: React.FC = () => {
             </div>
          )}
 
+
          <div className="flex flex-col md:flex-row justify-between items-center pb-2 gap-4">
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight drop-shadow-sm">网盘整理</h2>
+            <button
+               onClick={() => setShowOrganizeLogs(true)}
+               className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors border border-indigo-200 dark:border-indigo-700"
+            >
+               <FileText size={16} />
+               整理日志
+            </button>
          </div>
 
          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -365,45 +375,27 @@ export const CloudOrganizeView: React.FC = () => {
                      <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>123 云盘</button>
                   </div>
 
-                  {/* 115 Settings - 仅保留目录设置，登录和QPS已移至用户中心 */}
+                  {/* 115 Settings - 目录设置已统一到下方源目录 */}
                   {activeTab === '115' && (
-                     <div className="space-y-6 animate-in fade-in duration-300">
-                        <div>
-                           <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">默认下载目录</label>
-                           <div className="flex gap-3">
-                              <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
-                                 <FolderInput size={18} />
-                                 {config.cloud115.downloadDirName}
-                                 <span className="text-xs opacity-50 ml-auto font-mono">CID: {config.cloud115.downloadPath}</span>
-                              </div>
-                              <button
-                                 onClick={() => { setSelectorTarget('download'); setFileSelectorOpen(true); }}
-                                 className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
-                              >
-                                 选择
-                              </button>
+                     <div className="space-y-4 animate-in fade-in duration-300">
+                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 flex items-start gap-3 backdrop-blur-sm">
+                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                           <div className="text-sm text-blue-800 dark:text-blue-200">
+                              <strong>目录说明：</strong> 离线下载和转存的资源将保存到下方「整理工作流」中配置的<strong>源目录</strong>。
+                              系统会自动整理并移动到目标目录。
                            </div>
                         </div>
                      </div>
                   )}
 
-                  {/* 123 Settings - 仅保留目录设置，登录和QPS已移至用户中心 */}
+                  {/* 123 Settings - 目录设置已统一到下方源目录 */}
                   {activeTab === '123' && (
-                     <div className="space-y-6 animate-in fade-in duration-300">
-                        <div>
-                           <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">离线下载目录</label>
-                           <div className="flex gap-3">
-                              <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
-                                 <FolderInput size={18} />
-                                 {config.cloud123.downloadDirName}
-                                 <span className="text-xs opacity-50 ml-auto font-mono">ID: {config.cloud123.downloadPath}</span>
-                              </div>
-                              <button
-                                 onClick={() => { setSelectorTarget('download123'); setFileSelectorOpen(true); }}
-                                 className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
-                              >
-                                 选择
-                              </button>
+                     <div className="space-y-4 animate-in fade-in duration-300">
+                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 flex items-start gap-3 backdrop-blur-sm">
+                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                           <div className="text-sm text-blue-800 dark:text-blue-200">
+                              <strong>目录说明：</strong> 123云盘的离线下载和转存资源将保存到下方配置的<strong>源目录</strong>。
+                              系统会自动整理并移动到目标目录。
                            </div>
                         </div>
                      </div>
@@ -831,6 +823,12 @@ export const CloudOrganizeView: React.FC = () => {
             onSelect={handleDirSelect}
             title={`选择 ${selectorTarget === 'target' ? '存放目录' : selectorTarget === 'source' ? '源目录' : '下载目录'}`}
             cloudType={selectorTarget === 'download123' ? '123' : '115'}
+         />
+
+         {/* 整理进程日志弹窗 */}
+         <OrganizeLogs
+            isOpen={showOrganizeLogs}
+            onClose={() => setShowOrganizeLogs(false)}
          />
       </div >
    );

@@ -158,6 +158,76 @@ def _sync_ai_credentials_from_config(payload: dict, secret_store: SecretStore | 
         secret_store.set_secret('llm_provider', ai.get('provider', ''))
 
 
+def _sync_tmdb_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 TMDB API Key 到 SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+    
+    tmdb = payload.get('tmdb')
+    if not isinstance(tmdb, dict):
+        return
+    
+    api_key = tmdb.get('apiKey', '').strip() if isinstance(tmdb.get('apiKey'), str) else ''
+    
+    # 只有非空且非占位符时才保存
+    if api_key and api_key != MASK_PLACEHOLDER:
+        secret_store.set_secret('tmdb_api_key', api_key)
+        import logging
+        logging.getLogger(__name__).info('TMDB API Key 已保存到 SecretStore')
+
+
+def _sync_emby_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 Emby 凭证到 SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+    
+    emby = payload.get('emby')
+    if not isinstance(emby, dict):
+        return
+    
+    api_key = emby.get('apiKey', '').strip() if isinstance(emby.get('apiKey'), str) else ''
+    server_url = emby.get('serverUrl', '').strip() if isinstance(emby.get('serverUrl'), str) else ''
+    
+    # 保存 API Key
+    if api_key and api_key != MASK_PLACEHOLDER:
+        secret_store.set_secret('emby_api_key', api_key)
+    
+    # 保存 Server URL（非敏感，但为了一致性也保存到数据库）
+    if server_url:
+        secret_store.set_secret('emby_server_url', server_url)
+
+
+def _sync_proxy_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 Proxy 凭证到 SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+    
+    proxy = payload.get('proxy')
+    if not isinstance(proxy, dict):
+        return
+    
+    password = proxy.get('password', '').strip() if isinstance(proxy.get('password'), str) else ''
+    
+    # 保存 password
+    if password and password != MASK_PLACEHOLDER:
+        secret_store.set_secret('proxy_password', password)
+
+
+def _sync_telegram_credentials_from_config(payload: dict, secret_store: SecretStore | None) -> None:
+    """同步 Telegram Bot Token 到 SecretStore"""
+    if not secret_store or not isinstance(payload, dict):
+        return
+    
+    telegram = payload.get('telegram')
+    if not isinstance(telegram, dict):
+        return
+    
+    bot_token = telegram.get('botToken', '').strip() if isinstance(telegram.get('botToken'), str) else ''
+    
+    if bot_token and bot_token != MASK_PLACEHOLDER:
+        secret_store.set_secret('telegram_bot_token', bot_token)
+
+
 def _populate_secrets_from_cache(config: dict, secrets_cache: dict) -> dict:
     """[性能优化] 使用预获取的缓存填充敏感字段，不再查询数据库。"""
     # 1. 115 Cookies
@@ -209,6 +279,38 @@ def _populate_secrets_from_cache(config: dict, secrets_cache: dict) -> dict:
         if 'ai' not in config['organize']:
             config['organize']['ai'] = {}
         config['organize']['ai']['apiKey'] = llm_key
+
+    # 5. TMDB API Key
+    tmdb_key = secrets_cache.get('tmdb_api_key')
+    if tmdb_key:
+        if 'tmdb' not in config:
+            config['tmdb'] = {}
+        config['tmdb']['apiKey'] = tmdb_key
+
+    # 6. Emby Credentials
+    emby_key = secrets_cache.get('emby_api_key')
+    emby_url = secrets_cache.get('emby_server_url')
+    if emby_key or emby_url:
+        if 'emby' not in config:
+            config['emby'] = {}
+        if emby_key:
+            config['emby']['apiKey'] = emby_key
+        if emby_url:
+            config['emby']['serverUrl'] = emby_url
+
+    # 7. Proxy Password
+    proxy_password = secrets_cache.get('proxy_password')
+    if proxy_password:
+        if 'proxy' not in config:
+            config['proxy'] = {}
+        config['proxy']['password'] = proxy_password
+
+    # 8. Telegram Bot Token
+    telegram_token = secrets_cache.get('telegram_bot_token')
+    if telegram_token:
+        if 'telegram' not in config:
+            config['telegram'] = {}
+        config['telegram']['botToken'] = telegram_token
 
     return config
 
@@ -378,7 +480,12 @@ def get_config():
                 'cloud123_cookies', 
                 'cloud123_oauth_credentials',
                 'cloud123_password_credentials',
-                'llm_api_key'
+                'llm_api_key',
+                'tmdb_api_key',
+                'emby_api_key',
+                'emby_server_url',
+                'proxy_password',
+                'telegram_bot_token'
             ]
             # 使用批量查询，只创建一次数据库连接
             secrets_cache = config_bp.secret_store.get_secrets_batch(secret_keys)
@@ -457,6 +564,18 @@ def update_config():
         
         # Sync AI credentials
         _sync_ai_credentials_from_config(final_config, config_bp.secret_store)
+        
+        # Sync TMDB credentials
+        _sync_tmdb_credentials_from_config(final_config, config_bp.secret_store)
+        
+        # Sync Emby credentials
+        _sync_emby_credentials_from_config(final_config, config_bp.secret_store)
+        
+        # Sync Proxy credentials
+        _sync_proxy_credentials_from_config(final_config, config_bp.secret_store)
+        
+        # Sync Telegram credentials
+        _sync_telegram_credentials_from_config(final_config, config_bp.secret_store)
         
         # [Sync QPS Settings]
         try:

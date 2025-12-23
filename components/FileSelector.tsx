@@ -72,14 +72,14 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           break;
         }
         case '123': {
-          // 123 云盘 API - only directories are listed via this endpoint
+          // 123 云盘 API - 返回 {id, name, children (is_dir), date}
           const data = await api.list123Directories(dirId);
           if (data && Array.isArray(data)) {
             items = data.map((f: any) => ({
               id: f.id,
               name: f.name,
-              is_dir: true,
-              time: f.date || ''
+              is_dir: f.children === true || f.is_dir === true,  // 兼容两种格式
+              time: f.date || f.time || ''
             }));
           }
           break;

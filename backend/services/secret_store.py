@@ -20,6 +20,13 @@ UNENCRYPTED_KEYS = {
     'cloud123_password_credentials',
     'cloud123_oauth_credentials',
     'cloud123_token',
+    # 以下新增的凭证也不加密（避免密钥丢失导致数据无法读取）
+    'tmdb_api_key',
+    'emby_api_key',
+    'emby_server_url',
+    'proxy_password',
+    'telegram_bot_token',
+    'pansou_api_url',
 }
 
 
