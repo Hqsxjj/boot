@@ -162,10 +162,14 @@ export interface AiConfig {
 
 export interface OrganizeConfig {
   enabled: boolean;
-  sourceCid: string;
-  sourceDirName: string;
-  targetCid: string;
-  targetDirName: string;
+  sourceCid115: string;
+  sourceDirName115: string;
+  targetCid115: string;
+  targetDirName115: string;
+  sourceCid123: string;
+  sourceDirName123: string;
+  targetCid123: string;
+  targetDirName123: string;
   ai: AiConfig;
   rename: RenameRule;
   movieRules: ClassificationRule[];

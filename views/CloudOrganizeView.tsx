@@ -40,16 +40,20 @@ const RENAME_TAGS = [
 
 // 默认配置
 const DEFAULT_CONFIG: Partial<AppConfig> = {
-   cloud115: { loginMethod: 'cookie', loginApp: 'android', cookies: '', userAgent: '', downloadPath: '', downloadDirName: '未连接', autoDeleteMsg: false, qps: 1.0 },
-   cloud123: { enabled: false, clientId: '', clientSecret: '', downloadPath: '', downloadDirName: '未连接', qps: 1.0 },
+   cloud115: { loginMethod: 'cookie', loginApp: 'android', cookies: '', userAgent: '', downloadPath: '0', downloadDirName: '根目录', autoDeleteMsg: false, qps: 1.0 },
+   cloud123: { enabled: false, clientId: '', clientSecret: '', passport: '', password: '', downloadPath: '0', downloadDirName: '根目录', qps: 1.0 },
    openList: { enabled: false, url: '', mountPath: '', username: '', password: '' },
    tmdb: { apiKey: '', language: 'zh-CN', includeAdult: false },
    organize: {
       enabled: true,
-      sourceCid: '',
-      sourceDirName: '',
-      targetCid: '',
-      targetDirName: '',
+      sourceCid115: '0',
+      sourceDirName115: '根目录',
+      targetCid115: '0',
+      targetDirName115: '根目录',
+      sourceCid123: '0',
+      sourceDirName123: '根目录',
+      targetCid123: '0',
+      targetDirName123: '根目录',
       ai: { enabled: false, provider: 'openai', baseUrl: '', apiKey: '', model: '' },
       rename: {
          enabled: true,
@@ -72,8 +76,10 @@ export const CloudOrganizeView: React.FC = () => {
    const [activeTab, setActiveTab] = useState<'115' | '123' | 'openlist'>('115');
    const [activeRuleTab, setActiveRuleTab] = useState<'movie' | 'tv'>('movie');
    const [fileSelectorOpen, setFileSelectorOpen] = useState(false);
-   const [selectorTarget, setSelectorTarget] = useState<'download' | 'download123' | 'source' | 'target' | null>(null);
+   const [selectorTarget, setSelectorTarget] = useState<'download' | 'download123' | 'source115' | 'target115' | 'source123' | 'target123' | null>(null);
    const [showOrganizeLogs, setShowOrganizeLogs] = useState(false);
+   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
+   const [isVerifying123, setIsVerifying123] = useState(false);
 
    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
    const [tempRule, setTempRule] = useState<ClassificationRule | null>(null);
@@ -296,11 +302,51 @@ export const CloudOrganizeView: React.FC = () => {
    };
 
 
+   const handleRunOrganize = async () => {
+      if (!config) return;
+      setIsRunningWorkflow(true);
+      setToast(`正在启动 ${activeTab === '115' ? '115 网盘' : '123 云盘'} 整理工作流...`);
+      try {
+         const res = await api.runOrganize(activeTab === '115' ? '115' : '123');
+         if (res.success) {
+            setToast('整理工作流已启动，请查看日志');
+            setShowOrganizeLogs(true);
+         } else {
+            setToast(`启动失败: ${res.error || '未知错误'}`);
+         }
+      } catch (e) {
+         setToast('启动失败 (网络错误)');
+      } finally {
+         setIsRunningWorkflow(false);
+         setTimeout(() => setToast(null), 5000);
+      }
+   };
+
+   const handleLogin123 = async () => {
+      if (!config) return;
+      setIsVerifying123(true);
+      try {
+         const res = await api.login123WithOAuth(config.cloud123.clientId, config.cloud123.clientSecret);
+         if (res.success) {
+            setToast('123 云盘 OAuth 凭证验证并保存成功');
+         } else {
+            setToast(`验证失败: ${res.error || '未知错误'}`);
+         }
+      } catch (e) {
+         setToast('验证失败 (网络错误)');
+      } finally {
+         setIsVerifying123(false);
+         setTimeout(() => setToast(null), 5000);
+      }
+   };
+
    const handleDirSelect = (cid: string, name: string) => {
       if (selectorTarget === 'download') { updateNested('cloud115', 'downloadPath', cid); updateNested('cloud115', 'downloadDirName', name); }
       else if (selectorTarget === 'download123') { updateNested('cloud123', 'downloadPath', cid); updateNested('cloud123', 'downloadDirName', name); }
-      else if (selectorTarget === 'source') { updateOrganize('sourceCid', cid); updateOrganize('sourceDirName', name); }
-      else if (selectorTarget === 'target') { updateOrganize('targetCid', cid); updateOrganize('targetDirName', name); }
+      else if (selectorTarget === 'source115') { updateOrganize('sourceCid115', cid); updateOrganize('sourceDirName115', name); }
+      else if (selectorTarget === 'target115') { updateOrganize('targetCid115', cid); updateOrganize('targetDirName115', name); }
+      else if (selectorTarget === 'source123') { updateOrganize('sourceCid123', cid); updateOrganize('sourceDirName123', name); }
+      else if (selectorTarget === 'target123') { updateOrganize('targetCid123', cid); updateOrganize('targetDirName123', name); }
    };
 
    const fillOpenListIp = () => {
@@ -350,63 +396,157 @@ export const CloudOrganizeView: React.FC = () => {
 
          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
 
-            {/* Account Management */}
-            <section className={`${glassCardClass} xl:col-span-2`}>
-               <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+            {/* Connections & Workflow Section */}
+            <section className={`${glassCardClass} xl:col-span-2 shadow-xl`}>
+               <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
                   <div className="flex items-center gap-3">
-                     <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600 dark:text-orange-400 shadow-inner">
-                        <Cookie size={20} />
+                     <div className="p-2 bg-brand-50 dark:bg-brand-900/20 rounded-lg text-brand-600 dark:text-brand-400 shadow-inner">
+                        <Globe size={20} />
                      </div>
-                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">账号与连接</h3>
+                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">网盘连接与工作流</h3>
                   </div>
-                  <button
-                     onClick={handleSave}
-                     disabled={isSaving}
-                     className={`${actionBtnClass} bg-orange-50 text-orange-600 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:hover:bg-orange-900/40 disabled:opacity-50`}
-                  >
-                     {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-                     保存设置
-                  </button>
+                  <div className="flex items-center gap-3">
+                     <button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className={`${actionBtnClass} bg-white dark:bg-slate-800 border-[0.5px] border-slate-200 dark:border-slate-700 shadow-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700`}
+                     >
+                        {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
+                        保存配置
+                     </button>
+                     {activeTab !== 'openlist' && (
+                        <button
+                           onClick={handleRunOrganize}
+                           disabled={isRunningWorkflow}
+                           className={`${actionBtnClass} bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-500/20`}
+                        >
+                           {isRunningWorkflow ? <Loader2 className="animate-spin" size={12} /> : <Zap size={12} />}
+                           立即整理
+                        </button>
+                     )}
+                  </div>
                </div>
                <div className="p-6">
                   {/* Account Tabs */}
-                  <div className="flex gap-6 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 mb-6">
-                     <button onClick={() => setActiveTab('115')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === '115' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>115 网盘</button>
-                     <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>123 云盘</button>
+                  <div className="flex gap-6 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 mb-8">
+                     <button onClick={() => setActiveTab('115')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === '115' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                        <Cookie size={16} /> 115 网盘
+                     </button>
+                     <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                        <LayoutList size={16} /> 123 云盘
+                     </button>
+                     <button onClick={() => setActiveTab('openlist')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'openlist' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                        <Globe size={16} /> OpenList
+                     </button>
                   </div>
 
-                  {/* 115 Settings - 目录设置已统一到下方源目录 */}
                   {activeTab === '115' && (
-                     <div className="space-y-4 animate-in fade-in duration-300">
-                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 flex items-start gap-3 backdrop-blur-sm">
-                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                           <div className="text-sm text-blue-800 dark:text-blue-200">
-                              <strong>目录说明：</strong> 离线下载和转存的资源将保存到下方「整理工作流」中配置的<strong>源目录</strong>。
-                              系统会自动整理并移动到目标目录。
+                     <div className="space-y-8 animate-in fade-in duration-300">
+                        {/* 115 Folders */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-blue-50/30 dark:bg-blue-900/10 p-6 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-900/50">
+                           <div>
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">115 源目录 (待整理)</label>
+                              <div className="flex gap-3">
+                                 <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3">
+                                    <FolderInput size={20} className="text-blue-500" />
+                                    {config.organize.sourceDirName115 || '根目录'}
+                                 </div>
+                                 <button onClick={() => { setSelectorTarget('source115'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white dark:bg-slate-700 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-blue-500 rounded-lg text-sm font-medium shadow-sm transition-all">选择</button>
+                              </div>
+                           </div>
+                           <div>
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">115 目标目录 (已整理)</label>
+                              <div className="flex gap-3">
+                                 <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3">
+                                    <FolderOutput size={20} className="text-green-500" />
+                                    {config.organize.targetDirName115 || '根目录'}
+                                 </div>
+                                 <button onClick={() => { setSelectorTarget('target115'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white dark:bg-slate-700 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-green-500 rounded-lg text-sm font-medium shadow-sm transition-all">选择</button>
+                              </div>
+                           </div>
+                        </div>
+
+                        {/* 115 Connection (Minimized) */}
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-800">
+                           <div className="flex items-center justify-between">
+                              <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">115 登录状态: <span className="text-green-600 dark:text-green-400">已连接 (通过全局设置)</span></span>
+                              <button
+                                 onClick={() => window.location.hash = '#user-center'}
+                                 className="text-xs text-brand-600 hover:underline"
+                              >
+                                 管理 115 凭证
+                              </button>
                            </div>
                         </div>
                      </div>
                   )}
 
-                  {/* 123 Settings - 目录设置已统一到下方源目录 */}
                   {activeTab === '123' && (
-                     <div className="space-y-4 animate-in fade-in duration-300">
-                        <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border-[0.5px] border-blue-100 dark:border-blue-800 flex items-start gap-3 backdrop-blur-sm">
-                           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                           <div className="text-sm text-blue-800 dark:text-blue-200">
-                              <strong>目录说明：</strong> 123云盘的离线下载和转存资源将保存到下方配置的<strong>源目录</strong>。
-                              系统会自动整理并移动到目标目录。
+                     <div className="space-y-8 animate-in fade-in duration-300">
+                        {/* 123 Auth Settings */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                           <div>
+                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">OAuth Client ID</label>
+                              <input
+                                 type="text"
+                                 value={config.cloud123.clientId}
+                                 onChange={(e) => updateNested('cloud123', 'clientId', e.target.value)}
+                                 className={inputClass}
+                                 placeholder="从 123云盘开放平台获取"
+                              />
+                           </div>
+                           <div>
+                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">OAuth Client Secret</label>
+                              <SensitiveInput
+                                 value={config.cloud123.clientSecret}
+                                 onChange={(e) => updateNested('cloud123', 'clientSecret', e.target.value)}
+                                 className={inputClass}
+                              />
+                           </div>
+                           <div className="md:col-span-2 flex justify-end">
+                              <button
+                                 onClick={handleLogin123}
+                                 disabled={isVerifying123}
+                                 className="px-6 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-brand-700 shadow-lg shadow-brand-500/20"
+                              >
+                                 {isVerifying123 ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                                 验证并保存 OAuth
+                              </button>
+                           </div>
+                        </div>
+
+                        {/* 123 Folders */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-orange-50/30 dark:bg-orange-900/10 p-6 rounded-xl border-[0.5px] border-orange-100 dark:border-orange-900/50">
+                           <div>
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">123 源目录 (待整理)</label>
+                              <div className="flex gap-3">
+                                 <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3">
+                                    <FolderInput size={20} className="text-orange-500" />
+                                    {config.organize.sourceDirName123 || '根目录'}
+                                 </div>
+                                 <button onClick={() => { setSelectorTarget('source123'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white dark:bg-slate-700 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-orange-500 rounded-lg text-sm font-medium shadow-sm transition-all">选择</button>
+                              </div>
+                           </div>
+                           <div>
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">123 目标目录 (已整理)</label>
+                              <div className="flex gap-3">
+                                 <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3">
+                                    <FolderOutput size={20} className="text-green-500" />
+                                    {config.organize.targetDirName123 || '根目录'}
+                                 </div>
+                                 <button onClick={() => { setSelectorTarget('target123'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white dark:bg-slate-700 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-green-500 rounded-lg text-sm font-medium shadow-sm transition-all">选择</button>
+                              </div>
                            </div>
                         </div>
                      </div>
                   )}
 
                   {activeTab === 'openlist' && (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
-                        <div className="md:col-span-2 bg-cyan-50/50 dark:bg-cyan-900/20 p-4 rounded-xl border-[0.5px] border-cyan-100 dark:border-cyan-800 mb-2 flex items-start gap-3 backdrop-blur-sm">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
+                        <div className="md:col-span-2 bg-cyan-50/50 dark:bg-cyan-900/20 p-4 rounded-xl border-[0.5px] border-cyan-100 dark:border-cyan-800 flex items-start gap-3 backdrop-blur-sm">
                            <AlertCircle size={20} className="text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
                            <div className="text-sm text-cyan-800 dark:text-cyan-200">
-                              <strong>重要提示：</strong> 为了确保正常连接，请务必在 OpenList 后台设置中关闭 <code>sign</code> 和 <code>sign_slice</code> 两个签名验证选项。
+                              <strong>重要提示：</strong> OpenList 仅用于媒体库挂载。网盘整理功能目前仅支持 115 和 123。
                            </div>
                         </div>
 
@@ -445,72 +585,19 @@ export const CloudOrganizeView: React.FC = () => {
                </div>
             </section>
 
-            {/* Organize Rules Engine */}
+            {/* Shared Rule Engine - Only visible when not in OpenList tab */}
             {activeTab !== 'openlist' && (
                <section className={`${glassCardClass} xl:col-span-2 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                  <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+                  <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
                      <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400 shadow-inner">
                            <Film size={20} />
                         </div>
-                        <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">分类与重命名规则 (TMDB)</h3>
-                     </div>
-                     <div className="flex items-center gap-3">
-                        <button
-                           onClick={handleSave}
-                           disabled={isSaving}
-                           className={`${actionBtnClass} bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 dark:hover:bg-indigo-900/40 disabled:opacity-50`}
-                        >
-                           {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-                           保存设置
-                        </button>
+                        <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">分类与重命名规则 (TMDB 共享)</h3>
                      </div>
                   </div>
 
                   <div className="p-6 space-y-8">
-                     {/* Source and Target Directories */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-xl border-[0.5px] border-slate-200 dark:border-slate-700/50 backdrop-blur-sm shadow-inner">
-                        <div>
-                           <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">源目录 (Source)</label>
-                           <div className="flex gap-3">
-                              <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3 backdrop-blur-sm">
-                                 <FolderInput size={20} />
-                                 {config.organize.sourceDirName || '默认下载目录'}
-                              </div>
-                           </div>
-                           <div className="flex gap-2">
-                              <button onClick={() => { setSelectorTarget('source'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm whitespace-nowrap">选择</button>
-                              <button
-                                 onClick={() => {
-                                    if (config?.cloud115?.downloadPath) {
-                                       updateOrganize('sourceCid', config.cloud115.downloadPath);
-                                       updateOrganize('sourceDirName', config.cloud115.downloadDirName);
-                                       setToast('已同步 115 默认下载目录');
-                                       setTimeout(() => setToast(null), 5000);
-                                    } else {
-                                       setToast('未配置 115 下载目录');
-                                       setTimeout(() => setToast(null), 5000);
-                                    }
-                                 }}
-                                 className="px-3 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm text-slate-500 hover:text-indigo-600"
-                                 title="同步设置为 115 默认下载目录"
-                              >
-                                 <RotateCcw size={18} />
-                              </button>
-                           </div>
-                        </div>
-                        <div>
-                           <label className="flex items-center text-xs font-bold text-slate-500 uppercase mb-3">目标目录 (Target)</label>
-                           <div className="flex gap-3">
-                              <div className="flex-1 px-4 py-3 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 text-sm flex items-center gap-3 backdrop-blur-sm">
-                                 <FolderOutput size={20} />
-                                 {config.organize.targetDirName || '整理存放目录'}
-                              </div>
-                              <button onClick={() => { setSelectorTarget('target'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm">选择</button>
-                           </div>
-                        </div>
-                     </div>
-
                      <div className="transition-all duration-300">
                         {/* AI Config */}
                         <div className="mb-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
@@ -821,8 +908,8 @@ export const CloudOrganizeView: React.FC = () => {
             isOpen={fileSelectorOpen}
             onClose={() => setFileSelectorOpen(false)}
             onSelect={handleDirSelect}
-            title={`选择 ${selectorTarget === 'target' ? '存放目录' : selectorTarget === 'source' ? '源目录' : '下载目录'}`}
-            cloudType={selectorTarget === 'download123' ? '123' : '115'}
+            title={`选择 ${selectorTarget?.includes('target') ? '存放目录' : selectorTarget?.includes('source') ? '源目录' : '下载目录'}`}
+            cloudType={selectorTarget?.includes('123') ? '123' : '115'}
          />
 
          {/* 整理进程日志弹窗 */}

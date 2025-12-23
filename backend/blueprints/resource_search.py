@@ -318,17 +318,17 @@ def search_resources():
         # 1. 检查是否配置了盘搜 API URL (Pansou)
         pansou_enabled = False
         try:
-            from app import get_db_session
-            from services.secret_store import SecretStore
             from services.pan_search_service import PANSOU_API_KEY
             
-            store = SecretStore(get_db_session)
-            pansou_url = store.get_secret(PANSOU_API_KEY)
+            pansou_url = None
+            if _store and _store.secret_store:
+                pansou_url = _store.secret_store.get_secret(PANSOU_API_KEY)
             
             if pansou_url and pansou_url.strip():
                 pansou_enabled = True
                 try:
-                    pan_service = get_pan_search_service()
+                    secret_store = _store.secret_store if _store else None
+                    pan_service = get_pan_search_service(secret_store)
                     pan_result = pan_service.search(query, cloud_types=['115', '123'])
                     
                     if pan_result.get('success') and pan_result.get('data'):
@@ -513,7 +513,8 @@ def search_pan_resources():
             }), 400
         
         # 调用网盘搜索服务
-        pan_service = get_pan_search_service()
+        secret_store = _store.secret_store if _store else None
+        pan_service = get_pan_search_service(secret_store)
         result = pan_service.search(keyword, cloud_types=cloud_types)
         
         if result.get('success'):
@@ -546,7 +547,8 @@ def search_115_resources():
     if not keyword:
         return jsonify({'success': False, 'error': '请输入搜索关键词'}), 400
     
-    pan_service = get_pan_search_service()
+    secret_store = _store.secret_store if _store else None
+    pan_service = get_pan_search_service(secret_store)
     result = pan_service.search_115(keyword)
     return jsonify(result)
 
@@ -559,7 +561,8 @@ def search_123_resources():
     if not keyword:
         return jsonify({'success': False, 'error': '请输入搜索关键词'}), 400
     
-    pan_service = get_pan_search_service()
+    secret_store = _store.secret_store if _store else None
+    pan_service = get_pan_search_service(secret_store)
     result = pan_service.search_123(keyword)
     return jsonify(result)
 
@@ -569,12 +572,11 @@ def search_123_resources():
 def get_pansou_config():
     """Get Pansou API configuration."""
     try:
-        from app import get_db_session
-        from services.secret_store import SecretStore
         from services.pan_search_service import PANSOU_API_KEY, DEFAULT_PANSOU_API_BASE
         
-        store = SecretStore(get_db_session)
-        url = store.get_secret(PANSOU_API_KEY)
+        url = ''
+        if _store and _store.secret_store:
+            url = _store.secret_store.get_secret(PANSOU_API_KEY)
         
         return jsonify({
             'success': True,
@@ -593,21 +595,20 @@ def get_pansou_config():
 def save_pansou_config():
     """Save Pansou API configuration."""
     try:
-        from app import get_db_session
-        from services.secret_store import SecretStore
         from services.pan_search_service import PANSOU_API_KEY, get_pan_search_service
         
         data = request.get_json() or {}
         api_url = data.get('api_url', '').strip()
         
-        store = SecretStore(get_db_session)
-        
+        if not _store or not _store.secret_store:
+            return jsonify({'success': False, 'error': '存储服务未就绪'}), 500
+
         if api_url:
-            store.set_secret(PANSOU_API_KEY, api_url)
+            _store.secret_store.set_secret(PANSOU_API_KEY, api_url)
             logger.info(f"Pansou API URL 已更新: {api_url}")
         else:
             # 如果为空，则删除配置，使用默认值
-            store.delete_secret(PANSOU_API_KEY)
+            _store.secret_store.delete_secret(PANSOU_API_KEY)
             logger.info("Pansou API URL 已重置为默认值")
         
         # 重置全局服务实例，使其重新读取配置

@@ -636,8 +636,8 @@ export const api = {
     return res.data;
   },
 
-  getLibraryPosters: async (libraryId: string, limit: number = 10) => {
-    const res = await apiClient.get<ApiResponse<string[]>>(`/emby/cover/posters/${libraryId}`, { params: { limit } });
+  getLibraryPosters: async (libraryId: string, limit: number = 10, sort?: string) => {
+    const res = await apiClient.get<ApiResponse<string[]>>(`/emby/cover/posters/${libraryId}`, { params: { limit, sort } });
     return res.data;
   },
 
@@ -753,7 +753,17 @@ export const api = {
     return res.data;
   },
 
-  // 整理进程滚动日志
+  // --- 整理相关接口 ---
+
+  /**
+   * 立即执行网盘整理
+   * @param cloudType '115' | '123'
+   */
+  runOrganize: async (cloudType: string) => {
+    const res = await apiClient.post<ApiResponse<{ taskId: string }>>('/organize/run', { cloudType });
+    return res.data;
+  },
+
   getOrganizeLogs: async (limit: number = 100) => {
     const res = await apiClient.get<ApiResponse<any>>('/organize/logs', { params: { limit } });
     return res.data;
@@ -762,8 +772,81 @@ export const api = {
   clearOrganizeLogs: async () => {
     const res = await apiClient.delete<ApiResponse<any>>('/organize/logs');
     return res.data;
+  },
+
+  // --- 封面预设与定时任务 ---
+  getCoverSortOptions: async () => {
+    const res = await apiClient.get<ApiResponse<Array<{ id: string; name: string; description: string }>>>('/emby/cover/sort-options');
+    return res.data;
+  },
+
+  getCoverPresets: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/emby/cover/presets');
+    return res.data;
+  },
+
+  createCoverPreset: async (data: any) => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/cover/presets', data);
+    return res.data;
+  },
+
+  getCoverPreset: async (presetId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/ emby / cover / presets / ${presetId}`);
+    return res.data;
+  },
+
+  updateCoverPreset: async (presetId: string, data: any) => {
+    const res = await apiClient.put<ApiResponse<any>>(`/ emby / cover / presets / ${presetId} `, data);
+    return res.data;
+  },
+
+  deleteCoverPreset: async (presetId: string) => {
+    const res = await apiClient.delete<ApiResponse<any>>(`/ emby / cover / presets / ${presetId} `);
+    return res.data;
+  },
+
+  runCoverPreset: async (presetId: string) => {
+    const res = await apiClient.post<ApiResponse<any>>(`/ emby / cover / presets / ${presetId}/run`);
+    return res.data;
+  },
+
+  getCoverSchedulerStatus: async () => {
+    const res = await apiClient.get<ApiResponse<any>>('/emby/cover/scheduler/status');
+    return res.data;
+  },
+
+  startCoverScheduler: async () => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/cover/scheduler/start');
+    return res.data;
+  },
+
+  stopCoverScheduler: async () => {
+    const res = await apiClient.post<ApiResponse<any>>('/emby/cover/scheduler/stop');
+    return res.data;
+  },
+
+  uploadCoverFont: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post<ApiResponse<{ filename: string }>>('/emby/cover/upload_font', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+
+  uploadCoverSticker: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post<ApiResponse<{ filename: string }>>('/emby/cover/upload_sticker', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+
+  getCoverAssets: async () => {
+    const res = await apiClient.get<ApiResponse<{ fonts: string[], stickers: string[] }>>('/emby/cover/assets');
+    return res.data;
   }
 };
-
 
 

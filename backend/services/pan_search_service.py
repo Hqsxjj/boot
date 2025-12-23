@@ -15,15 +15,13 @@ PANSOU_API_KEY = "pansou_api_url"  # SecretStore 中存储的 key
 SUPPORTED_CLOUD_TYPES = ['115', '123', 'aliyun', 'baidu', 'quark', 'magnet', 'ed2k']
 
 
-def get_pansou_api_url() -> str:
+def get_pansou_api_url(secret_store=None) -> str:
     """从配置中获取 Pansou API URL，如果未配置则返回默认值。"""
     try:
-        from app import get_db_session
-        from services.secret_store import SecretStore
-        store = SecretStore(get_db_session)
-        url = store.get_secret(PANSOU_API_KEY)
-        if url and url.strip():
-            return url.strip().rstrip('/')
+        if secret_store:
+            url = secret_store.get_secret(PANSOU_API_KEY)
+            if url and url.strip():
+                return url.strip().rstrip('/')
     except Exception as e:
         logger.warning(f"读取 Pansou API URL 配置失败: {e}")
     return DEFAULT_PANSOU_API_BASE
@@ -32,18 +30,19 @@ def get_pansou_api_url() -> str:
 class PanSearchService:
     """Service for searching cloud drive resources via pan.jivon.de API."""
     
-    def __init__(self, api_base: str = None, timeout: int = 30):
+    def __init__(self, secret_store=None, api_base: str = None, timeout: int = 30):
         """
         Initialize PanSearchService.
         
         Args:
+            secret_store: Optional SecretStore instance to read config
             api_base: Optional custom API base URL (if not provided, reads from config)
             timeout: Request timeout in seconds
         """
         if api_base:
             self.api_base = api_base.rstrip('/')
         else:
-            self.api_base = get_pansou_api_url()
+            self.api_base = get_pansou_api_url(secret_store)
         self.timeout = timeout
     
     def search(self, keyword: str, cloud_types: List[str] = None, 
@@ -210,9 +209,9 @@ class PanSearchService:
 _pan_search_service = None
 
 
-def get_pan_search_service() -> PanSearchService:
+def get_pan_search_service(secret_store=None) -> PanSearchService:
     """Get or create PanSearchService singleton."""
     global _pan_search_service
     if _pan_search_service is None:
-        _pan_search_service = PanSearchService()
+        _pan_search_service = PanSearchService(secret_store=secret_store)
     return _pan_search_service

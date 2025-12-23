@@ -93,44 +93,65 @@ def start_missing_scan_background():
         series = series_list.get('data', [])
         total = len(series)
         all_missing = []
+        scanned_count = 0
+        
+        logger.info(f"开始扫描 {total} 个剧集")
         
         for i, s in enumerate(series):
-            bg_service.update_progress(task, i + 1, total, s.get('name', s.get('id')))
+            series_name = s.get('name', s.get('id'))
+            series_id = s.get('id')
+            
+            # Update progress BEFORE scanning (shows current item being processed)
+            bg_service.update_progress(task, i, total, f"正在扫描: {series_name}")
             
             try:
-                result = _emby_service.scan_single_series(s.get('id'))
-                if result.get('success') and result.get('data'):
-                    items = result['data']
-                    all_missing.extend(items)
+                logger.info(f"[{i+1}/{total}] 开始扫描: {series_name} (ID: {series_id})")
+                result = _emby_service.scan_single_series(series_id)
+                
+                if result.get('success'):
+                    scanned_count += 1
+                    items = result.get('data', [])
                     
-                    # 2. Save new records to DB immediately
-                    session = _store.session_factory()
-                    try:
-                        for item in items:
-                            # item format: {id, name, season, totalEp, localEp, missing, poster}
-                            record = MissingEpisode(
-                                id=item['id'],
-                                series_id=s.get('id'), # Original Emby Series ID
-                                series_name=item['name'],
-                                season_number=item['season'],
-                                total_episodes=item['totalEp'],
-                                local_episodes=item['localEp'],
-                                missing_items=item['missing'],
-                                poster_path=item['poster']
-                            )
-                            session.merge(record)
-                        session.commit()
-                        logger.info(f"已保存 {s.get('name')} 的 {len(items)} 条缺集记录")
-                    except Exception as db_err:
-                        session.rollback()
-                        logger.error(f"保存缺集记录失败: {db_err}")
-                    finally:
-                        session.close()
+                    if items:
+                        all_missing.extend(items)
+                        logger.info(f"[{i+1}/{total}] {series_name} 发现 {len(items)} 个缺集季")
+                        
+                        # 2. Save new records to DB immediately
+                        session = _store.session_factory()
+                        try:
+                            for item in items:
+                                # item format: {id, name, season, totalEp, localEp, missing, poster}
+                                record = MissingEpisode(
+                                    id=item['id'],
+                                    series_id=series_id,
+                                    series_name=item['name'],
+                                    season_number=item['season'],
+                                    total_episodes=item['totalEp'],
+                                    local_episodes=item['localEp'],
+                                    missing_items=item['missing'],
+                                    poster_path=item['poster']
+                                )
+                                session.merge(record)
+                            session.commit()
+                            logger.info(f"✓ 已保存 {series_name} 的 {len(items)} 条缺集记录")
+                        except Exception as db_err:
+                            session.rollback()
+                            logger.error(f"✗ 保存 {series_name} 缺集记录失败: {db_err}")
+                        finally:
+                            session.close()
+                    else:
+                        logger.info(f"[{i+1}/{total}] {series_name} 无缺集")
+                else:
+                    logger.warning(f"[{i+1}/{total}] {series_name} 扫描失败: {result.get('error', '未知错误')}")
                         
             except Exception as e:
-                logger.warning(f"扫描 {s.get('name')} 失败: {e}")
+                logger.error(f"[{i+1}/{total}] {series_name} 扫描异常: {e}", exc_info=True)
+            
+            # Update progress AFTER scanning completes
+            bg_service.update_progress(task, i + 1, total, f"已完成: {series_name}")
         
-        return {'missing': all_missing, 'total_series': total}
+        logger.info(f"扫描完成: {scanned_count}/{total} 个剧集，发现 {len(all_missing)} 个缺集季")
+        return {'missing': all_missing, 'total_series': total, 'scanned': scanned_count}
     
     bg_service.run_task(task, scan_job)
     
@@ -841,13 +862,26 @@ def apply_covers_to_emby():
                     continue
                 
                 # 1. 获取海报
-                posters = generator.get_library_posters(lib_id, limit=6)
+                sort_by = cover_config.get('sort')
+                poster_count = int(cover_config.get('posterCount', 6))
+                posters = generator.get_library_posters(lib_id, limit=poster_count, sort_by=sort_by)
                 if not posters:
                     results.append({'id': lib_id, 'success': False, 'msg': '无海报'})
                     continue
                 
                 # 2. 准备参数
                 title = target_lib['name']
+                font_path = cover_config.get('fontPath')
+                sticker_name = cover_config.get('sticker')
+                
+                sticker_img = None
+                if sticker_name:
+                    import os
+                    from PIL import Image
+                    data_dir = get_covers_data_dir()
+                    sticker_path_full = os.path.join(data_dir, 'stickers', sticker_name)
+                    if os.path.exists(sticker_path_full):
+                        sticker_img = Image.open(sticker_path_full).convert("RGBA")
                 
                 # 清理库名称用于文件夹/文件名 (移除不安全字符)
                 safe_lib_name = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip()
@@ -889,7 +923,9 @@ def apply_covers_to_emby():
                     'title_size': cover_config.get('titleSize', 172),
                     'offset_x': cover_config.get('offsetX', 50),
                     'poster_scale_pct': cover_config.get('posterScale', 32),
-                    'v_align_pct': cover_config.get('vAlign', 60)
+                    'v_align_pct': cover_config.get('vAlign', 60),
+                    'font_path': font_path,
+                    'sticker_img': sticker_img
                 }
                 
                 # 3. 创建本地缓存目录 (使用跨平台路径)
@@ -967,11 +1003,12 @@ def get_library_posters(library_id: str):
             return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
         
         limit = request.args.get('limit', 10, type=int)
+        sort_by = request.args.get('sort')
         
         generator = get_cover_generator()
         proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
         generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
-        posters = generator.get_library_posters(library_id, limit=limit)
+        posters = generator.get_library_posters(library_id, limit=limit, sort_by=sort_by)
         
         # 转换为 base64
         poster_data = []
@@ -1026,11 +1063,27 @@ def generate_cover():
             use_backdrop = data.get('useBackdrop', False)
         poster_count = int(data.get('posterCount', 5))
         poster_count = max(3, min(7, poster_count))
+        sort_by = cover_config.get('sort') or data.get('sort')
+        font_path = cover_config.get('fontPath') or data.get('fontPath')
+        sticker_name = cover_config.get('sticker') or data.get('sticker')
+        
+        sticker_img = None
+        if sticker_name:
+            import os
+            from PIL import Image
+            data_dir = get_covers_data_dir()
+            sticker_path_full = os.path.join(data_dir, 'stickers', sticker_name)
+            if os.path.exists(sticker_path_full):
+                try:
+                    sticker_img = Image.open(sticker_path_full).convert("RGBA")
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"Failed to load sticker {sticker_name}: {e}")
         
         # 获取海报
         posters = []
         if library_id:
-            posters = generator.get_library_posters(library_id, limit=poster_count)
+            posters = generator.get_library_posters(library_id, limit=poster_count, sort_by=sort_by)
             
         # 获取背景图 (如果要用)
         backdrop_img = None
@@ -1070,7 +1123,9 @@ def generate_cover():
                 spacing=spacing,
                 angle_scale=angle_scale,
                 use_backdrop=use_backdrop,
-                backdrop_img=backdrop_img
+                backdrop_img=backdrop_img,
+                font_path=font_path,
+                sticker_img=sticker_img
             )
             # 保存到本地缓存
             with open(local_file_path, 'wb') as f:
@@ -1089,7 +1144,9 @@ def generate_cover():
                 spacing=spacing,
                 angle_scale=angle_scale,
                 use_backdrop=use_backdrop,
-                backdrop_img=backdrop_img
+                backdrop_img=backdrop_img,
+                font_path=font_path,
+                sticker_img=sticker_img
             )
             # 保存到本地缓存
             cover_img.save(local_file_path, format='PNG')
@@ -1305,6 +1362,15 @@ def upload_rendered_cover():
         # 或者直接使用 image_data
         
         if generator.upload_cover(library_id, image_data, "image/png"):
+            # 6. 刷新 Emby 项目以清除缓存
+            try:
+                from services.emby_service import get_emby_service
+                emby_service = get_emby_service(_store)
+                if emby_service:
+                    emby_service.refresh_item(library_id)
+            except Exception as e:
+                logger.warning(f"刷新库 {library_id} 缓存失败: {e}")
+                
             return jsonify({
                 'success': True,
                 'message': '上传成功',
@@ -1318,3 +1384,299 @@ def upload_rendered_cover():
         logging.getLogger(__name__).error(f"处理 Studio 封面上传失败: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+# ============ 封面预设与定时任务 API ============
+
+@emby_bp.route('/cover/sort-options', methods=['GET'])
+@require_auth
+def get_poster_sort_options():
+    """获取海报排序选项列表"""
+    try:
+        from services.cover_scheduler import get_poster_sort_options
+        return jsonify({
+            'success': True,
+            'data': get_poster_sort_options()
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets', methods=['GET'])
+@require_auth
+def get_cover_presets():
+    """获取所有封面预设列表"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        return jsonify({
+            'success': True,
+            'data': scheduler.get_presets()
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets', methods=['POST'])
+@require_auth
+def create_cover_preset():
+    """创建新的封面预设"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        data = request.get_json() or {}
+        name = data.get('name', '新预设')
+        
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        preset = scheduler.add_preset(name, data)
+        return jsonify({
+            'success': True,
+            'data': preset.to_dict()
+        }), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets/<preset_id>', methods=['GET'])
+@require_auth
+def get_cover_preset(preset_id: str):
+    """获取指定预设"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        preset = scheduler.get_preset(preset_id)
+        if preset:
+            return jsonify({'success': True, 'data': preset}), 200
+        else:
+            return jsonify({'success': False, 'error': '预设不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets/<preset_id>', methods=['PUT'])
+@require_auth
+def update_cover_preset(preset_id: str):
+    """更新封面预设"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        data = request.get_json() or {}
+        
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        preset = scheduler.update_preset(preset_id, data)
+        if preset:
+            return jsonify({'success': True, 'data': preset.to_dict()}), 200
+        else:
+            return jsonify({'success': False, 'error': '预设不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets/<preset_id>', methods=['DELETE'])
+@require_auth
+def delete_cover_preset(preset_id: str):
+    """删除封面预设"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        if scheduler.delete_preset(preset_id):
+            return jsonify({'success': True}), 200
+        else:
+            return jsonify({'success': False, 'error': '预设不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/presets/<preset_id>/run', methods=['POST'])
+@require_auth
+def run_cover_preset(preset_id: str):
+    """立即执行封面预设"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        result = scheduler.run_preset(preset_id)
+        return jsonify(result), 200 if result.get('success') else 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/scheduler/status', methods=['GET'])
+@require_auth
+def get_scheduler_status():
+    """获取调度器状态"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        
+        presets = scheduler.get_presets()
+        active_count = sum(1 for p in presets if p.get('scheduleInterval') != 'disabled')
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'running': scheduler._running,
+                'totalPresets': len(presets),
+                'activeSchedules': active_count,
+                'presets': presets
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/scheduler/start', methods=['POST'])
+@require_auth
+def start_cover_scheduler():
+    """启动封面定时调度"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.init(_store, get_cover_generator())
+        scheduler.start()
+        
+        return jsonify({'success': True, 'message': '调度器已启动'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/scheduler/stop', methods=['POST'])
+@require_auth
+def stop_cover_scheduler():
+    """停止封面定时调度"""
+    try:
+        from services.cover_scheduler import get_cover_scheduler
+        scheduler = get_cover_scheduler()
+        scheduler.stop()
+        
+        return jsonify({'success': True, 'message': '调度器已停止'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# --- Custom Assets (Fonts & Stickers) ---
+
+def get_covers_data_dir():
+    import os
+    data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+    data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+    return data_dir
+
+@emby_bp.route('/cover/upload_font', methods=['POST'])
+@require_auth
+def upload_cover_font():
+    """上传本地字体文件"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': '未提供文件'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': '文件名为空'}), 400
+        
+        import os
+        from werkzeug.utils import secure_filename
+        
+        data_dir = get_covers_data_dir()
+        font_dir = os.path.join(data_dir, 'fonts')
+        os.makedirs(font_dir, exist_ok=True)
+        
+        filename = secure_filename(file.filename)
+        # Ensure it's a font file
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ['.ttf', '.otf', '.ttc']:
+            return jsonify({'success': False, 'error': '不支持的字体格式'}), 400
+            
+        dest_path = os.path.join(font_dir, filename)
+        file.save(dest_path)
+        
+        return jsonify({'success': True, 'data': {'filename': filename}}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@emby_bp.route('/cover/upload_sticker', methods=['POST'])
+@require_auth
+def upload_cover_sticker():
+    """上传水印/贴纸图片"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': '未提供文件'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': '文件名为空'}), 400
+        
+        import os
+        from werkzeug.utils import secure_filename
+        
+        data_dir = get_covers_data_dir()
+        sticker_dir = os.path.join(data_dir, 'stickers')
+        os.makedirs(sticker_dir, exist_ok=True)
+        
+        filename = secure_filename(file.filename)
+        # Ensure it's an image
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.webp', '.svg']:
+             return jsonify({'success': False, 'error': '不支持的图片格式'}), 400
+             
+        dest_path = os.path.join(sticker_dir, filename)
+        file.save(dest_path)
+        
+        return jsonify({'success': True, 'data': {'filename': filename}}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@emby_bp.route('/cover/assets', methods=['GET'])
+@require_auth
+def get_cover_assets():
+    """获取已上传的字体和贴纸列表"""
+    try:
+        import os
+        data_dir = get_covers_data_dir()
+        
+        font_dir = os.path.join(data_dir, 'fonts')
+        sticker_dir = os.path.join(data_dir, 'stickers')
+        
+        fonts = []
+        if os.path.exists(font_dir):
+            fonts = [f for f in os.listdir(font_dir) if f.lower().endswith(('.ttf', '.otf', '.ttc'))]
+            
+        stickers = []
+        if os.path.exists(sticker_dir):
+            stickers = [f for f in os.listdir(sticker_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.svg'))]
+            
+        return jsonify({
+            'success': True,
+            'data': {
+                'fonts': fonts,
+                'stickers': stickers
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@emby_bp.route('/cover/sticker/<filename>', methods=['GET'])
+def get_cover_sticker(filename: str):
+    """获取水印贴纸图片"""
+    import os
+    from flask import send_from_directory
+    data_dir = get_covers_data_dir()
+    sticker_dir = os.path.join(data_dir, 'stickers')
+    return send_from_directory(sticker_dir, filename)
+
+@emby_bp.route('/cover/font/<filename>', methods=['GET'])
+def get_cover_font(filename: str):
+    """获取自定义字体文件"""
+    import os
+    from flask import send_from_directory
+    data_dir = get_covers_data_dir()
+    font_dir = os.path.join(data_dir, 'fonts')
+    return send_from_directory(font_dir, filename)

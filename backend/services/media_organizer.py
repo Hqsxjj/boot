@@ -503,75 +503,76 @@ class MediaOrganizer:
             logger.error(f"整理文件失败: {e}")
             return {'success': False, 'error': str(e)}
     
-    def _ensure_115_directory(self, path: str) -> Optional[str]:
+    def _ensure_115_directory(self, path: str, base_cid: str = '0') -> Optional[str]:
         """
-        确保 115 目录存在，返回最终 CID
+        Ensure 115 directory exists relative to base_cid, returns final CID
         """
         if not path:
-            return '0'
+            return base_cid
             
         parts = [p for p in path.replace('\\', '/').split('/') if p]
-        current_cid = '0'
+        current_cid = base_cid
         
         for part in parts:
-            # 列出当前目录寻找是否已存在
+            # List current directory to find if it already exists
             result = self.cloud115_service.list_directory(current_cid)
             found_cid = None
             
             if result.get('success'):
                 for item in result.get('data', []):
-                    if item['name'] == part and item['children']: # children=True 表示是文件夹
+                    # children=True means it's a folder
+                    if item['name'] == part and item.get('children', False):
                         found_cid = item['id']
                         break
             
             if found_cid:
                 current_cid = found_cid
             else:
-                # 创建目录
+                # Create directory
                 create_result = self.cloud115_service.create_directory(current_cid, part)
                 if create_result.get('success'):
                     current_cid = create_result['data']['id']
                 else:
-                    logger.error(f"在 {current_cid} 中创建目录 {part} 失败: {create_result.get('error')}")
+                    logger.error(f"Failed to create directory {part} in {current_cid}: {create_result.get('error')}")
                     return None
                     
         return current_cid
 
-    def _ensure_123_directory(self, path: str) -> Optional[str]:
+    def _ensure_123_directory(self, path: str, base_id: str = '0') -> Optional[str]:
         """
-        确保 123 目录存在，返回最终 DirID
+        Ensure 123 directory exists relative to base_id, returns final DirID
         """
         if not path:
-            return '0'
+            return base_id
             
         parts = [p for p in path.replace('\\', '/').split('/') if p]
-        current_id = '0'
+        current_id = base_id
         
         for part in parts:
-            # 列出当前目录
+            # List current directory
             result = self.cloud123_service.list_directory(current_id)
             found_id = None
             
             if result.get('success'):
                 for item in result.get('data', []):
-                    if item['name'] == part and item['children']:
+                    if item['name'] == part and item.get('children', False):
                         found_id = item['id']
                         break
             
             if found_id:
                 current_id = found_id
             else:
-                # 创建目录
+                # Create directory
                 create_result = self.cloud123_service.create_directory(current_id, part)
                 if create_result.get('success'):
                     current_id = create_result['data']['id']
                 else:
-                    logger.error(f"在 {current_id} 中创建目录 {part} 失败: {create_result.get('error')}")
+                    logger.error(f"Failed to create directory {part} in {current_id}: {create_result.get('error')}")
                     return None
                     
         return current_id
 
-    def _organize_115(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool) -> Dict[str, Any]:
+    def _organize_115(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool, base_cid: str = '0') -> Dict[str, Any]:
         """整理 115 网盘文件"""
         task_log = TaskLogger('网盘整理')
         task_log.start(f'整理 115 文件: {new_name}')
@@ -588,9 +589,9 @@ class MediaOrganizer:
             return rename_result
         
         # 2. 如果指定了目标目录，移动文件
-        if target_dir:
-            task_log.log(f'正在移动到目录: {target_dir}')
-            target_cid = self._ensure_115_directory(target_dir)
+        if target_dir or base_cid != '0':
+            task_log.log(f'正在移动到目录 (Base: {base_cid}, Path: {target_dir})')
+            target_cid = self._ensure_115_directory(target_dir, base_cid=base_cid)
             if not target_cid:
                 task_log.failure(f'无法创建或找到目标目录: {target_dir}')
                 return {'success': False, 'error': f'无法创建或找到目标目录: {target_dir}'}
@@ -603,7 +604,7 @@ class MediaOrganizer:
         task_log.success(f'整理完成: {new_name}')
         return {'success': True, 'message': '整理完成', 'new_name': new_name}
     
-    def _organize_123(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool) -> Dict[str, Any]:
+    def _organize_123(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool, base_id: str = '0') -> Dict[str, Any]:
         """整理 123 云盘文件"""
         task_log = TaskLogger('网盘整理')
         task_log.start(f'整理 123 文件: {new_name}')
@@ -620,9 +621,9 @@ class MediaOrganizer:
             return rename_result
         
         # 2. 如果指定了目标目录，移动文件
-        if target_dir:
-            task_log.log(f'正在移动到目录: {target_dir}')
-            target_id = self._ensure_123_directory(target_dir)
+        if target_dir or base_id != '0':
+            task_log.log(f'正在移动到目录 (Base: {base_id}, Path: {target_dir})')
+            target_id = self._ensure_123_directory(target_dir, base_id=base_id)
             if not target_id:
                 task_log.failure(f'无法创建或找到目标目录: {target_dir}')
                 return {'success': False, 'error': f'无法创建或找到目标目录: {target_dir}'}

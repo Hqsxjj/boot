@@ -271,14 +271,26 @@ def _populate_secrets_from_cache(config: dict, secrets_cache: dict) -> dict:
         except:
             pass
             
-    # 4. LLM API Key
+    # 4. AI (LLM) Config
     llm_key = secrets_cache.get('llm_api_key')
-    if llm_key:
+    llm_base_url = secrets_cache.get('llm_base_url')
+    llm_model = secrets_cache.get('llm_model')
+    llm_provider = secrets_cache.get('llm_provider')
+    
+    if any([llm_key, llm_base_url, llm_model, llm_provider]):
         if 'organize' not in config:
             config['organize'] = {}
         if 'ai' not in config['organize']:
             config['organize']['ai'] = {}
-        config['organize']['ai']['apiKey'] = llm_key
+            
+        if llm_key:
+            config['organize']['ai']['apiKey'] = llm_key
+        if llm_base_url:
+            config['organize']['ai']['baseUrl'] = llm_base_url
+        if llm_model:
+            config['organize']['ai']['model'] = llm_model
+        if llm_provider:
+            config['organize']['ai']['provider'] = llm_provider
 
     # 5. TMDB API Key
     tmdb_key = secrets_cache.get('tmdb_api_key')
@@ -381,14 +393,26 @@ def _populate_secrets_to_config(config: dict, secret_store: SecretStore) -> dict
         except:
             pass
             
-    # 4. LLM API Key
+    # 4. AI (LLM) Config
     llm_key = secret_store.get_secret('llm_api_key')
-    if llm_key:
+    llm_base_url = secret_store.get_secret('llm_base_url')
+    llm_model = secret_store.get_secret('llm_model')
+    llm_provider = secret_store.get_secret('llm_provider')
+    
+    if any([llm_key, llm_base_url, llm_model, llm_provider]):
         if 'organize' not in config:
             config['organize'] = {}
         if 'ai' not in config['organize']:
             config['organize']['ai'] = {}
-        config['organize']['ai']['apiKey'] = llm_key
+            
+        if llm_key:
+            config['organize']['ai']['apiKey'] = llm_key
+        if llm_base_url:
+            config['organize']['ai']['baseUrl'] = llm_base_url
+        if llm_model:
+            config['organize']['ai']['model'] = llm_model
+        if llm_provider:
+            config['organize']['ai']['provider'] = llm_provider
 
     return config
 
@@ -481,6 +505,9 @@ def get_config():
                 'cloud123_oauth_credentials',
                 'cloud123_password_credentials',
                 'llm_api_key',
+                'llm_base_url',
+                'llm_model',
+                'llm_provider',
                 'tmdb_api_key',
                 'emby_api_key',
                 'emby_server_url',

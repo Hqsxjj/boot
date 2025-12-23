@@ -139,12 +139,32 @@ class CoverGenerator:
             logger.error(f"获取媒体库列表失败: {e}")
             return []
     
-    def get_library_posters(self, library_id: str, limit: int = 10) -> List[Image.Image]:
-        """获取媒体库中的海报图片 (优先获取已刮削有封面的)"""
+    def get_library_posters(self, library_id: str, limit: int = 10, sort_by: str = None) -> List[Image.Image]:
+        """获取媒体库中的海报图片 (支持多种排序规则)
+        
+        Args:
+            library_id: 媒体库 ID
+            limit: 获取海报数量
+            sort_by: 排序规则，格式为 "SortBy,SortOrder" 或 "Random"
+                     例如: "DateCreated,Descending", "CommunityRating,Descending", "Random"
+        """
         if not self.emby_url or not self.api_key:
             return []
             
         try:
+            # 解析排序参数
+            if sort_by == "Random":
+                sort_field = "Random"
+                sort_order = "Ascending"
+            elif sort_by and ',' in sort_by:
+                parts = sort_by.split(',', 1)
+                sort_field = parts[0]
+                sort_order = parts[1] if len(parts) > 1 else "Descending"
+            else:
+                # 默认按最新添加排序
+                sort_field = "DateCreated,SortName"
+                sort_order = "Descending"
+            
             # 获取媒体库中的项目
             # 增加 HasPrimaryImage 过滤确保只获取有海报的项目
             url = f"{self.emby_url}/emby/Items"
@@ -152,8 +172,8 @@ class CoverGenerator:
                 "api_key": self.api_key,
                 "ParentId": library_id,
                 "Limit": limit * 2,  # 获取两倍数量以备某些图片下载失败
-                "SortBy": "DateCreated,SortName",
-                "SortOrder": "Descending",
+                "SortBy": sort_field,
+                "SortOrder": sort_order,
                 "IncludeItemTypes": "Movie,Series",
                 "Recursive": True,
                 "Fields": "PrimaryImageTag,ImageTags",
@@ -319,7 +339,8 @@ class CoverGenerator:
         spacing: float = 1.0,
         angle_scale: float = 1.0,
         use_backdrop: bool = False,
-        backdrop_img: Image.Image = None
+        backdrop_img: Image.Image = None,
+        sticker_img: Image.Image = None
     ) -> Image.Image:
         """
         生成静态封面图
@@ -327,6 +348,7 @@ class CoverGenerator:
         angle_scale: 旋转角度系数，默认 1.0
         use_backdrop: 是否使用横幅背景
         backdrop_img: 传入的横幅背景图对象
+        sticker_img: 传入的水印贴纸图对象
         """
         
         base_colors = []
@@ -450,36 +472,41 @@ class CoverGenerator:
         
         # 绘制海报组
         p_base_w = int(width * (poster_scale_pct / 100))
-        p_base_h = int(p_base_w * 1.5)
-        
         import math
         from PIL import ImageFilter, ImageOps
 
-        # 动态生成布局
-        current_stages = self._generate_layout(len(posters))
-
-        for i, config in enumerate(current_stages):
-            if i >= len(posters):
-                break
+        # 缩放系数 (基于 1920x1080 评估)
+        sx_ratio = width / 1920.0
+        sy_ratio = height / 1080.0
+        
+        # === 3. 生成布局 (Stages) ===
+        stages = self._generate_layout(len(posters))
+        
+        # === 4. 绘制海报 ===
+        # 按 Z 序(从远到近)绘制
+        sorted_posters = []
+        for i, (p, config) in enumerate(zip(posters, stages)):
+            sorted_posters.append((config.get("z", 0), i, p, config))
+        
+        sorted_posters.sort(key=lambda x: x[0]) # 升序: Z 小的先画(即在底层)
+        
+        # 基础海报缩放 (基于高度)
+        poster_h = int(height * (poster_scale_pct / 100.0))
+        
+        for _, i, p, config in sorted_posters:
+            # 缩放海报
+            sw = int(poster_h * 0.67 * config["scale"] * spacing) # 2:3 比例
+            sh = int(poster_h * config["scale"])
+            
+            try:
+                poster = p.copy()
+            except Exception:
+                continue # 万一图片损坏
                 
-            poster = posters[i].copy()
-            
-            # --- 间距调整 ---
-            # 焦点海报的 x 坐标 (z=100 的那个) 假设在 1300 左右
-            # 我们以 1300 为中心进行缩放
-            center_x = 1300
-            current_x = config["x"]
-            # 应用间距系数:
-            # new_dist = old_dist * spacing
-            final_stage_x = center_x + (current_x - center_x) * spacing
-            
-            # 缩放
-            sw, sh = int(p_base_w * config["scale"]), int(p_base_h * config["scale"])
             poster = poster.resize((sw, sh), Image.Resampling.LANCZOS)
             
             # === 海报圆角处理 ===
-            # 创建圆角遮罩
-            corner_radius = int(min(sw, sh) * 0.05) # 5% 的圆角
+            corner_radius = int(min(sw, sh) * 0.05)
             mask = Image.new("L", (sw, sh), 0)
             mask_draw = ImageDraw.Draw(mask)
             mask_draw.rounded_rectangle([0, 0, sw, sh], radius=corner_radius, fill=255)
@@ -488,18 +515,17 @@ class CoverGenerator:
             opacity = config.get("opacity", 1.0)
             if opacity < 1.0:
                 mask_data = mask.getdata()
-                new_data = [int(p * opacity) for p in mask_data]
+                new_data = [int(px * opacity) for px in mask_data]
                 mask.putdata(new_data)
             
             # 应用遮罩
             poster.putalpha(mask)
             
-            # === 海报玻璃边缘感 ===
+            # === 海报边缘感 ===
             border_layer = Image.new("RGBA", (sw, sh), (0,0,0,0))
             border_draw = ImageDraw.Draw(border_layer)
             border_alpha = int(100 * opacity)
             border_draw.rounded_rectangle([0, 0, sw-1, sh-1], radius=corner_radius, outline=(255, 255, 255, border_alpha), width=2)
-            
             poster = Image.alpha_composite(poster, border_layer)
 
             # 亮度调整
@@ -508,21 +534,19 @@ class CoverGenerator:
                 poster = enhancer.enhance(config["brightness"])
             
             # 旋转处理
-            # 应用角度系数
             rot_angle = -config["angle"] * angle_scale
-
-            # 注意: 旋转带 Alpha 通道的图像，expand=True 会自动处理透明背景
             rotated = poster.rotate(rot_angle, expand=True, resample=Image.Resampling.BICUBIC)
             
-            # 计算 Pivot 偏移 (Center 80%)
+            # 计算 Pivot 偏移
             rad = math.radians(rot_angle)
-            pivot_offset = 0.3 * sh # 从中心向下偏移 30% 高度
+            pivot_offset = 0.3 * sh
             
             shift_x = pivot_offset * math.sin(rad)
             shift_y = pivot_offset * (1 - math.cos(rad))
             
-            base_x = final_stage_x + offset_x
-            base_y = config["y"]
+            # 坐标缩放
+            base_x = (config["x"] + offset_x) * sx_ratio
+            base_y = config["y"] * sy_ratio
             
             final_cx = base_x + shift_x
             final_cy = base_y + shift_y
@@ -530,157 +554,113 @@ class CoverGenerator:
             px = int(final_cx - rotated.width / 2)
             py = int(final_cy - rotated.height / 2)
             
-            # 兼容性处理: 如果 rotated 尺寸超过画布，进行裁剪或调整
-            # 简单方式: 直接 paste (PIL 会自动处理边界)
-            
             # === 0. 倒影 (Reflection) ===
-            # 仅对不完全透明的海报生成倒影
             if opacity > 0.3:
                 try:
                     reflection = rotated.copy().transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-                    # 挤压倒影 (垂直方向压缩，使透视更自然)
                     ref_h = int(reflection.height * 0.6)
                     reflection = reflection.resize((reflection.width, ref_h))
                     
-                    # 渐变蒙版
                     ref_mask = Image.new("L", reflection.size, 0)
                     ref_draw = ImageDraw.Draw(ref_mask)
-                    # 垂直线性渐变 (上部不透明 -> 下部透明)
                     for y in range(ref_h):
                         ref_alpha = int(120 * (1 - y / ref_h) * opacity * config["scale"]) 
                         ref_draw.line([(0, y), (reflection.width, y)], fill=ref_alpha)
                         
-                    # 应用蒙版
                     r_r, r_g, r_b, r_a = reflection.split()
                     from PIL import ImageChops
                     r_a = ImageChops.multiply(r_a, ref_mask)
                     reflection.putalpha(r_a)
                     
-                    # 绘制倒影 (位置稍微向下一点)
-                    # Z越小(越远)，倒影离得越近视觉上
-                    ref_y = py + rotated.height - int(10 * config["scale"])
+                    ref_y = py + rotated.height - int(10 * config["scale"] * sy_ratio)
                     img.paste(reflection, (px, ref_y), reflection)
                 except Exception:
                     pass
             
-            # === 1. 阴影 (Shadow) with Depth ===
-            # 仅对非最后一张(非最顶层)海报生成阴影
-            if config.get("z", 0) > 0 and i < len(posters) - 1:
-                shadow = Image.new("RGBA", rotated.size, (0, 0, 0, 0))
-                # 颜色随深度变淡 (但Z越大离观众越近，阴影应该更深/更清晰？不，这取决于光源)
-                # 假设光源在正前方：物体越近，阴影越散、越远
-                # 传统UI阴影：物体浮起越高(Z大)，阴影越模糊、位移越大、透明度越低
-                
-                # Z: 20(远) -> 100(近)
-                z_factor = config["z"] / 100.0
-                
-                shadow_alpha = int(180 * (config["opacity"] + 0.1))
-                shadow_alpha = min(shadow_alpha, 200)
-                
-                shadow.paste((0,0,0,shadow_alpha), (0,0), rotated)
-                
-                # 模糊半径
-                blur_r = int(10 + config["z"] * 0.25)
-                shadow = shadow.filter(ImageFilter.GaussianBlur(radius=blur_r))
-                
-                # 偏移量
-                off_d = int(5 + config["z"] * 0.35)
-                sx = px + off_d
-                sy = py + off_d + 15
-                
-                img.paste(shadow, (sx, sy), shadow)
-            
-            # 粘贴海报 (使用 alpha_composite 或 paste mask)
-            # 这里的 rotated 已经是 RGBA，直接 paste 即可利用其 alpha 通道进行混合
+            # === 1. 绘制主体 ===
             img.paste(rotated, (px, py), rotated)
-            
-            # === 2. 镜面高光 (Specular Highlight) ===
-            # (已整合到玻璃边缘效果和整体光照中，此处无需额外叠加复杂图层，保持画面整洁)
 
-        
-        # 字体加载逻辑 - 优先使用粗体
-        font_candidates = [
-            font_path, # 用户自定义
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", # Debian/Ubuntu Noto CJK Bold
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "msyhbd.ttf", # 微软雅黑粗体
-            "msyh.ttf", 
-            "simhei.ttf", 
-            "PingFang.ttc", 
-            "STHeiti Light.ttc", 
-            "arialbd.ttf", # Arial Bold
-            "arial.ttf", 
-            "DejaVuSans-Bold.ttf"
-        ]
-        
+        # === 5. 绘制文字 ===
+        draw = ImageDraw.Draw(img)
         m_font = None
         s_font = None
         
+        # 字体缩放
+        scaled_title_size = int(title_size * min(sx_ratio, sy_ratio))
+        scaled_subtitle_size = int(45 * min(sx_ratio, sy_ratio))
+        
+        font_candidates = [
+            font_path,
+            "C:\\Windows\\Fonts\\msyhbd.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "Arial Bold"
+        ]
+        
         for f_path in font_candidates:
-            if not f_path:
-                continue
+            if not f_path: continue
             try:
-                m_font = ImageFont.truetype(f_path, title_size)
-                s_font = ImageFont.truetype(f_path, 45) # 副标题固定 45
-                logger.debug(f"成功加载字体: {f_path}")
+                m_font = ImageFont.truetype(f_path, scaled_title_size)
+                s_font = ImageFont.truetype(f_path, scaled_subtitle_size)
                 break
             except Exception:
                 continue
                 
         if m_font is None:
-            logger.warning("未能加载任何系统字体，使用默认字体 (可能很小)")
             m_font = ImageFont.load_default()
             s_font = ImageFont.load_default()
         
         tx = int(width * 0.08)
         ty = int(height * (v_align_pct / 100))
         
-        # === 文字 3D 立体阴影效果 ===
-        # 使用多层投影模拟立体感
-        # === 文字效果 (扁平化) ===
-        
-        # 1. 主标题
-        # 增强 3D 立体阴影
-        # 多层叠加产生厚度感 (摩斯阴影效果 - 加厚)
-        for off in range(1, 12):
-            alpha = int(max(0, 240 - off * 18)) # 越远越淡，但保持一定浓度
+        # 文字投影
+        for off in range(1, max(2, int(12 * min(sx_ratio, sy_ratio)))):
+            alpha = int(max(0, 240 - off * 18))
             draw.text((tx + off, ty + off), title, font=m_font, fill=(0, 0, 0, alpha))
             
-        # 额外的柔和弥散阴影 (模拟高斯模糊)
-        draw.text((tx + 2, ty + 4), title, font=m_font, fill=(0, 0, 0, 90))
-        draw.text((tx + 4, ty + 2), title, font=m_font, fill=(0, 0, 0, 90))
-
         draw.text((tx, ty), title, font=m_font, fill="white")
         
-        # 2. 副标题
-        # 调整间距
-        spacing = int(title_size * 0.4) + 10 
-        sub_y = ty + title_size + spacing
+        # 副标题
+        spacing_y = int(scaled_title_size * 0.4) + int(10 * sy_ratio)
+        sub_y = ty + scaled_title_size + spacing_y
         
-        # 简单的投影
         draw.text((tx + 2, sub_y + 2), subtitle, font=s_font, fill=(0, 0, 0, 80))
         draw.text((tx, sub_y), subtitle, font=s_font, fill=(255, 255, 255, 220))
         
-        # 3. 装饰底线 (由实到虚)
-        bar_y = sub_y + 60  # 在副标题下方
-        bar_height = 4
-        bar_width = 400
+        # 装饰线
+        bar_y = sub_y + int(60 * sy_ratio)
+        bar_height = max(1, int(4 * sy_ratio))
+        bar_width = int(400 * sx_ratio)
         
-        # 创建渐变 Mask
         gradient_bar = Image.new('RGBA', (bar_width, bar_height), (0, 0, 0, 0))
         bar_draw = ImageDraw.Draw(gradient_bar)
-        
-        # 绘制渐变
         for x in range(bar_width):
-            alpha = int(255 * (1 - (x / bar_width))) # 从左到右透明度降低 255 -> 0
+            alpha = int(255 * (1 - (x / bar_width)))
             bar_draw.line([(x, 0), (x, bar_height)], fill=(255, 255, 255, alpha))
-            
-        # 粘贴渐变线条
         img.paste(gradient_bar, (tx, bar_y), gradient_bar)
         
-        return img
+        # 水印贴纸
+        if sticker_img:
+            s_max_w = int(300 * sx_ratio)
+            s_w, s_h = sticker_img.size
+            if s_w > s_max_w:
+                s_h = int(s_h * s_max_w / s_w)
+                s_w = s_max_w
+                sticker_to_draw = sticker_img.resize((s_w, s_h), Image.Resampling.LANCZOS)
+            else:
+                sticker_to_draw = sticker_img
+
+            sx = width - s_w - int(80 * sx_ratio)
+            sy = height - s_h - int(80 * sy_ratio)
+            
+            if sticker_to_draw.mode != 'RGBA':
+                sticker_to_draw = sticker_to_draw.convert('RGBA')
+            
+            temp_layer = Image.new("RGBA", (width, height), (0,0,0,0))
+            temp_layer.paste(sticker_to_draw, (sx, sy))
+            img = Image.alpha_composite(img.convert('RGBA'), temp_layer)
+        
+        return img.convert('RGB')
     
     def generate_animated_cover(
         self,
@@ -688,42 +668,19 @@ class CoverGenerator:
         title: str = "电影收藏",
         subtitle: str = "MOVIE COLLECTION",
         theme_index: int = 0,
-        width: int = 1920,
-        height: int = 1080,
         frame_count: int = 20,
-        duration_ms: int = 100,
+        duration_ms: int = 150,
         **kwargs
     ) -> bytes:
         """
-        生成动态 APNG 封面
-        
-        默认输出 400x225 分辨率（16:9）的 APNG 格式动态图
-        文件后缀使用 .png
-        
-        Args:
-            posters: 海报图片列表
-            title: 主标题
-            subtitle: 副标题
-            theme_index: 主题索引
-            width: 渲染宽度（用于布局计算）
-            height: 渲染高度（用于布局计算）
-            frame_count: 帧数
-            duration_ms: 每帧持续时间(毫秒)
-            **kwargs: 传递给 generate_cover 的其他参数
-            
-        Returns:
-            APNG 图片的二进制数据
+        优化后的动态 APNG 封面生成
+        直接渲染为目标规格 (400x225) 以提升性能和兼容性
         """
-        # 固定输出规格：400x225 (16:9) APNG 格式
         output_width = 400
         output_height = 225
         
         if len(posters) < 2:
-            # 海报太少，返回单帧 APNG
-            static_img = self.generate_cover(posters, title, subtitle, theme_index, width, height, **kwargs)
-            # 缩小到输出尺寸
-            static_img = static_img.resize((output_width, output_height), Image.Resampling.LANCZOS)
-            # 转换为 RGBA 确保透明度
+            static_img = self.generate_cover(posters, title, subtitle, theme_index, output_width, output_height, **kwargs)
             static_img = static_img.convert("RGBA")
             buffer = io.BytesIO()
             static_img.save(buffer, format="PNG")
@@ -732,30 +689,27 @@ class CoverGenerator:
         frames = []
         num_posters = len(posters)
         
+        # 渲染每一帧
         for frame_idx in range(frame_count):
-            # 每帧轮换海报顺序
+            # 海报轮换
             offset = frame_idx % num_posters
             rotated_posters = posters[offset:] + posters[:offset]
             
-            # 渲染全分辨率帧以保持布局一致性
-            full_frame = self.generate_cover(
+            # 直接按目标分辨率渲染，极大地提高速度
+            frame = self.generate_cover(
                 rotated_posters,
                 title,
                 subtitle,
                 theme_index,
-                width,
-                height,
+                output_width,
+                output_height,
                 **kwargs
             )
             
-            # 缩放到输出尺寸 (400x225)
-            frame = full_frame.resize((output_width, output_height), Image.Resampling.LANCZOS)
-            
-            # 保持 RGBA 格式 (APNG 支持透明)
-            frame_rgba = frame.convert("RGBA")
-            frames.append(frame_rgba)
+            # PIL 保存 APNG 需要 RGBA
+            frames.append(frame.convert("RGBA"))
         
-        # 保存为 APNG 格式
+        # 保存为 APNG
         buffer = io.BytesIO()
         frames[0].save(
             buffer,
@@ -763,7 +717,8 @@ class CoverGenerator:
             save_all=True,
             append_images=frames[1:],
             duration=duration_ms,
-            loop=0
+            loop=0,
+            optimize=True
         )
         
         return buffer.getvalue()

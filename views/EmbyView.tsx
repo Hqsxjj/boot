@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import {
     Save, RefreshCw, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2,
     Image, Download, Palette, Settings2, Library as LibraryIcon, Eye, Grid3X3, CloudUpload,
-    Type, History, Server, Loader2
+    Type, History, Server, Loader2, Play, Pause, Trash2, RotateCw, Plus
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -74,12 +74,14 @@ interface CoverCanvasProps {
     fanRotation: number;
     cycleIndex: number;
     isSmall?: boolean;
+    sticker?: string;
 }
 
 const CoverCanvas: React.FC<CoverCanvasProps> = (props) => {
     const {
         id, theme, layoutMode, libraryName, subTitle, posters, backdropUrl, currentFont, activeTextColor,
-        titleX, titleY, titleGap, titleSize, gridIntensity, posterX, fanSpread, fanRotation, cycleIndex, isSmall
+        titleX, titleY, titleGap, titleSize, gridIntensity, posterX, fanSpread, fanRotation, cycleIndex, isSmall,
+        sticker
     } = props;
 
     const bgImage = backdropUrl || 'https://image.tmdb.org/t/p/original/8uS6B0KbhDZ3G9689br09v9I7xy.jpg';
@@ -149,7 +151,25 @@ const CoverCanvas: React.FC<CoverCanvasProps> = (props) => {
                     </div>
                 </div>
             )}
-        </div>
+            {/* Sticker / Watermark Overlay */}
+            {sticker && (
+                <div
+                    className="absolute z-[100] pointer-events-none"
+                    style={{
+                        bottom: '8%',
+                        right: '8%',
+                        width: '12vw',
+                        maxWidth: '250px'
+                    }}
+                >
+                    <img
+                        src={`/api/emby/cover/sticker/${sticker}`}
+                        className="w-full h-auto drop-shadow-2xl"
+                        crossOrigin="anonymous"
+                    />
+                </div>
+            )}
+        </div >
     );
 };
 
@@ -178,6 +198,9 @@ export const EmbyView: React.FC = () => {
     const [isScanning, setIsScanning] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [missingData, setMissingData] = useState<any[]>([]);
+
+    const [generatorMode, setGeneratorMode] = useState<GeneratorMode>('classic');
+    const studioLayoutMode = generatorMode === 'studio_grid' ? 'grid' : 'stack';
 
     // === Shared States ===
     const [selectedLibraries, setSelectedLibraries] = useState<Set<string>>(new Set());
@@ -208,7 +231,6 @@ export const EmbyView: React.FC = () => {
     const [batchPreviews, setBatchPreviews] = useState<Record<string, string>>({});
 
     // === Studio Generator States ===
-    const [generatorMode, setGeneratorMode] = useState<GeneratorMode>('classic');
     const [studioPosters, setStudioPosters] = useState<string[]>(DEFAULT_POSTERS);
     const [studioTheme, setStudioTheme] = useState(STUDIO_THEMES[0]);
     const [studioFont, setStudioFont] = useState(STUDIO_FONTS[0]);
@@ -227,6 +249,17 @@ export const EmbyView: React.FC = () => {
     const [cycleIndex, setCycleIndex] = useState(0);
 
     const activeStudioTextColor = studioOverrideColor || studioTheme.textColor;
+
+    // === NEW: Scheduler & Preset States ===
+    const [sortOptions, setSortOptions] = useState<Array<{ id: string; name: string; description: string }>>([]);
+    const [selectedSort, setSelectedSort] = useState('DateCreated,Descending');
+    const [presets, setPresets] = useState<any[]>([]);
+    const [scheduleInterval, setScheduleInterval] = useState('disabled');
+    const [isSchedulerRunning, setIsSchedulerRunning] = useState(false);
+    const [presetName, setPresetName] = useState('');
+    const [customAssets, setCustomAssets] = useState<{ fonts: string[], stickers: string[] }>({ fonts: [], stickers: [] });
+    const [selectedFontPath, setSelectedFontPath] = useState<string>('');
+    const [selectedSticker, setSelectedSticker] = useState<string>('');
 
     // Load Config & Missing Data
     useEffect(() => {
@@ -338,12 +371,45 @@ export const EmbyView: React.FC = () => {
                     updateSubtitle(firstLib.type);
 
                     // If Studio mode is active, fetch detailed posters too
-                    fetchStudioPosters(firstLib.id);
+                    fetchStudioPosters(firstLib.id, selectedSort);
                 }
             }
+
+            // Load Sort Options, Presets & Assets
+            const [sortRes, presetsRes, statusRes, assetsRes] = await Promise.all([
+                api.getCoverSortOptions(),
+                api.getCoverPresets(),
+                api.getCoverSchedulerStatus(),
+                api.getCoverAssets()
+            ]);
+
+            if (sortRes.success) setSortOptions(sortRes.data);
+            if (presetsRes.success) setPresets(presetsRes.data);
+            if (statusRes.success) {
+                setIsSchedulerRunning(statusRes.data.running);
+            }
+            if (assetsRes.success) setCustomAssets(assetsRes.data);
         } catch (e) { console.error(e); }
         finally { setIsLoadingLibraries(false); }
     };
+
+    // Inject custom font into document for preview
+    useEffect(() => {
+        if (selectedFontPath) {
+            const styleId = `custom-font-style-${selectedFontPath}`;
+            if (document.getElementById(styleId)) return;
+
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.innerHTML = `
+                @font-face {
+                    font-family: 'CustomFont-${selectedFontPath}';
+                    src: url('/api/emby/cover/font/${selectedFontPath}');
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }, [selectedFontPath]);
 
     const updateSubtitle = (type?: string) => {
         const typeMap: Record<string, string> = {
@@ -354,13 +420,13 @@ export const EmbyView: React.FC = () => {
         setCoverSubtitle(typeMap[type?.toLowerCase() || ''] || type?.toUpperCase() || 'MEDIA COLLECTION');
     };
 
-    const fetchStudioPosters = async (libId: string) => {
+    const fetchStudioPosters = async (libId: string, sort?: string) => {
         // 使用后端代理获取 Base64 图片，避免 html2canvas 的 CORS 问题
         if (!libId) return;
 
         try {
             // 请求 25 张海报以填充 5x5 的网格或 6 张堆叠图
-            const res = await api.getLibraryPosters(libId, 25);
+            const res = await api.getLibraryPosters(libId, 25, sort || selectedSort);
             if (res.success && res.data && res.data.length > 0) {
                 setStudioPosters(res.data);
             } else {
@@ -380,7 +446,8 @@ export const EmbyView: React.FC = () => {
             const coverConfig = {
                 title: coverTitle, subtitle: coverSubtitle,
                 titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
-                format: coverFormat, theme: selectedTheme
+                format: coverFormat, theme: selectedTheme, sort: selectedSort,
+                fontPath: selectedFontPath, sticker: selectedSticker
             };
             const result = await api.generateCover({ libraryId: currentPreviewLib, config: coverConfig });
             if (result.success) {
@@ -396,37 +463,35 @@ export const EmbyView: React.FC = () => {
     // 批量上传到选中的媒体库
     const handleBatchUpload = async () => {
         if (selectedLibraries.size === 0) return showToast('请先勾选要上传的媒体库');
-        if (!coverPreview && generatorMode === 'classic') return showToast('请先生成预览图');
 
         setIsUploading(true);
-        const libs = Array.from(selectedLibraries);
-        let successCount = 0;
+        showToast('正在批量生成并上传封面...');
 
-        for (const libId of libs) {
-            try {
-                const lib = coverLibraries.find(l => l.id === libId);
-                const libName = lib?.name ?? libId;
-                showToast(`正在处理: ${libName}...`);
+        try {
+            const coverConfig = {
+                title: coverTitle,
+                subtitle: coverSubtitle,
+                titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
+                format: coverFormat, theme: selectedTheme, sort: selectedSort,
+                fontPath: selectedFontPath, sticker: selectedSticker
+            };
 
-                // 为每个库获取海报并生成封面
-                const coverConfig = {
-                    title: lib?.name ?? coverTitle,
-                    subtitle: lib?.type?.toUpperCase() ?? coverSubtitle,
-                    titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
-                    format: coverFormat, theme: selectedTheme
-                };
-
-                const result = await api.generateCover({ libraryId: libId, config: coverConfig });
-                if (result.success) {
-                    successCount++;
+            const result = await api.batchApplyCovers(Array.from(selectedLibraries), coverConfig);
+            if (result.success) {
+                const count = result.success_count || (result as any).successCount || 0;
+                showToast(`批量处理完成: 成功 ${count}/${selectedLibraries.size}`);
+                if (result.details) {
+                    console.log('Batch results details:', result.details);
                 }
-            } catch (e) {
-                console.error(`上传 ${libId} 失败:`, e);
+            } else {
+                showToast(result.error || '上传失败', true);
             }
+        } catch (e) {
+            console.error('Batch upload error:', e);
+            showToast('批量任务启动失败', true);
+        } finally {
+            setIsUploading(false);
         }
-
-        setIsUploading(false);
-        showToast(`成功上传 ${successCount}/${libs.length} 个媒体库封面`);
     };
 
 
@@ -496,8 +561,118 @@ export const EmbyView: React.FC = () => {
         if (lib) {
             setCoverTitle(lib.name);
             updateSubtitle(lib.type);
-            fetchStudioPosters(libId);
+            fetchStudioPosters(libId, selectedSort);
         }
+    };
+
+    // --- NEW: Preset & Scheduler Handlers ---
+    const handleSavePreset = async () => {
+        if (!presetName) return showToast('请输入预设名称', true);
+        if (selectedLibraries.size === 0) return showToast('请至少勾选一个媒体库', true);
+
+        const configData = {
+            name: presetName,
+            libraryIds: Array.from(selectedLibraries),
+            posterSort: selectedSort,
+            themeIndex: selectedTheme,
+            format: coverFormat,
+            posterCount,
+            titleSize,
+            offsetX,
+            posterScale,
+            vAlign,
+            spacing,
+            angleScale,
+            useBackdrop,
+            generatorMode,
+            scheduleInterval,
+            fontPath: selectedFontPath,
+            sticker: selectedSticker
+        };
+
+        try {
+            const res = await api.createCoverPreset(configData);
+            if (res.success) {
+                showToast('预设已保存');
+                setPresets(prev => [...prev, res.data]);
+                setPresetName('');
+            }
+        } catch (e) { showToast('保存失败', true); }
+    };
+
+    const handleRunPreset = async (presetId: string) => {
+        showToast('正在根据预设生成并上传...');
+        try {
+            const res = await api.runCoverPreset(presetId);
+            if (res.success) {
+                const processed = (res as any).processed || 0;
+                showToast(`生成成功: 处理 ${processed} 个库`);
+                // 刷新列表以显示最后运行时间
+                const pRes = await api.getCoverPresets();
+                if (pRes.success) setPresets(pRes.data);
+            }
+        } catch (e) { showToast('执行失败', true); }
+    };
+
+    const handleDeletePreset = async (presetId: string) => {
+        if (!confirm('确定删除此预设?')) return;
+        try {
+            const res = await api.deleteCoverPreset(presetId);
+            if (res.success) {
+                setPresets(prev => prev.filter(p => p.presetId !== presetId));
+                showToast('已删除');
+            }
+        } catch (e) { showToast('删除失败', true); }
+    };
+
+    const handleUploadFont = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        showToast('正在上传字体...');
+        try {
+            const res = await api.uploadCoverFont(file);
+            if (res.success) {
+                showToast('字体上传成功');
+                setSelectedFontPath(res.data.filename);
+                // Refresh assets list
+                const assetsRes = await api.getCoverAssets();
+                if (assetsRes.success) setCustomAssets(assetsRes.data);
+            } else {
+                showToast(res.error || '上传失败', true);
+            }
+        } catch (e) { showToast('上传失败', true); }
+    };
+
+    const handleUploadSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        showToast('正在上传贴纸...');
+        try {
+            const res = await api.uploadCoverSticker(file);
+            if (res.success) {
+                showToast('贴纸上传成功');
+                setSelectedSticker(res.data.filename);
+                // Refresh assets list
+                const assetsRes = await api.getCoverAssets();
+                if (assetsRes.success) setCustomAssets(assetsRes.data);
+            } else {
+                showToast(res.error || '上传失败', true);
+            }
+        } catch (e) { showToast('上传失败', true); }
+    };
+
+    const handleToggleScheduler = async () => {
+        try {
+            if (isSchedulerRunning) {
+                await api.stopCoverScheduler();
+                setIsSchedulerRunning(false);
+                showToast('封面定时任务已停止');
+            } else {
+                await api.startCoverScheduler();
+                setIsSchedulerRunning(true);
+                showToast('封面定时任务已启动');
+            }
+        } catch (e) { showToast('操作失败', true); }
     };
 
     const copyWebhook = async () => {
@@ -685,11 +860,81 @@ export const EmbyView: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* --- NEW: Poster Sort Selection --- */}
+                            <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50">
+                                <label className="text-xs font-bold text-slate-500 uppercase block mb-2 flex items-center gap-1">
+                                    <BarChart3 size={12} /> 海报抓取规则
+                                </label>
+                                <select
+                                    value={selectedSort}
+                                    onChange={e => {
+                                        setSelectedSort(e.target.value);
+                                        if (currentPreviewLib) fetchStudioPosters(currentPreviewLib, e.target.value);
+                                    }}
+                                    className={`${inputClass} text-sm cursor-pointer`}
+                                >
+                                    {sortOptions.map(opt => (
+                                        <option key={opt.id} value={opt.id} title={opt.description}>{opt.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             {/* Shared Title Inputs */}
                             <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50 space-y-3">
                                 <label className="text-xs font-bold text-slate-500 uppercase block">标题设置</label>
                                 <input value={coverTitle} onChange={e => setCoverTitle(e.target.value)} className={inputClass} placeholder="主标题" />
                                 <input value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} className={inputClass} placeholder="副标题" />
+                            </div>
+
+                            {/* Custom Assets Upload & Selection */}
+                            <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50 space-y-4 font-sans">
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Type size={12} /> 自定义字体</label>
+                                        <label className="cursor-pointer text-amber-500 hover:text-amber-600 flex items-center gap-0.5 text-[10px] font-bold">
+                                            <Plus size={14} /> 上传
+                                            <input type="file" className="hidden" accept=".ttf,.otf,.ttc" onChange={handleUploadFont} />
+                                        </label>
+                                    </div>
+                                    <select
+                                        value={selectedFontPath}
+                                        onChange={e => setSelectedFontPath(e.target.value)}
+                                        className={`${inputClass} text-xs`}
+                                    >
+                                        <option value="">默认字体</option>
+                                        {customAssets.fonts.map(f => (
+                                            <option key={f} value={f}>{f}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Image size={12} /> 水印贴纸</label>
+                                        <label className="cursor-pointer text-amber-500 hover:text-amber-600 flex items-center gap-0.5 text-[10px] font-bold">
+                                            <Plus size={14} /> 上传
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleUploadSticker} />
+                                        </label>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={() => setSelectedSticker('')}
+                                            className={`px-2 py-1 text-[10px] border rounded transition-all ${!selectedSticker ? 'bg-amber-500 text-white' : 'bg-white dark:bg-slate-800'}`}
+                                        >
+                                            无
+                                        </button>
+                                        {customAssets.stickers.map(s => (
+                                            <button
+                                                key={s}
+                                                onClick={() => setSelectedSticker(s)}
+                                                className={`px-2 py-1 text-[10px] border rounded transition-all ${selectedSticker === s ? 'bg-amber-500 text-white' : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                                                title={s}
+                                            >
+                                                {s.length > 10 ? s.substring(0, 10) + '...' : s}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Dynamic Controls based on Mode */}
@@ -811,56 +1056,152 @@ export const EmbyView: React.FC = () => {
                                                 />
                                                 <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">使用横幅背景 (演示)</span>
                                             </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+                                        </>
+                                    )}
 
-                        {/* Right: Preview Pane */}
-                        <div className="flex-1 bg-slate-100 dark:bg-black p-2 flex items-center justify-center relative overflow-hidden">
-                            {/* Background Grid Pattern */}
-                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-
-                            <div className="w-full h-full max-w-none shadow-2xl rounded-2xl overflow-hidden ring-4 ring-slate-900/10 dark:ring-white/10 transition-all duration-500 hover:scale-[1.005]">
-                                {generatorMode === 'classic' ? (
-                                    <div className="aspect-video bg-black flex items-center justify-center relative">
-                                        {coverPreview ? (
-                                            <img src={coverPreview} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="text-slate-500 text-sm font-mono flex flex-col items-center gap-2">
-                                                <Image size={48} className="opacity-20" />
-                                                <span>等待生成...</span>
+                                        {/* --- NEW: Preset & Scheduler Controls --- */}
+                                        <div className="pt-4 border-t border-slate-200/50 dark:border-slate-700/50 space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                                                    <Clock size={12} /> 定时任务与预设
+                                                </label>
+                                                <button
+                                                    onClick={handleToggleScheduler}
+                                                    className={`px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 transition-colors ${isSchedulerRunning ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-200 text-slate-600 dark:bg-slate-800'}`}
+                                                >
+                                                    {isSchedulerRunning ? <Pause size={10} /> : <Play size={10} />}
+                                                    {isSchedulerRunning ? '运行中' : '已停止'}
+                                                </button>
                                             </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="col-span-1">
+                                                    <label className="text-[10px] text-slate-400 block mb-1">执行周期</label>
+                                                    <select
+                                                        value={scheduleInterval}
+                                                        onChange={e => setScheduleInterval(e.target.value)}
+                                                        className="w-full bg-white dark:bg-slate-800 border-[0.5px] border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs outline-none"
+                                                    >
+                                                        <option value="disabled">手动执行</option>
+                                                        <option value="6h">每 6 小时</option>
+                                                        <option value="12h">每 12 小时</option>
+                                                        <option value="daily">每天</option>
+                                                        <option value="weekly">每周</option>
+                                                        <option value="monthly">每月</option>
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-1 flex flex-col justify-end">
+                                                    <button
+                                                        onClick={handleSavePreset}
+                                                        className="w-full bg-amber-500 hover:bg-amber-600 text-white rounded py-1 text-xs font-bold transition-all flex items-center justify-center gap-1"
+                                                    >
+                                                        <Save size={12} /> 保存为预设
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <input
+                                                    value={presetName}
+                                                    onChange={e => setPresetName(e.target.value)}
+                                                    placeholder="预设名称..."
+                                                    className="w-full bg-white dark:bg-slate-800 border-[0.5px] border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] outline-none"
+                                                />
+                                            </div>
+
+                                            {presets.length > 0 && (
+                                                <div className="space-y-1 max-h-[140px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+                                                    {presets.map((p: any) => (
+                                                        <div key={p.presetId} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800/50 rounded border-[0.5px] border-slate-100 dark:border-slate-700 group hover:border-amber-200 dark:hover:border-amber-900 transition-colors">
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="text-[11px] font-bold truncate">{p.name}</span>
+                                                                <span className="text-[9px] text-slate-400">
+                                                                    {p.scheduleInterval !== 'disabled' ? `周期: ${p.scheduleInterval}` : '手动'} |
+                                                                    运行: {p.lastRun ? new Date(p.lastRun).toLocaleDateString() : '尚未'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                                <button onClick={() => handleRunPreset(p.presetId)} title="立即执行" className="p-1 hover:text-amber-500 transition-colors"><RotateCw size={12} /></button>
+                                                                <button onClick={() => handleDeletePreset(p.presetId)} title="删除" className="p-1 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                {/* Action Buttons at bottom of Controls Pane */}
+                                <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200/50 dark:border-slate-700/50">
+                                    <div className="grid grid-cols-2 gap-2 mt-auto">
+                                        <button
+                                            onClick={generatorMode === 'classic' ? handleGenerateClassic : handleGenerateStudio}
+                                            disabled={isGenerating || (generatorMode === 'classic' && !currentPreviewLib)}
+                                            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10'}`}
+                                        >
+                                            {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                                            {generatorMode === 'classic' ? '生成预览' : '生成并上传'}
+                                        </button>
+
+                                        {generatorMode === 'classic' && (
+                                            <button
+                                                onClick={handleBatchUpload}
+                                                disabled={isGenerating || isUploading}
+                                                className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${isUploading ? 'bg-amber-100 text-amber-500 animate-pulse' : 'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-500/20'}`}
+                                            >
+                                                {isUploading ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />}
+                                                一键上传
+                                            </button>
                                         )}
                                     </div>
-                                ) : (
-                                    /* Studio Preview */
-                                    <div id="studio-canvas">
-                                        <CoverCanvas
-                                            theme={studioTheme}
-                                            layoutMode={studioLayoutMode}
-                                            libraryName={coverTitle}
-                                            subTitle={coverSubtitle}
-                                            posters={studioPosters}
-                                            backdropUrl={studioBackdropUrl}
-                                            currentFont={studioFont}
-                                            activeTextColor={activeStudioTextColor}
-                                            titleX={sTitleX}
-                                            titleY={sTitleY}
-                                            titleGap={sTitleGap}
-                                            titleSize={sTitleSize}
-                                            gridIntensity={gridIntensity}
-                                            posterX={sPosterX}
-                                            fanSpread={fanSpread}
-                                            fanRotation={fanRotation}
-                                            cycleIndex={cycleIndex}
-                                        />
-                                    </div>
-                                )}
+                                </div>
+                            </div>
+
+                            {/* Right: Preview Pane */}
+                            <div className="flex-1 bg-slate-100 dark:bg-black p-2 flex items-center justify-center relative overflow-hidden">
+                                {/* Background Grid Pattern */}
+                                <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+
+                                <div className="w-full h-full max-w-none shadow-2xl rounded-2xl overflow-hidden ring-4 ring-slate-900/10 dark:ring-white/10 transition-all duration-500 hover:scale-[1.005]">
+                                    {generatorMode === 'classic' ? (
+                                        <div className="aspect-video bg-black flex items-center justify-center relative">
+                                            {coverPreview ? (
+                                                <img src={coverPreview} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="text-slate-500 text-sm font-mono flex flex-col items-center gap-2">
+                                                    <Image size={48} className="opacity-20" />
+                                                    <span>等待预览生成...</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        /* Studio Preview */
+                                        <div id="studio-canvas">
+                                            <CoverCanvas
+                                                theme={studioTheme}
+                                                layoutMode={studioLayoutMode}
+                                                libraryName={coverTitle}
+                                                subTitle={coverSubtitle}
+                                                posters={studioPosters}
+                                                backdropUrl={studioBackdropUrl}
+                                                activeTextColor={activeStudioTextColor}
+                                                titleX={sTitleX}
+                                                titleY={sTitleY}
+                                                titleGap={sTitleGap}
+                                                titleSize={sTitleSize}
+                                                gridIntensity={gridIntensity}
+                                                posterX={sPosterX}
+                                                fanSpread={fanSpread}
+                                                fanRotation={fanRotation}
+                                                cycleIndex={cycleIndex}
+                                                sticker={selectedSticker}
+                                                currentFont={selectedFontPath ? { id: 'custom', name: '自定义', family: `'CustomFont-${selectedFontPath}', sans-serif` } : studioFont}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
                 </section>
             </div>
         </div>

@@ -231,7 +231,7 @@ def create_app(config=None):
     app.register_blueprint(organize_bp)
 
     # Initialize Subscription Service with database
-    pan_search_service = get_pan_search_service()
+    pan_search_service = get_pan_search_service(secret_store)
     subscription_service = SubscriptionService(appdata_session_factory, pan_search_service, cloud115_service, cloud123_service)
     init_subscription_service(subscription_service)
     app.register_blueprint(subscription_bp)

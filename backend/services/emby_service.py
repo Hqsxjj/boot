@@ -320,146 +320,79 @@ class EmbyService:
             logger.error(f"获取电视剧列表失败: {e}")
             return {'success': False, 'data': [], 'error': str(e)}
     
-    def scan_single_series(self, series_id: str) -> Dict[str, Any]:
+    _working_tmdb_domain = None
+    TMDB_DOMAINS = [
+        'api.tmdb.org',           # 无 "the" 的域名，国内可能可访问
+        'api.themoviedb.org',     # 官方域名
+        'tmdb.org',               # 简短域名
+    ]
+
+    def _fetch_tmdb_season_robust(self, series_tmdb_id, season_num, tmdb_api_key, tmdb_lang):
         """
-        扫描单个电视剧的缺集情况
-        
-        返回:
-        {
-            'success': True,
-            'data': [
-                {缺集记录1}, {缺集记录2}...  (按季分组)
-            ]
-        }
+        获取 TMDB 季度信息，支持多域名回退、代理配置和智能重试。
         """
-        config = self._get_config()
-        server_url = config.get('serverUrl', '').rstrip('/')
-        api_key = config.get('apiKey', '').strip()
+        params = {'api_key': tmdb_api_key, 'language': tmdb_lang}
+        proxies = self._get_proxy_config()
         
-        if not server_url or not api_key:
-            return {'success': False, 'data': [], 'error': 'Emby未配置'}
-        
-        # 获取 TMDB 配置
+        # 获取用户配置的自定义域名
         full_config = self.store.get_config()
-        tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
-        tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
+        user_tmdb_domain = full_config.get('tmdb', {}).get('domain', '').strip()
         
-        DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
-        if not tmdb_api_key:
-            tmdb_api_key = DEFAULT_TMDB_API_KEY
+        # 准备待尝试的域名列表
+        domains_to_try = []
+        if self._working_tmdb_domain:
+            domains_to_try.append(self._working_tmdb_domain)
+            
+        if user_tmdb_domain and user_tmdb_domain not in self.TMDB_DOMAINS and user_tmdb_domain != self._working_tmdb_domain:
+            domains_to_try.append(user_tmdb_domain.rstrip('/'))
+            
+        for d in self.TMDB_DOMAINS:
+            if d not in domains_to_try:
+                domains_to_try.append(d)
         
-        logger.info(f"[缺集检测] 开始扫描: SeriesID={series_id}")
+        for domain in domains_to_try:
+            if not domain:
+                continue
+                
+            url = f'https://{domain}/3/tv/{series_tmdb_id}/season/{season_num}'
+            
+            # 尝试1: 代理请求 (如果配置了)
+            if proxies:
+                try:
+                    resp = requests.get(url, params=params, proxies=proxies, timeout=15, verify=True)
+                    if resp.status_code == 200:
+                        self._working_tmdb_domain = domain
+                        return resp.json()
+                    elif resp.status_code == 401:
+                        return None # API Key 无效
+                except Exception:
+                    pass
+            
+            # 尝试2: 直连请求
+            try:
+                resp = requests.get(url, params=params, timeout=8, verify=True)
+                if resp.status_code == 200:
+                    self._working_tmdb_domain = domain
+                    return resp.json()
+                elif resp.status_code == 401:
+                    return None
+            except requests.exceptions.SSLError:
+                # SSL 错误尝试
+                try:
+                    resp = requests.get(url, params=params, timeout=8, verify=False)
+                    if resp.status_code == 200:
+                        self._working_tmdb_domain = domain
+                        return resp.json()
+                except Exception:
+                    pass
+            except Exception:
+                continue
         
-        missing_data = []
-        
-        try:
-            # 获取该剧的基本信息
-            series_response = self._make_request(
-                'GET',
-                f'{server_url}/emby/Items/{series_id}',
-                params={'api_key': api_key, 'Fields': 'ProviderIds'},
-                timeout=15
-            )
-            
-            if series_response.status_code != 200:
-                return {'success': False, 'data': [], 'error': '获取剧集信息失败'}
-            
-            series = series_response.json()
-            series_name = series.get('Name', '未知')
-            tmdb_id = series.get('ProviderIds', {}).get('Tmdb')
-            poster_path = None
-            
-            if series.get('ImageTags', {}).get('Primary'):
-                poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
-            
-            # 获取所有季
-            seasons_response = self._make_request(
-                'GET',
-                f'{server_url}/emby/Shows/{series_id}/Seasons',
-                params={'api_key': api_key, 'Fields': 'ProviderIds'},
-                timeout=15
-            )
-            
-            if seasons_response.status_code != 200:
-                return {'success': True, 'data': []}  # 无季数据，返回空
-            
-            seasons = seasons_response.json().get('Items', [])
-            
-            for season in seasons:
-                season_id = season.get('Id')
-                season_number = season.get('IndexNumber', 0)
-                
-                if season_number == 0:  # 跳过特辑季
-                    continue
-                
-                # 获取该季的所有集
-                episodes_response = self._make_request(
-                    'GET',
-                    f'{server_url}/emby/Shows/{series_id}/Episodes',
-                    params={'api_key': api_key, 'SeasonId': season_id, 'Fields': 'ProviderIds'},
-                    timeout=15
-                )
-                
-                if episodes_response.status_code != 200:
-                    continue
-                
-                emby_episodes = episodes_response.json().get('Items', [])
-                local_episode_numbers = set(ep.get('IndexNumber') for ep in emby_episodes if ep.get('IndexNumber'))
-                local_ep_count = len(local_episode_numbers)
-                
-                # 查询 TMDB
-                total_ep_count = local_ep_count
-                missing_episodes = []
-                
-                if tmdb_api_key and tmdb_id:
-                    try:
-                        import requests
-                        tmdb_url = f'https://api.tmdb.org/3/tv/{tmdb_id}/season/{season_number}'
-                        tmdb_resp = requests.get(tmdb_url, params={'api_key': tmdb_api_key, 'language': tmdb_lang}, timeout=10)
-                        
-                        if tmdb_resp.status_code == 200:
-                            tmdb_data = tmdb_resp.json()
-                            tmdb_episodes = tmdb_data.get('episodes', [])
-                            total_ep_count = len(tmdb_episodes)
-                            all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
-                            missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
-                    except Exception:
-                        pass  # 静默失败
-                
-                if missing_episodes:
-                    missing_data.append({
-                        'id': f"{series_id}_{season_number}",
-                        'name': series_name,
-                        'season': season_number,
-                        'totalEp': total_ep_count,
-                        'localEp': local_ep_count,
-                        'missing': ', '.join(f'E{ep:02d}' for ep in missing_episodes),
-                        'poster': poster_path
-                    })
-            
-            if missing_data:
-                logger.info(f"扫描完成 [{series_name}]: 发现 {len(missing_data)} 个缺集季")
-            return {'success': True, 'data': missing_data}
-        except Exception as e:
-            logger.error(f"扫描失败 [{series_id}]: {e}")
-            return {'success': False, 'data': [], 'error': str(e)}
-    
+        return None
+
     def scan_missing_episodes(self) -> Dict[str, Any]:
         """
         扫描 Emby 中的电视剧缺集情况，与 TMDB 数据比对。
-        
-        返回格式:
-        [
-            {
-                'id': series_id,
-                'name': 剧名,
-                'season': 季号,
-                'totalEp': TMDB总集数,
-                'localEp': Emby已有集数,
-                'missing': 缺失集号字符串,
-                'poster': 海报URL
-            }
-        ]
         """
         task_log = TaskLogger('Emby')
         task_log.start('扫描缺集')
@@ -472,95 +405,19 @@ class EmbyService:
             task_log.failure('Emby未配置')
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
         
-        # 获取 TMDB 配置
         full_config = self.store.get_config()
         tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
         tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
-        user_tmdb_domain = full_config.get('tmdb', {}).get('domain', '').strip()
         
-        # 内置默认 TMDB API Key（用户未配置时使用）
-        # 这是一个通用 Key，供未配置的用户使用
         DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
-        
         if not tmdb_api_key:
             tmdb_api_key = DEFAULT_TMDB_API_KEY
             task_log.info('使用内置默认 TMDB API Key')
         
         task_log.info(f'开始扫描，TMDB 语言: {tmdb_lang}')
         
-        # TMDB 备用域名列表（按优先级排序）
-        # api.tmdb.org 在国内可能可以无代理访问
-        TMDB_DOMAINS = [
-            'api.tmdb.org',           # 无 "the" 的域名，国内可能可访问
-            'api.themoviedb.org',     # 官方域名
-            'tmdb.org',               # 简短域名
-        ]
-        
-        # 如果用户配置了自定义域名（如代理），优先使用
-        if user_tmdb_domain and user_tmdb_domain not in TMDB_DOMAINS:
-            TMDB_DOMAINS.insert(0, user_tmdb_domain.rstrip('/'))
-        
         missing_data = []
-        
-        # 缓存可用的 TMDB 域名，避免重复尝试失败的域名
-        working_tmdb_domain = None
-        
-        def _fetch_tmdb_season(series_tmdb_id, season_num):
-            """
-            获取 TMDB 季度信息，支持多域名回退和智能重试。
-            """
-            nonlocal working_tmdb_domain
-            
-            params = {'api_key': tmdb_api_key, 'language': tmdb_lang}
-            proxies = self._get_proxy_config()
-            
-            # 如果已经找到可用域名，优先使用
-            domains_to_try = [working_tmdb_domain] if working_tmdb_domain else TMDB_DOMAINS.copy()
-            
-            for domain in domains_to_try:
-                if not domain:
-                    continue
-                    
-                url = f'https://{domain}/3/tv/{series_tmdb_id}/season/{season_num}'
-                
-                # 尝试1: 代理请求 (如果配置了)
-                if proxies:
-                    try:
-                        resp = requests.get(url, params=params, proxies=proxies, timeout=15, verify=True)
-                        if resp.status_code == 200:
-                            working_tmdb_domain = domain
-                            return resp.json()
-                        elif resp.status_code == 401:
-                            # API Key 无效，不需要尝试其他域名
-                            return None
-                    except Exception:
-                        pass
-                
-                # 尝试2: 直连请求
-                try:
-                    resp = requests.get(url, params=params, timeout=8, verify=True)
-                    if resp.status_code == 200:
-                        working_tmdb_domain = domain
-                        return resp.json()
-                    elif resp.status_code == 401:
-                        return None
-                except requests.exceptions.SSLError:
-                    # SSL 错误，尝试跳过验证
-                    try:
-                        resp = requests.get(url, params=params, timeout=8, verify=False)
-                        if resp.status_code == 200:
-                            working_tmdb_domain = domain
-                            return resp.json()
-                    except Exception:
-                        pass
-                except requests.exceptions.Timeout:
-                    # 超时，尝试下一个域名
-                    continue
-                except Exception:
-                    continue
-            
-            return None
-        
+
         try:
             # 1. 获取 Emby 中所有电视剧
             series_response = self._make_request(
@@ -588,7 +445,6 @@ class EmbyService:
                 tmdb_id = series.get('ProviderIds', {}).get('Tmdb')
                 poster_path = None
                 
-                # 获取 Emby 海报
                 if series.get('ImageTags', {}).get('Primary'):
                     poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
                 
@@ -609,7 +465,6 @@ class EmbyService:
                     season_id = season.get('Id')
                     season_number = season.get('IndexNumber', 0)
                     
-                    # 跳过特辑季 (Season 0)
                     if season_number == 0:
                         continue
                     
@@ -629,38 +484,25 @@ class EmbyService:
                         continue
                     
                     emby_episodes = episodes_response.json().get('Items', [])
-                    local_episode_numbers = set()
-                    for ep in emby_episodes:
-                        ep_num = ep.get('IndexNumber')
-                        if ep_num:
-                            local_episode_numbers.add(ep_num)
-                    
+                    local_episode_numbers = set(ep.get('IndexNumber') for ep in emby_episodes if ep.get('IndexNumber'))
                     local_ep_count = len(local_episode_numbers)
                     
                     # 4. 查询 TMDB 获取该季总集数
-                    total_ep_count = local_ep_count  # 默认值
+                    total_ep_count = local_ep_count
                     missing_episodes = []
                     
                     if tmdb_api_key and tmdb_id:
-                        tmdb_data = _fetch_tmdb_season(tmdb_id, season_number)
+                        tmdb_data = self._fetch_tmdb_season_robust(tmdb_id, season_number, tmdb_api_key, tmdb_lang)
                         
                         if tmdb_data:
                             tmdb_episodes = tmdb_data.get('episodes', [])
                             total_ep_count = len(tmdb_episodes)
-                            
-                            # 计算缺失集数
                             all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
                             missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
                             
-                            # 使用 TMDB 海报 (如果 Emby 没有)
                             if not poster_path and tmdb_data.get('poster_path'):
                                 poster_path = f"https://image.tmdb.org/t/p/w200{tmdb_data['poster_path']}"
-                        else:
-                            # 失败，记录日志但不中断（静默失败）
-                            # task_log.warning(f"无法获取 {series_name} S{season_number} 的 TMDB 数据")
-                            pass
                     
-                    # 只添加有缺集的记录
                     if missing_episodes:
                         missing_data.append({
                             'id': f"{series_id}_{season_number}",
@@ -672,20 +514,111 @@ class EmbyService:
                             'poster': poster_path
                         })
             
-            
             task_log.success(f'发现 {len(missing_data)} 个缺集系列')
-            return {
-                'success': True,
-                'data': missing_data
-            }
-        except requests.Timeout:
-            task_log.failure('Emby连接超时')
-            return {'success': False, 'data': [], 'error': 'Emby连接超时'}
-        except requests.ConnectionError:
-            task_log.failure('Emby连接失败')
-            return {'success': False, 'data': [], 'error': 'Emby连接失败'}
+            return {'success': True, 'data': missing_data}
         except Exception as e:
             task_log.failure(str(e))
+            return {'success': False, 'data': [], 'error': str(e)}
+
+    def scan_single_series(self, series_id: str) -> Dict[str, Any]:
+        """
+        扫描单个电视剧的缺集情况
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return {'success': False, 'data': [], 'error': 'Emby未配置'}
+        
+        full_config = self.store.get_config()
+        tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
+        tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
+        
+        DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
+        if not tmdb_api_key:
+            tmdb_api_key = DEFAULT_TMDB_API_KEY
+            
+        missing_data = []
+        
+        try:
+            series_response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Items/{series_id}',
+                params={'api_key': api_key, 'Fields': 'ProviderIds'},
+                timeout=15
+            )
+            
+            if series_response.status_code != 200:
+                return {'success': False, 'data': [], 'error': '获取剧集信息失败'}
+            
+            series = series_response.json()
+            series_name = series.get('Name', '未知')
+            tmdb_id = series.get('ProviderIds', {}).get('Tmdb')
+            poster_path = None
+            
+            if series.get('ImageTags', {}).get('Primary'):
+                poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
+            
+            seasons_response = self._make_request(
+                'GET',
+                f'{server_url}/emby/Shows/{series_id}/Seasons',
+                params={'api_key': api_key, 'Fields': 'ProviderIds'},
+                timeout=15
+            )
+            
+            if seasons_response.status_code != 200:
+                return {'success': True, 'data': []}
+            
+            seasons = seasons_response.json().get('Items', [])
+            
+            for season in seasons:
+                season_id = season.get('Id')
+                season_number = season.get('IndexNumber', 0)
+                
+                if season_number == 0:
+                    continue
+                
+                episodes_response = self._make_request(
+                    'GET',
+                    f'{server_url}/emby/Shows/{series_id}/Episodes',
+                    params={'api_key': api_key, 'SeasonId': season_id, 'Fields': 'ProviderIds'},
+                    timeout=15
+                )
+                
+                if episodes_response.status_code != 200:
+                    continue
+                
+                emby_episodes = episodes_response.json().get('Items', [])
+                local_episode_numbers = set(ep.get('IndexNumber') for ep in emby_episodes if ep.get('IndexNumber'))
+                local_ep_count = len(local_episode_numbers)
+                
+                total_ep_count = local_ep_count
+                missing_episodes = []
+                
+                if tmdb_api_key and tmdb_id:
+                    tmdb_data = self._fetch_tmdb_season_robust(tmdb_id, season_number, tmdb_api_key, tmdb_lang)
+                    
+                    if tmdb_data:
+                        tmdb_episodes = tmdb_data.get('episodes', [])
+                        total_ep_count = len(tmdb_episodes)
+                        all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
+                        missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
+                
+                if missing_episodes:
+                    missing_data.append({
+                        'id': f"{series_id}_{season_number}",
+                        'name': series_name,
+                        'season': season_number,
+                        'totalEp': total_ep_count,
+                        'localEp': local_ep_count,
+                        'missing': ', '.join(f'E{ep:02d}' for ep in missing_episodes),
+                        'poster': poster_path
+                    })
+            
+            return {'success': True, 'data': missing_data}
+        except Exception as e:
+            logger.error(f"扫描失败 [{series_id}]: {e}")
             return {'success': False, 'data': [], 'error': str(e)}
     
     def refresh_library(self, library_id: str = None) -> Dict[str, Any]:
@@ -1545,6 +1478,34 @@ class EmbyService:
             logger.warning(f"上传封面图失败: {e}")
         return False
 
+    def refresh_item(self, item_id: str) -> bool:
+        """
+        触发项目的刷新，通常用于上传新封面后强制清除缓存
+        """
+        config = self._get_config()
+        server_url = config.get('serverUrl', '').rstrip('/')
+        api_key = config.get('apiKey', '').strip()
+        
+        if not server_url or not api_key:
+            return False
+            
+        try:
+            # Emby 刷新 API
+            url = f"{server_url}/Items/{item_id}/Refresh"
+            params = {
+                'api_key': api_key,
+                'Recursive': 'true',
+                'ImageRefreshMode': 'Full',
+                'MetadataRefreshMode': 'Default',
+                'ReplaceAllImages': 'false',
+                'ReplaceAllMetadata': 'false'
+            }
+            response = self._make_request('POST', url, params=params)
+            return response.status_code in (200, 204)
+        except Exception as e:
+            logger.warning(f"刷新项目失败: {e}")
+        return False
+
     def get_library_folders(self) -> List[Dict[str, Any]]:
         """获取所有媒体库文件夹路径"""
         config = self._get_config()
@@ -1654,3 +1615,12 @@ class EmbyService:
             import logging
             logging.getLogger(__name__).warning(f"解析 Webhook 消息失败: {e}")
             return None
+# 全局单例
+_emby_service: Optional['EmbyService'] = None
+
+def get_emby_service(store: DataStore = None) -> 'EmbyService':
+    """获取 Emby 服务单例"""
+    global _emby_service
+    if _emby_service is None and store is not None:
+        _emby_service = EmbyService(store)
+    return _emby_service

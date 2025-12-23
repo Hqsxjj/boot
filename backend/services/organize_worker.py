@@ -9,8 +9,12 @@ import threading
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+import logging
 
 from utils.logger import TaskLogger
+from services.media_parser import get_media_parser
+
+logger = logging.getLogger(__name__)
 
 
 class QPSLimiter:
@@ -62,6 +66,7 @@ class OrganizeItem:
     original_name: str
     new_name: str
     target_dir: Optional[str] = None
+    target_base_id: str = '0'  # The CID (115) or DirID (123) of the selected target folder
     status: str = 'pending'  # pending, processing, completed, failed
     error: Optional[str] = None
 
@@ -102,6 +107,7 @@ class OrganizeTask:
                     'originalName': item.original_name,
                     'newName': item.new_name,
                     'targetDir': item.target_dir,
+                    'targetBaseId': item.target_base_id,
                     'status': item.status,
                     'error': item.error
                 }
@@ -178,7 +184,8 @@ class OrganizeWorker:
                 file_id=item['fileId'],
                 original_name=item.get('originalName', ''),
                 new_name=item['newName'],
-                target_dir=item.get('targetDir')
+                target_dir=item.get('targetDir'),
+                target_base_id=item.get('targetBaseId', '0')
             )
             for item in items
         ]
@@ -194,6 +201,80 @@ class OrganizeWorker:
         
         return task
     
+    def scan_and_submit_task(self, cloud_type: str, source_cid: str, target_base_id: str = '0', target_base_path: str = "") -> Optional[OrganizeTask]:
+        """
+        扫描源目录并自动提交整理任务。
+        """
+        logger.info(f"开始扫描 {cloud_type} 目录: {source_cid}")
+        
+        # 1. 获取文件列表
+        files = []
+        if cloud_type == '115':
+            if not self.cloud115_service: return None
+            result = self.cloud115_service.list_directory(source_cid)
+            if result.get('success'):
+                files = result.get('data', [])
+        elif cloud_type == '123':
+            if not self.cloud123_service: return None
+            result = self.cloud123_service.list_directory(source_cid)
+            if result.get('success'):
+                files = result.get('data', [])
+        
+        # 过滤掉文件夹，只处理文件
+        files = [f for f in files if not f.get('children')]
+        
+        if not files:
+            logger.info("源目录中没有待整理的文件")
+            return None
+        
+        # 2. 准备整理项
+        items = []
+        parser = get_media_parser()
+        
+        for f in files:
+            filename = f['name']
+            file_id = f['id']
+            
+            # 解析
+            media_info = parser.parse(filename)
+            
+            # 获取扩展名
+            ext = ''
+            for e in ['.mkv', '.mp4', '.avi', '.wmv', '.flv', '.mov', '.ts']:
+                if filename.lower().endswith(e):
+                    ext = e
+                    break
+            if not ext:
+                ext = '.mkv'
+            
+            # 预览整理结果 (内部使用预览逻辑来获取新名字和路径)
+            if self.media_organizer:
+                # 注意：这里没有传 TMDB 信息，将使用自动搜索或规则匹配
+                preview = self.media_organizer.preview_organize(
+                    media_info, 
+                    tmdb_info=None, 
+                    original_extension=ext,
+                    base_dir=target_base_path
+                )
+                
+                if preview.get('success'):
+                    data = preview['data']
+                    items.append({
+                        'fileId': file_id,
+                        'originalName': filename,
+                        'newName': data['new_name'],
+                        'targetDir': data['target_dir'],
+                        'targetBaseId': target_base_id
+                    })
+        
+        if not items:
+            return None
+            
+        # 3. 创建并启动任务
+        task = self.create_task(cloud_type, items)
+        self.start_task(task.task_id)
+        return task
+
     def start_task(self, task_id: str) -> bool:
         """
         Start executing a task in background thread.
@@ -291,9 +372,9 @@ class OrganizeWorker:
             if not rename_result.get('success'):
                 return rename_result
             
-            # Move if target_dir specified
-            if item.target_dir and self.media_organizer:
-                target_cid = self.media_organizer._ensure_115_directory(item.target_dir)
+            # Move if target_dir or base_cid specified
+            if (item.target_dir or item.target_base_id != '0') and self.media_organizer:
+                target_cid = self.media_organizer._ensure_115_directory(item.target_dir, base_cid=item.target_base_id)
                 if not target_cid:
                     return {'success': False, 'error': f'无法创建目录: {item.target_dir}'}
                 
@@ -311,8 +392,8 @@ class OrganizeWorker:
             if not rename_result.get('success'):
                 return rename_result
             
-            if item.target_dir and self.media_organizer:
-                target_id = self.media_organizer._ensure_123_directory(item.target_dir)
+            if (item.target_dir or item.target_base_id != '0') and self.media_organizer:
+                target_id = self.media_organizer._ensure_123_directory(item.target_dir, base_id=item.target_base_id)
                 if not target_id:
                     return {'success': False, 'error': f'无法创建目录: {item.target_dir}'}
                 

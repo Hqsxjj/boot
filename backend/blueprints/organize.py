@@ -425,6 +425,64 @@ def batch_organize():
 
 # ==================== 后台任务 API ====================
 
+@organize_bp.route('/run', methods=['POST'])
+@require_auth
+def run_instant_organize():
+    """
+    立即执行网盘整理（扫描源目录并提交任务）
+    """
+    try:
+        data = request.get_json() or {}
+        cloud_type = data.get('cloud_type') or data.get('cloudType')
+        
+        if not cloud_type:
+            return jsonify({'success': False, 'error': 'cloud_type is required'}), 400
+            
+        config = _store.get_config().get('organize', {})
+        
+        if cloud_type == '115':
+            source_cid = config.get('sourceCid115') or config.get('sourceCid') or '0'
+            target_cid = config.get('targetCid115') or config.get('targetCid') or '0'
+            target_path = config.get('targetDirName115') or config.get('targetDirName') or ''
+        elif cloud_type == '123':
+            source_cid = config.get('sourceCid123') or '0'
+            target_cid = config.get('targetCid123') or '0'
+            target_path = config.get('targetDirName123') or ''
+        else:
+            return jsonify({'success': False, 'error': f'Unsupported cloud type: {cloud_type}'}), 400
+            
+        # 验证源目录
+        if not source_cid:
+            return jsonify({'success': False, 'error': '未配置源目录'}), 400
+            
+        # 扫描并提交任务
+        task = _organize_worker.scan_and_submit_task(
+            cloud_type, 
+            source_cid, 
+            target_base_id=target_cid, 
+            target_base_path=target_path
+        )
+        
+        if task:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'taskId': task.task_id,
+                    'totalItems': len(task.items)
+                }
+            }), 200
+        else:
+            return jsonify({
+                'success': True,
+                'message': '源目录为空，无需整理',
+                'data': None
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"Instant organize failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @organize_bp.route('/submit', methods=['POST'])
 @require_auth
 def submit_organize_task():

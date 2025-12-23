@@ -124,10 +124,14 @@ class DataStore:
             },
             'organize': {
                 'enabled': True,  # 默认启用整理工作流
-                'sourceCid': '0',
-                'sourceDirName': '根目录',
-                'targetCid': '0',
-                'targetDirName': '根目录',
+                'sourceCid115': '0',
+                'sourceDirName115': '根目录',
+                'targetCid115': '0',
+                'targetDirName115': '根目录',
+                'sourceCid123': '0',
+                'sourceDirName123': '根目录',
+                'targetCid123': '0',
+                'targetDirName123': '根目录',
                 'ai': {
                     'enabled': False,
                     'provider': 'openai',
