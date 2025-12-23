@@ -306,10 +306,26 @@ class Cloud115Service:
                 # Extract fields with various possible attribute names (Support both dict and object)
                 if isinstance(entry, dict):
                     # p115client fs_files 返回字段: fid/cid, n/name, ico, t/te
+                    # 关键判断: 目录有 cid 而没有 fid，文件有 fid
+                    has_cid = 'cid' in entry and entry.get('cid') is not None
+                    has_fid = 'fid' in entry and entry.get('fid') is not None
+                    
                     entry_id = entry.get('cid') or entry.get('fid') or entry.get('id') or entry.get('file_id')
                     entry_name = entry.get('n') or entry.get('name')
-                    # Check for directory: p115 uses 'ico'='folder' or file_type判断
-                    is_directory = entry.get('ico') == 'folder' or entry.get('file_type') == 0 or entry.get('is_directory')
+                    
+                    # 多重目录检测:
+                    # 1. ico=='folder' (最可靠)
+                    # 2. fc=='folder' 
+                    # 3. file_type==0
+                    # 4. 有 cid 但没有 fid (115 目录特征)
+                    # 5. is_directory 直接字段
+                    is_directory = (
+                        entry.get('ico') == 'folder' or 
+                        entry.get('fc') == 'folder' or
+                        entry.get('file_type') == 0 or 
+                        (has_cid and not has_fid) or
+                        entry.get('is_directory')
+                    )
                     timestamp = entry.get('te') or entry.get('t') or entry.get('timestamp') or entry.get('time')
                 else:
                     entry_id = getattr(entry, 'cid', None) or getattr(entry, 'fid', None) or getattr(entry, 'id', None)

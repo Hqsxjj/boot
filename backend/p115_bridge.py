@@ -325,9 +325,14 @@ class StandardClientHolder:
         # Cookie 模式暂不支持
         return {"state": False, "error": "use Open API"}
 
-    def share_receive(self, share_code, receive_code, to_cid):
-        # Cookie 模式暂不支持
-        return {"state": False, "error": "use Open API"}
+    def share_receive(self, share_code, receive_code, to_cid, file_ids=None):
+        """转存分享文件"""
+        with self._lock:
+            if not self._client:
+                return {"state": False, "error": "客户端未初始化"}
+            
+            # 使用原生客户端的 share_receive 方法
+            return self._client.share_receive(share_code, receive_code, to_cid, file_ids)
 
     def get_user_info(self) -> Dict[str, Any]:
         """获取用户信息"""
@@ -397,14 +402,23 @@ class P115Service:
         else:
             return {"success": False, "error": result.get("msg", "获取二维码失败")}
 
-    def poll_login_status(self, session_id: str) -> Dict[str, Any]:
-        """轮询登录状态 - 使用 session 中存储的 token 数据"""
+    def poll_login_status(self, session_id: str, timeout: int = 30) -> Dict[str, Any]:
+        """轮询登录状态 - 长轮询模式，等待状态变化或超时
+        
+        Args:
+            session_id: 登录会话 ID
+            timeout: 最长等待时间（秒），默认 30 秒
+            
+        Returns:
+            包含 success, status, cookies 等字段的字典
+        """
         session_info = self._session_cache.get(session_id)
         if not session_info:
             return {"success": False, "error": "Session not found", "status": "error"}
 
         login_method = session_info.get("login_method", "qrcode")
         login_app = session_info.get("login_app", "tv")
+        last_status = session_info.get("status", "waiting")
 
         # 构造用于轮询的 token 数据
         qr_token = {
@@ -414,30 +428,42 @@ class P115Service:
             "app": login_app
         }
 
-        if login_method == "open_app":
-            holder = self._ensure_open_holder(session_info.get("app_id", ""))
-            # OpenApp 模式使用 holder 内部状态
-            result = holder.poll_open_qrcode()
-        else:
-            holder = self._ensure_standard_holder()
-            # 标准模式使用 session 中存储的 token
-            result = holder.poll_qrcode_with_token(qr_token, login_app)
+        poll_interval = 2  # 每 2 秒轮询一次
+        end_time = time.time() + timeout
 
-        status = result.get("status", "waiting")
+        while time.time() < end_time:
+            if login_method == "open_app":
+                holder = self._ensure_open_holder(session_info.get("app_id", ""))
+                result = holder.poll_open_qrcode()
+            else:
+                holder = self._ensure_standard_holder()
+                result = holder.poll_qrcode_with_token(qr_token, login_app)
 
-        if status == "success":
-            return {
-                "success": True,
-                "status": "success",
-                "cookies": result.get("cookies", {}),
-                "user": result.get("user", {})
-            }
-        elif status == "expired":
-            return {"success": False, "status": "expired", "error": "二维码已过期"}
-        elif status == "error":
-            return {"success": False, "status": "error", "error": result.get("msg", "轮询失败")}
-        else:
-            return {"success": True, "status": status}
+            current_status = result.get("status", "waiting")
+
+            # 终态：立即返回
+            if current_status == "success":
+                return {
+                    "success": True,
+                    "status": "success",
+                    "cookies": result.get("cookies", {}),
+                    "user": result.get("user", {})
+                }
+            elif current_status == "expired":
+                return {"success": False, "status": "expired", "error": "二维码已过期"}
+            elif current_status == "error":
+                return {"success": False, "status": "error", "error": result.get("msg", "轮询失败")}
+            
+            # 状态变化：更新 session 并返回
+            if current_status != last_status:
+                session_info["status"] = current_status
+                return {"success": True, "status": current_status}
+            
+            # 等待下一次轮询
+            time.sleep(poll_interval)
+
+        # 超时：返回当前状态
+        return {"success": True, "status": last_status}
 
     def clear_session(self, session_id: str):
         """清理登录会话"""
@@ -507,9 +533,10 @@ class P115Service:
         if not client:
             return {"success": False, "error": "未登录"}
         try:
-            result = holder.share_receive(share_code, access_code or "", int(save_cid))
+            # 传递 file_ids 支持单个文件转存
+            result = holder.share_receive(share_code, access_code or "", int(save_cid), file_ids)
             if result and result.get("state"):
-                return {"success": True, "data": {"count": 1}}
+                return {"success": True, "data": {"count": len(file_ids) if file_ids else 1}}
             return {"success": False, "error": result.get("error", "转存失败")}
         except Exception as e:
             logger.error(f"转存分享失败: {e}")

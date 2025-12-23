@@ -3,7 +3,10 @@ import time
 import urllib3
 from persistence.store import DataStore
 from typing import Dict, Any, List
-from utils.logger import TaskLogger
+from utils.logger import TaskLogger, get_task_logger
+
+# 使用应用日志器，确保日志写入文件
+logger = get_task_logger()
 
 # 禁用 SSL 警告（用于自签名证书）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -272,8 +275,6 @@ class EmbyService:
         if not server_url or not api_key:
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
         
-        import logging
-        logger = logging.getLogger(__name__)
         logger.info(f"开始获取电视剧列表: {server_url}")
         
         try:
@@ -337,9 +338,6 @@ class EmbyService:
         
         if not server_url or not api_key:
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
-        
-        import logging
-        logger = logging.getLogger(__name__)
         
         # 获取 TMDB 配置
         full_config = self.store.get_config()

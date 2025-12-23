@@ -85,12 +85,19 @@ def start_qr_login():
 @cloud115_bp.route('/login/status/<session_id>', methods=['GET'])
 @require_auth
 def poll_login_status(session_id: str):
-    """Poll QR code login status and persist cookies on success."""
+    """Poll QR code login status and persist cookies on success.
+    
+    Supports long-polling: the backend will wait up to 'timeout' seconds for status change.
+    """
     import logging
     logger = logging.getLogger(__name__)
     
+    # 支持长轮询 timeout 参数
+    timeout = request.args.get('timeout', 30, type=int)
+    timeout = max(5, min(timeout, 35))  # 限制在 5-35 秒
+    
     try:
-        result = _p115_service.poll_login_status(session_id)
+        result = _p115_service.poll_login_status(session_id, timeout=timeout)
         logger.info(f'poll_login_status: session={session_id}, result.status={result.get("status")}, success={result.get("success")}')
         
         if not result.get('success'):

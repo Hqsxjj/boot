@@ -864,6 +864,59 @@ class P115CookieClient:
         except:
             return None
     
+    def share_snap(self, params: Dict[str, Any]) -> Optional[Dict]:
+        """
+        获取分享链接的文件列表
+        
+        Args:
+            params: 包含以下键的字典:
+                - share_code: 分享码
+                - receive_code: 提取码 (可选)
+                - cid: 文件夹ID，默认 '0' 表示根目录
+                - offset: 起始偏移，默认 0
+                - limit: 返回数量，默认 20
+        
+        Returns:
+            API 响应字典
+        """
+        if not self._cookies:
+            return {"state": False, "error": "未登录"}
+        
+        share_code = params.get("share_code", "")
+        receive_code = params.get("receive_code", "")
+        cid = params.get("cid", "0")
+        offset = params.get("offset", 0)
+        limit = params.get("limit", 20)
+        
+        if not share_code:
+            return {"state": False, "error": "share_code 不能为空"}
+        
+        try:
+            resp = self.session.get(
+                f"{self.BASE_URL}/share/snap",
+                params={
+                    "share_code": share_code,
+                    "receive_code": receive_code,
+                    "cid": cid,
+                    "offset": offset,
+                    "limit": limit
+                },
+                timeout=30
+            )
+            result = resp.json()
+            
+            # 115 API 返回 state: true 表示成功
+            if result.get("state"):
+                return result
+            else:
+                return {
+                    "state": False,
+                    "error": result.get("error", "获取分享文件失败")
+                }
+        except Exception as e:
+            logger.error(f"[P115CookieClient] share_snap 失败: {e}")
+            return {"state": False, "error": str(e)}
+    
     def download_url(self, pick_code: str) -> Optional[str]:
         """获取下载链接"""
         if not self._cookies:
@@ -878,6 +931,58 @@ class P115CookieClient:
             return result.get("file_url")
         except:
             return None
+    
+    def share_receive(self, share_code: str, receive_code: str = "", to_cid: int = 0, file_ids: list = None) -> Dict[str, Any]:
+        """
+        转存分享链接中的文件到指定目录
+        
+        Args:
+            share_code: 分享码
+            receive_code: 提取码 (可选)
+            to_cid: 目标目录 ID，默认 0 表示根目录
+            file_ids: 可选的文件 ID 列表，如果提供则只转存这些文件
+        
+        Returns:
+            API 响应字典 {"state": True/False, ...}
+        """
+        if not self._cookies:
+            return {"state": False, "error": "未登录"}
+        
+        if not share_code:
+            return {"state": False, "error": "share_code 不能为空"}
+        
+        try:
+            # 115 分享转存接口
+            data = {
+                "share_code": share_code,
+                "receive_code": receive_code,
+                "cid": to_cid
+            }
+            
+            # 支持指定文件 ID 进行部分转存
+            if file_ids:
+                if isinstance(file_ids, list):
+                    data["file_id"] = ",".join(str(fid) for fid in file_ids)
+                else:
+                    data["file_id"] = str(file_ids)
+            
+            resp = self.session.post(
+                f"{self.BASE_URL}/share/receive",
+                data=data,
+                timeout=60  # 转存可能需要更长时间
+            )
+            result = resp.json()
+            
+            if result.get("state"):
+                return {"state": True, "data": result.get("data", {})}
+            else:
+                return {
+                    "state": False, 
+                    "error": result.get("error", result.get("error_msg", "转存失败"))
+                }
+        except Exception as e:
+            logger.error(f"[P115CookieClient] share_receive 失败: {e}")
+            return {"state": False, "error": str(e)}
 
 
 # ========== 工厂函数 ==========

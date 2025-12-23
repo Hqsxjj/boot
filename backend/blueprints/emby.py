@@ -824,9 +824,11 @@ def apply_covers_to_emby():
                     'v_align_pct': cover_config.get('vAlign', 60)
                 }
                 
-                # 3. 创建本地缓存目录
+                # 3. 创建本地缓存目录 (使用跨平台路径)
                 import os
-                cache_dir = os.path.join('/data', 'covers', safe_lib_name)
+                data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+                data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+                cache_dir = os.path.join(data_dir, 'covers', safe_lib_name)
                 os.makedirs(cache_dir, exist_ok=True)
                 
                 # 4. 生成封面并保存到本地
@@ -967,9 +969,11 @@ def generate_cover():
         if not posters:
             return jsonify({'success': False, 'error': '未能获取海报图片'}), 400
         
-        # 创建预览缓存目录
+        # 创建预览缓存目录 (使用跨平台路径)
         import os
-        cache_dir = os.path.join('/data', 'covers', 'preview')
+        data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+        data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+        cache_dir = os.path.join(data_dir, 'covers', 'preview')
         os.makedirs(cache_dir, exist_ok=True)
         
         # 清理标题用于文件名

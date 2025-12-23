@@ -112,7 +112,8 @@ export const api = {
   check115QrStatus: async (sessionId: string, _time: number, _sign: string) => {
     try {
       const res = await apiClient.get<ApiResponse<{ status: string; message?: string }>>(
-        `/115/login/status/${encodeURIComponent(sessionId)}`
+        `/115/login/status/${encodeURIComponent(sessionId)}`,
+        { timeout: 40000 }  // 40s 超时, 适应后端 30s 长轮询 + 网络延迟
       );
 
       return res.data;
@@ -671,6 +672,30 @@ export const api = {
   // --- Proxy ---
   testProxy: async (config: { type: string; host: string; port: string; username?: string; password?: string }) => {
     const res = await apiClient.post<ApiResponse<{ latency: number; message: string }>>('/proxy/test', config);
+    return res.data;
+  },
+
+  // --- Organize Tasks (Background) ---
+  submitOrganizeTask: async (cloudType: string, items: Array<{ fileId: string; originalName?: string; newName: string; targetDir?: string }>) => {
+    const res = await apiClient.post<ApiResponse<{ taskId: string; status: string; totalItems: number }>>('/organize/submit', {
+      cloud_type: cloudType,
+      items,
+    });
+    return res.data;
+  },
+
+  getOrganizeTaskStatus: async (taskId: string) => {
+    const res = await apiClient.get<ApiResponse<any>>(`/organize/task/${taskId}`);
+    return res.data;
+  },
+
+  cancelOrganizeTask: async (taskId: string) => {
+    const res = await apiClient.delete<ApiResponse<any>>(`/organize/task/${taskId}`);
+    return res.data;
+  },
+
+  listOrganizeTasks: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/organize/tasks');
     return res.data;
   }
 };

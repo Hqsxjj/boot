@@ -2,15 +2,16 @@
 Background Task Service
 
 Manages long-running tasks that should continue even if the frontend is refreshed.
-All progress is logged to the console via Python logging.
+All progress is logged to the console AND to data/logs/tasks.log via the app logger.
 """
 import threading
-import logging
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+# 使用应用日志器，确保日志写入文件（供前端日志查看器读取）
+from utils.logger import get_task_logger
+logger = get_task_logger()
 
 
 class TaskStatus(Enum):

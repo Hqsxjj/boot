@@ -18,7 +18,9 @@ import {
     Check,
     Copy,
     Download,
-    Loader2
+    Loader2,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 
 // ==================== 类型定义 ====================
@@ -83,8 +85,10 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     const [qrState, setQrState] = useState<QrState>('idle');
     const [qrImage, setQrImage] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
+    const [showCookies, setShowCookies] = useState(false);
 
-    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // 长轮询控制标志
+    const isPollingRef = useRef<boolean>(false);
 
     // ========== 登录方式切换 ==========
     const handleMethodChange = (method: LoginMethod) => {
@@ -126,11 +130,52 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
     // ========== 轮询控制 ==========
     const stopPolling = useCallback(() => {
-        if (pollTimerRef.current) {
-            clearInterval(pollTimerRef.current);
-            pollTimerRef.current = null;
-        }
+        isPollingRef.current = false;
     }, []);
+
+    // ========== 长轮询状态检查 ==========
+    const pollStatus = useCallback(async (sessionId: string) => {
+        if (!isPollingRef.current) return;
+
+        try {
+            const statusRes = await api.check115QrStatus(sessionId, 0, '');
+            const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
+
+            if (!isPollingRef.current) return; // 检查是否已取消
+
+            switch (status) {
+                case 'scanned':
+                    setQrState('scanned');
+                    // 继续长轮询
+                    pollStatus(sessionId);
+                    break;
+                case 'success':
+                    stopPolling();
+                    setQrState('success');
+                    onToast?.('登录成功，Cookie 已自动保存');
+                    onLoginSuccess?.();
+                    break;
+                case 'expired':
+                    stopPolling();
+                    setQrState('expired');
+                    break;
+                case 'error':
+                    stopPolling();
+                    setQrState('error');
+                    onToast?.((statusRes as any).error || '登录失败');
+                    break;
+                default:
+                    // 'waiting' - 继续长轮询
+                    pollStatus(sessionId);
+            }
+        } catch (err) {
+            console.error('QR poll error:', err);
+            if (isPollingRef.current) {
+                // 网络错误时延迟重试
+                setTimeout(() => pollStatus(sessionId), 3000);
+            }
+        }
+    }, [onToast, onLoginSuccess, stopPolling]);
 
     // ========== 生成二维码 ==========
     const generateQrCode = async () => {
@@ -153,36 +198,9 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             setQrImage(data.qrcode);
             setQrState('waiting');
 
-            // 开始轮询
-            pollTimerRef.current = setInterval(async () => {
-                try {
-                    const statusRes = await api.check115QrStatus(data.sessionId, 0, '');
-                    const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
-
-                    switch (status) {
-                        case 'scanned':
-                            setQrState('scanned');
-                            break;
-                        case 'success':
-                            stopPolling();
-                            setQrState('success');
-                            onToast?.('登录成功，Cookie 已自动保存');
-                            onLoginSuccess?.();
-                            break;
-                        case 'expired':
-                            stopPolling();
-                            setQrState('expired');
-                            break;
-                        case 'error':
-                            stopPolling();
-                            setQrState('error');
-                            onToast?.((statusRes as any).error || '登录失败');
-                            break;
-                    }
-                } catch (err) {
-                    console.error('QR poll error:', err);
-                }
-            }, 3000);
+            // 开始长轮询
+            isPollingRef.current = true;
+            pollStatus(data.sessionId);
 
         } catch (e: any) {
             console.error('QR generation failed:', e);
@@ -193,7 +211,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             } else if (e.response?.status === 401) {
                 onToast?.('登录已过期，请重新登录');
             } else {
-                onToast?.(`二维码生成失败: ${e.response?.data?.error || e.message}`);
+                onToast?.(`二维码生成失败: ${e.response?.data?.error || e.message} `);
             }
         }
     };
@@ -212,7 +230,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Authorization': `Bearer ${localStorage.getItem('token')} `,
                 },
                 body: JSON.stringify({ cookies }),
             });
@@ -226,7 +244,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 onToast?.(result.error || 'Cookie 导入失败');
             }
         } catch (e: any) {
-            onToast?.(`导入失败: ${e.message}`);
+            onToast?.(`导入失败: ${e.message} `);
         } finally {
             setIsSaving(false);
         }
@@ -251,10 +269,10 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 <button
                     key={tab.id}
                     onClick={() => handleMethodChange(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border-[0.5px] transition-all shadow-sm ${loginMethod === tab.id
+                    className={`flex items - center gap - 2 px - 4 py - 2.5 rounded - lg text - sm font - medium border - [0.5px] transition - all shadow - sm ${loginMethod === tab.id
                         ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-900/20 dark:border-brand-800 dark:text-brand-400 ring-2 ring-brand-500/20'
                         : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                        }`}
+                        } `}
                 >
                     <tab.icon size={16} />
                     {tab.label}
@@ -267,16 +285,32 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     const renderCookieImport = () => (
         <div className="space-y-4 animate-in fade-in duration-300">
             <div>
-                <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                    Cookie 字符串
-                </label>
-                <textarea
-                    value={cookies}
-                    onChange={(e) => onCookiesChange?.(e.target.value)}
-                    placeholder="UID=...; CID=...; SEID=..."
-                    rows={4}
-                    className={`${inputClass} resize-none`}
-                />
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                        Cookie 字符串
+                    </label>
+                    <button
+                        type="button"
+                        onClick={() => setShowCookies(!showCookies)}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                        title={showCookies ? '隐藏内容' : '显示内容'}
+                    >
+                        {showCookies ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                </div>
+                <div className="relative">
+                    <textarea
+                        value={cookies}
+                        onChange={(e) => onCookiesChange?.(e.target.value)}
+                        placeholder="UID=...; CID=...; SEID=..."
+                        rows={4}
+                        className={`${inputClass} resize-none ${!showCookies ? 'text-security-disc' : ''}`}
+                        style={!showCookies ? {
+                            WebkitTextSecurity: 'disc',
+                            fontFamily: 'text-security-disc, monospace'
+                        } as React.CSSProperties : undefined}
+                    />
+                </div>
                 <p className="text-xs text-slate-400 mt-2">
                     💡 从浏览器开发者工具复制 Cookie，格式如：UID=xxx; CID=xxx; SEID=xxx
                 </p>
@@ -305,7 +339,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 <select
                     value={selectedApp}
                     onChange={(e) => onAppChange?.(e.target.value)}
-                    className={`${inputClass} cursor-pointer`}
+                    className={`${inputClass} cursor - pointer`}
                 >
                     {loginApps.map((app) => (
                         <option key={app.key} value={app.key}>
@@ -368,8 +402,8 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                         <img
                             src={qrImage}
                             alt="115 登录二维码"
-                            className={`w-48 h-48 rounded-xl border-4 border-white shadow-xl transition-all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
-                                } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''}`}
+                            className={`w - 48 h - 48 rounded - xl border - 4 border - white shadow - xl transition - all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
+                                } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''} `}
                         />
 
                         {/* 状态覆盖层 */}
@@ -402,12 +436,12 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                     <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-1">
                         请使用 115 App 扫码登录
                     </p>
-                    <p className={`text-xs font-bold ${qrState === 'success' ? 'text-green-500' :
+                    <p className={`text - xs font - bold ${qrState === 'success' ? 'text-green-500' :
                         qrState === 'scanned' ? 'text-amber-500' :
                             qrState === 'expired' ? 'text-red-400' :
                                 qrState === 'error' ? 'text-red-400' :
                                     'text-slate-400'
-                        }`}>
+                        } `}>
                         {qrState === 'waiting' && '等待扫描...'}
                         {qrState === 'scanned' && '✓ 已扫描，请在手机上确认'}
                         {qrState === 'success' && '✓ 登录成功！'}

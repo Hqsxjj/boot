@@ -443,21 +443,12 @@ export const UserCenterView: React.FC = () => {
 
             <div className="flex items-center gap-4">
               {config?.proxy?.host && (
-                <>
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200/50 dark:border-green-800/50">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-[10px] font-mono font-medium text-green-600 dark:text-green-400">
-                      {config.proxy.type?.toUpperCase()} · {config.proxy.host}:{config.proxy.port || '7890'}
-                    </span>
-                  </div>
-
-                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${getLatencyColor(proxyLatency)}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${isTestingProxy ? 'bg-slate-400 animate-pulse' : (proxyLatency && proxyLatency < 9999 ? 'bg-current' : 'bg-red-500')}`}></div>
-                    <span className="text-[10px] font-mono font-medium">
-                      {isTestingProxy ? 'Testing...' : (proxyLatency && proxyLatency < 9999 ? `${proxyLatency}ms` : (proxyLatency === 9999 ? 'Error' : 'Unknown'))}
-                    </span>
-                  </div>
-                </>
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${getLatencyColor(proxyLatency)}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isTestingProxy ? 'bg-slate-400 animate-pulse' : (proxyLatency && proxyLatency < 9999 ? 'bg-current' : 'bg-red-500')}`}></div>
+                  <span className="text-[10px] font-mono font-medium">
+                    {isTestingProxy ? 'Testing...' : (proxyLatency && proxyLatency < 9999 ? `${proxyLatency}ms` : (proxyLatency === 9999 ? 'Error' : 'Unknown'))}
+                  </span>
+                </div>
               )}
 
               <button

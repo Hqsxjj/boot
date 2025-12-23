@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from jinja2 import Template, Environment, BaseLoader
 
 from services.media_parser import MediaInfo, MediaType
+from utils.logger import TaskLogger
 from services.config_loader import (
     get_movie_categories,
     get_tv_categories,
@@ -572,47 +573,66 @@ class MediaOrganizer:
 
     def _organize_115(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool) -> Dict[str, Any]:
         """整理 115 网盘文件"""
+        task_log = TaskLogger('网盘整理')
+        task_log.start(f'整理 115 文件: {new_name}')
+        
         if not self.cloud115_service:
+            task_log.failure('115 服务未初始化')
             return {'success': False, 'error': '115 服务未初始化'}
         
         # 1. 重命名文件 (如果名字不同)
-        # 注意：如果不需要重命名，可以跳过，但通常为了规范化都会重命名
+        task_log.log(f'正在重命名文件为: {new_name}')
         rename_result = self.cloud115_service.rename_file(file_id, new_name)
         if not rename_result.get('success'):
+            task_log.failure(f'重命名失败: {rename_result.get("error")}')
             return rename_result
         
         # 2. 如果指定了目标目录，移动文件
         if target_dir:
+            task_log.log(f'正在移动到目录: {target_dir}')
             target_cid = self._ensure_115_directory(target_dir)
             if not target_cid:
+                task_log.failure(f'无法创建或找到目标目录: {target_dir}')
                 return {'success': False, 'error': f'无法创建或找到目标目录: {target_dir}'}
             
             move_result = self.cloud115_service.move_file(file_id, target_cid)
             if not move_result.get('success'):
+                task_log.failure(f'移动文件失败: {move_result.get("error")}')
                 return {'success': False, 'error': f'移动文件失败: {move_result.get("error")}'}
         
+        task_log.success(f'整理完成: {new_name}')
         return {'success': True, 'message': '整理完成', 'new_name': new_name}
     
     def _organize_123(self, file_id: str, new_name: str, target_dir: Optional[str], create_dir: bool) -> Dict[str, Any]:
         """整理 123 云盘文件"""
+        task_log = TaskLogger('网盘整理')
+        task_log.start(f'整理 123 文件: {new_name}')
+        
         if not self.cloud123_service:
+            task_log.failure('123 服务未初始化')
             return {'success': False, 'error': '123 服务未初始化'}
         
         # 1. 重命名文件
+        task_log.log(f'正在重命名文件为: {new_name}')
         rename_result = self.cloud123_service.rename_file(file_id, new_name)
         if not rename_result.get('success'):
+            task_log.failure(f'重命名失败: {rename_result.get("error")}')
             return rename_result
         
         # 2. 如果指定了目标目录，移动文件
         if target_dir:
+            task_log.log(f'正在移动到目录: {target_dir}')
             target_id = self._ensure_123_directory(target_dir)
             if not target_id:
+                task_log.failure(f'无法创建或找到目标目录: {target_dir}')
                 return {'success': False, 'error': f'无法创建或找到目标目录: {target_dir}'}
                 
             move_result = self.cloud123_service.move_file(file_id, target_id)
             if not move_result.get('success'):
+                task_log.failure(f'移动文件失败: {move_result.get("error")}')
                 return {'success': False, 'error': f'移动文件失败: {move_result.get("error")}'}
         
+        task_log.success(f'整理完成: {new_name}')
         return {'success': True, 'message': '整理完成', 'new_name': new_name}
     
     def preview_organize(

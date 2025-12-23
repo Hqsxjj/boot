@@ -1,12 +1,14 @@
 """
 媒体整理 API 蓝图
 提供文件名解析、TMDB 搜索、重命名整理的 REST API
+支持后台任务执行和 QPS 限速
 """
 from flask import Blueprint, request, jsonify
 from middleware.auth import require_auth, optional_auth
 from services.media_parser import get_media_parser, MediaInfo
 from services.media_organizer import get_media_organizer
 from services.tmdb_service import TmdbService
+from services.organize_worker import get_organize_worker
 from persistence.store import DataStore
 import logging
 
@@ -18,15 +20,31 @@ organize_bp = Blueprint('organize', __name__, url_prefix='/api/organize')
 _tmdb_service = None
 _media_organizer = None
 _store = None
+_organize_worker = None
 
 
 def init_organize_blueprint(store: DataStore, tmdb_service: TmdbService = None, 
                             cloud115_service=None, cloud123_service=None):
     """初始化整理蓝图"""
-    global _tmdb_service, _media_organizer, _store
+    global _tmdb_service, _media_organizer, _store, _organize_worker
     _store = store
     _tmdb_service = tmdb_service or TmdbService(config_store=store)
     _media_organizer = get_media_organizer(store, cloud115_service, cloud123_service)
+    
+    # 初始化后台整理工作器
+    _organize_worker = get_organize_worker()
+    _organize_worker.set_services(cloud115_service, cloud123_service, _media_organizer)
+    
+    # 从配置获取 QPS 限制
+    try:
+        config = store.get_config()
+        qps_115 = config.get('cloud115', {}).get('qps', 1.0)
+        qps_123 = config.get('cloud123', {}).get('qps', 2.0)
+        _organize_worker.set_qps('115', qps_115)
+        _organize_worker.set_qps('123', qps_123)
+    except Exception as e:
+        logger.warning(f'获取 QPS 配置失败，使用默认值: {e}')
+    
     return organize_bp
 
 
@@ -399,6 +417,186 @@ def batch_organize():
         
     except Exception as e:
         logger.error(f"Batch organize failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ==================== 后台任务 API ====================
+
+@organize_bp.route('/submit', methods=['POST'])
+@require_auth
+def submit_organize_task():
+    """
+    提交后台整理任务
+    
+    Request:
+        {
+            "cloud_type": "115",  // 115 或 123
+            "items": [
+                {
+                    "fileId": "abc123",
+                    "originalName": "原文件名.mkv",  // 可选，用于显示
+                    "newName": "新文件名.mkv",
+                    "targetDir": "电视剧/xxx/Season 1"  // 可选
+                },
+                ...
+            ]
+        }
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "taskId": "12345678",
+                "status": "pending",
+                "totalItems": 10
+            }
+        }
+    """
+    try:
+        data = request.get_json() or {}
+        cloud_type = data.get('cloud_type', '').strip()
+        items = data.get('items', [])
+        
+        if not cloud_type:
+            return jsonify({
+                'success': False,
+                'error': 'cloud_type is required'
+            }), 400
+        
+        if not items:
+            return jsonify({
+                'success': False,
+                'error': 'items is required'
+            }), 400
+        
+        if cloud_type not in ('115', '123'):
+            return jsonify({
+                'success': False,
+                'error': f'不支持的云盘类型: {cloud_type}'
+            }), 400
+        
+        # 验证每个 item
+        for item in items:
+            if not item.get('fileId') or not item.get('newName'):
+                return jsonify({
+                    'success': False,
+                    'error': '每个 item 必须包含 fileId 和 newName'
+                }), 400
+        
+        # 创建任务
+        task = _organize_worker.create_task(cloud_type, items)
+        
+        # 启动后台执行
+        _organize_worker.start_task(task.task_id)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'taskId': task.task_id,
+                'status': task.status,
+                'totalItems': len(task.items)
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"提交整理任务失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@organize_bp.route('/task/<task_id>', methods=['GET'])
+@require_auth
+def get_organize_task_status(task_id: str):
+    """
+    获取整理任务状态
+    
+    Response:
+        {
+            "success": true,
+            "data": {
+                "taskId": "12345678",
+                "cloudType": "115",
+                "status": "running",
+                "progress": 50,
+                "currentItem": "正在处理的文件名",
+                "totalItems": 10,
+                "completedCount": 5,
+                "failedCount": 0,
+                "items": [...]
+            }
+        }
+    """
+    try:
+        task = _organize_worker.get_task(task_id)
+        
+        if not task:
+            return jsonify({
+                'success': False,
+                'error': f'任务 {task_id} 不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'data': task.to_dict()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取任务状态失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@organize_bp.route('/task/<task_id>', methods=['DELETE'])
+@require_auth
+def cancel_organize_task(task_id: str):
+    """
+    取消整理任务（仅限 pending 状态）
+    """
+    try:
+        success = _organize_worker.cancel_task(task_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'任务 {task_id} 已取消'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'无法取消任务 {task_id}（可能已在运行或不存在）'
+            }), 400
+        
+    except Exception as e:
+        logger.error(f"取消任务失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@organize_bp.route('/tasks', methods=['GET'])
+@require_auth
+def list_organize_tasks():
+    """
+    列出所有整理任务
+    """
+    try:
+        tasks = _organize_worker.get_all_tasks()
+        
+        return jsonify({
+            'success': True,
+            'data': tasks
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"获取任务列表失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

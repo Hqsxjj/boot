@@ -749,34 +749,53 @@ class CoverGenerator:
         if not self.emby_url or not self.api_key:
             logger.error("封面上传失败: Emby URL 或 API Key 未配置")
             return False
-            
-        try:
-            url = f"{self.emby_url}/emby/Items/{library_id}/Images/Primary"
-            params = {"api_key": self.api_key}
-            headers = {"Content-Type": content_type}
-            
-            logger.info(f"正在上传封面到 {url}, 大小: {len(image_data)} bytes, 类型: {content_type}")
-            
-            # Emby API 接受 binary body
-            resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30, verify=False)
-            
-            # Emby 可能返回 200, 201, 或 204 表示成功
-            if resp.status_code in [200, 201, 204]:
-                logger.info(f"封面上传成功: {library_id} (状态码: {resp.status_code})")
-                return True
-            else:
-                logger.error(f"封面上传失败: {library_id} HTTP {resp.status_code} - {resp.text[:200] if resp.text else '无响应内容'}")
-                return False
+        
+        # 修正 Content-Type 格式 (Emby 需要 Image/jpeg 或 Image/png 格式)
+        # 参考：https://github.com/MediaBrowser/Emby/wiki/Images
+        if content_type == "image/png":
+            emby_content_type = "Image/png"
+        elif content_type == "image/gif":
+            emby_content_type = "Image/gif"
+        elif content_type == "image/jpeg":
+            emby_content_type = "Image/jpeg"
+        else:
+            emby_content_type = "Image/png"
+        
+        # 尝试两种 URL 格式 (有些 Emby 安装需要 /emby 前缀，有些不需要)
+        base_url = self.emby_url.rstrip('/')
+        url_patterns = [
+            f"{base_url}/Items/{library_id}/Images/Primary",  # 不带 /emby 前缀
+            f"{base_url}/emby/Items/{library_id}/Images/Primary",  # 带 /emby 前缀
+        ]
+        
+        params = {"api_key": self.api_key}
+        headers = {"Content-Type": emby_content_type}
+        
+        logger.info(f"正在上传封面, 大小: {len(image_data)} bytes, 类型: {emby_content_type}")
+        
+        for url in url_patterns:
+            try:
+                logger.info(f"尝试上传到: {url}")
                 
-        except requests.Timeout:
-            logger.error(f"封面上传超时: {library_id}")
-            return False
-        except requests.ConnectionError as e:
-            logger.error(f"封面上传连接失败: {library_id} - {e}")
-            return False
-        except Exception as e:
-            logger.error(f"封面上传异常: {library_id} - {e}")
-            return False
+                # Emby API 接受 binary body
+                resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30, verify=False)
+                
+                # Emby 可能返回 200, 201, 或 204 表示成功
+                if resp.status_code in [200, 201, 204]:
+                    logger.info(f"封面上传成功: {library_id} (状态码: {resp.status_code})")
+                    return True
+                else:
+                    logger.warning(f"封面上传尝试失败: {url} HTTP {resp.status_code} - {resp.text[:200] if resp.text else '无响应内容'}")
+                    
+            except requests.Timeout:
+                logger.warning(f"封面上传超时: {url}")
+            except requests.ConnectionError as e:
+                logger.warning(f"封面上传连接失败: {url} - {e}")
+            except Exception as e:
+                logger.warning(f"封面上传异常: {url} - {e}")
+        
+        logger.error(f"封面上传失败: {library_id} (所有 URL 格式均失败)")
+        return False
     
     def cover_to_base64(self, image: Image.Image, format: str = "PNG") -> str:
         """将图片转换为 base64 字符串"""
