@@ -1,4 +1,4 @@
-Name: Build and Push Single Docker Image (Latest Only)
+name: Build and Push Single Docker Image (Latest Only)
 
 # 触发条件：只有推送到 main 分支时触发
 on:
@@ -42,7 +42,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
-          # 🌟 关键修改：只保留 latest
           tags: |
             type=raw,value=latest
 
@@ -58,4 +57,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-怎么改成手动触发
