@@ -130,6 +130,9 @@ def oauth_login():
         }
         _secret_store.set_secret('cloud123_oauth_credentials', json.dumps(credentials))
         
+        # Clear conflicting Password credentials
+        _secret_store.delete_secret('cloud123_password_credentials')
+        
         # 保存 access token
         token_info = {
             'access_token': access_token,
@@ -213,18 +216,52 @@ def ingest_cookies():
 def get_session_health():
     """Report 123 session health status."""
     try:
-        # Check for both token and cookies
-        token_json = _secret_store.get_secret('cloud123_token')
-        cookies_json = _secret_store.get_secret('cloud123_cookies')
+        # Check login method from metadata
+        metadata_json = _secret_store.get_secret('cloud123_session_metadata')
+        login_method = 'unknown'
+        if metadata_json:
+            try:
+                metadata = json.loads(metadata_json)
+                login_method = metadata.get('login_method', 'unknown')
+            except:
+                pass
         
-        has_session = bool(token_json or cookies_json)
+        has_session = False
+        message = '未配置 123 云盘会话'
+        
+        if login_method == 'oauth':
+            # OAuth: check token
+            token_json = _secret_store.get_secret('cloud123_token')
+            # Should also check expiry
+            if token_json:
+                has_session = True
+                message = 'OAuth 会话正常'
+        elif login_method == 'password':
+            # Password/Cookie: check credentials existence
+            creds_json = _secret_store.get_secret('cloud123_password_credentials')
+            if creds_json:
+                has_session = True
+                message = '账号密码会话正常'
+        elif login_method == 'manual_import': 
+             # Manual Cookie check
+             cookies_json = _secret_store.get_secret('cloud123_cookies')
+             if cookies_json:
+                 has_session = True
+                 message = 'Cookie 会话正常'
+        else:
+             # Fallback check
+             token_json = _secret_store.get_secret('cloud123_token')
+             cookies_json = _secret_store.get_secret('cloud123_cookies')
+             password_creds = _secret_store.get_secret('cloud123_password_credentials')
+             has_session = bool(token_json or cookies_json or password_creds)
         
         if not has_session:
             return jsonify({
                 'success': True,
                 'data': {
                     'hasValidSession': False,
-                    'message': '未配置 123 云盘会话'
+                    'message': '未配置 123 云盘会话',
+                    'loginMethod': login_method
                 }
             }), 200
         
@@ -233,7 +270,8 @@ def get_session_health():
             'data': {
                 'hasValidSession': True,
                 'lastCheck': __import__('datetime').datetime.now().isoformat(),
-                'message': '会话检查完成'
+                'message': message,
+                'loginMethod': login_method
             }
         }), 200
     except Exception as e:

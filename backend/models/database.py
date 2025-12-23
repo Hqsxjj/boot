@@ -13,7 +13,11 @@ Base = SecretsBase
 
 def get_data_dir():
     """Get data directory path."""
-    data_dir = os.environ.get('DATA_DIR', '/data')
+    # Default to 'data' in current working directory if DATA_DIR is not set
+    # This ensures persistence works in development (c:\boot\data) and
+    # in Docker if the working dir is volume mounted (e.g. /app/data)
+    default_dir = os.path.join(os.getcwd(), 'data')
+    data_dir = os.environ.get('DATA_DIR', default_dir)
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
 

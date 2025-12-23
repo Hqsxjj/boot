@@ -1,9 +1,160 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
-import { Save, RefreshCw, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2, Image, Download, Palette } from 'lucide-react';
+import {
+    Save, RefreshCw, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2,
+    Image, Download, Palette, Settings2, Library as LibraryIcon, Eye, Grid3X3, CloudUpload,
+    Type, History, Server, Loader2
+} from 'lucide-react';
+import html2canvas from 'html2canvas';
 
-// === 定义默认配置 (防止后端连不上时页面白屏) ===
+// === Shared Constants & Components for Studio Generator ===
+
+const DEFAULT_POSTERS = [
+    'https://images.unsplash.com/photo-1594908900066-3f47337549d8?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=1200',
+];
+
+const STUDIO_THEMES = [
+    // 深色混色系
+    { id: 'noir_deep', name: '暗影', isDark: true, bgStyle: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)', textColor: '#FFFFFF', accent: '#ffffff' },
+    { id: 'crimson_dark', name: '红月', isDark: true, bgStyle: 'linear-gradient(135deg, #1a0a0a 0%, #4a0000 70%, #000000 100%)', textColor: '#FFD7D7', accent: '#FF4B4B' },
+    { id: 'emerald_mix', name: '深翠', isDark: true, bgStyle: 'linear-gradient(135deg, #0d1b1e 0%, #1b3d3d 60%, #050a0a 100%)', textColor: '#A7FFEB', accent: '#1DE9B6' },
+    { id: 'golden_mix', name: '金座', isDark: true, bgStyle: 'linear-gradient(135deg, #1a1610 0%, #3d2b1f 50%, #000000 100%)', textColor: '#D4AF37', accent: '#D4AF37' },
+    // 浅色混色系
+    { id: 'sunset_light', name: '暖阳', isDark: false, bgStyle: 'linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%)', textColor: '#2C3E50', accent: '#FF7EB3' },
+    { id: 'mint_dream', name: '薄荷', isDark: false, bgStyle: 'linear-gradient(135deg, #D9AFD9 0%, #97D9E1 100%)', textColor: '#1a1a1a', accent: '#74EBD5' },
+    { id: 'lavender_sky', name: '薰衣草', isDark: false, bgStyle: 'linear-gradient(135deg, #eecda3 0%, #ef629f 100%)', textColor: '#FFFFFF', accent: '#FFFFFF' },
+    { id: 'morni_mist', name: '晨曦', isDark: false, bgStyle: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', textColor: '#444444', accent: '#333333' },
+];
+
+const STUDIO_FONTS = [
+    { id: 'bebas', name: '电影字体', family: "'Bebas Neue', cursive" },
+    { id: 'mashan', name: '草书', family: "'Ma Shan Zheng', cursive" },
+    { id: 'inter', name: '现代', family: "'Inter', sans-serif" },
+    { id: 'orbitron', name: '科技', family: "'Orbitron', sans-serif" },
+];
+
+const STUDIO_TEXT_COLORS = [
+    { name: 'Pure White', value: '#FFFFFF' },
+    { name: 'Deep Black', value: '#000000' },
+    { name: 'Movie Gold', value: '#D4AF37' },
+    { name: 'Neon Blue', value: '#00D4FF' },
+    { name: 'Vibrant Red', value: '#FF4B4B' },
+];
+
+const LaurelWreath = ({ color }: { color: string }) => (
+    <svg width="100%" height="100%" viewBox="0 0 100 100" fill={color}>
+        <path d="M50,85 C35,85 20,70 20,40 C20,35 21,30 22,25 C18,30 15,40 15,50 C15,75 35,95 50,95 L50,85 Z" />
+        <path d="M50,85 C65,85 80,70 80,40 C80,35 79,30 78,25 C82,30 85,40 85,50 C85,75 65,95 50,95 L50,85 Z" />
+    </svg>
+);
+
+interface CoverCanvasProps {
+    id?: string;
+    theme: typeof STUDIO_THEMES[0];
+    layoutMode: 'stack' | 'grid';
+    libraryName: string;
+    subTitle: string;
+    posters: string[];
+    backdropUrl?: string;
+    currentFont: typeof STUDIO_FONTS[0];
+    activeTextColor: string;
+    titleX: number;
+    titleY: number;
+    titleGap: number;
+    titleSize: number;
+    gridIntensity: number;
+    posterX: number;
+    fanSpread: number;
+    fanRotation: number;
+    cycleIndex: number;
+    isSmall?: boolean;
+}
+
+const CoverCanvas: React.FC<CoverCanvasProps> = (props) => {
+    const {
+        id, theme, layoutMode, libraryName, subTitle, posters, backdropUrl, currentFont, activeTextColor,
+        titleX, titleY, titleGap, titleSize, gridIntensity, posterX, fanSpread, fanRotation, cycleIndex, isSmall
+    } = props;
+
+    const bgImage = backdropUrl || 'https://image.tmdb.org/t/p/original/8uS6B0KbhDZ3G9689br09v9I7xy.jpg';
+
+    const renderFlowingColumns = () => {
+        const colCount = 6;
+        return Array.from({ length: colCount }, (_, i) => {
+            const items = [...posters, ...posters, ...posters];
+            const duration = 120 + (i * 20);
+            return (
+                <div key={i} className="relative flex-1 h-full overflow-hidden">
+                    <div className={`flex flex-col gap-2 ${i % 2 === 0 ? 'animate-scrollUp' : 'animate-scrollDown'}`} style={{ animationDuration: `${duration}s` }}>
+                        {items.map((url, idx) => (
+                            <div key={idx} className="aspect-[2/3] w-full rounded-sm overflow-hidden border border-black/20 shadow-xl shrink-0 bg-black">
+                                <img src={url} className="w-full h-full object-cover block" loading="lazy" crossOrigin="anonymous" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        });
+    };
+
+    return (
+        <div id={id} className={`relative w-full aspect-video shadow-2xl rounded-2xl overflow-hidden transition-all duration-500`} style={{ background: theme.bgStyle }}>
+            {layoutMode === 'grid' ? (
+                <div className="absolute inset-0">
+                    <div className="absolute inset-0 flex gap-2 p-3 scale-110 z-10" style={{ opacity: gridIntensity / 100 }}>
+                        {renderFlowingColumns()}
+                    </div>
+                    <div className="absolute z-30 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 ease-out" style={{ left: `${titleX}%`, top: `${titleY}%`, transform: 'translate(-50%, -50%)', width: 'auto' }}>
+                        <div className="flex items-center gap-10">
+                            <div className="scale-x-[-1]" style={{ color: activeTextColor, width: isSmall ? '1.5vw' : '3vw', height: isSmall ? '1.5vw' : '3vw' }}><LaurelWreath color="currentColor" /></div>
+                            <h2 className="font-black leading-none uppercase whitespace-nowrap" style={{ fontSize: `${titleSize}vw`, fontFamily: currentFont.family, color: activeTextColor, textShadow: activeTextColor === '#000000' ? '0 5px 15px rgba(255,255,255,0.4)' : '0 10px 50px rgba(0,0,0,0.9)' }}>{libraryName}</h2>
+                            <div style={{ color: activeTextColor, width: isSmall ? '1.5vw' : '3vw', height: isSmall ? '1.5vw' : '3vw' }}><LaurelWreath color="currentColor" /></div>
+                        </div>
+                        <div className="flex flex-col items-center" style={{ marginTop: `${titleGap * (isSmall ? 0.4 : 1)}px` }}>
+                            <div className="w-24 h-[2px] rounded-full mb-6 opacity-80" style={{ backgroundColor: activeTextColor }} />
+                            <span className="font-black tracking-[0.8em] uppercase block whitespace-nowrap" style={{ fontSize: '1.4vw', color: activeTextColor, opacity: 0.85 }}>{subTitle}</span>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="absolute inset-0">
+                    <img src={bgImage} className={`absolute inset-0 w-full h-full object-cover z-10 pointer-events-none transition-opacity duration-1000 ${theme.isDark ? 'opacity-30' : 'opacity-15'}`} crossOrigin="anonymous" />
+                    <div className={`absolute inset-0 z-20 pointer-events-none ${theme.isDark ? 'bg-gradient-to-r from-black/80 via-black/30 to-transparent' : 'bg-gradient-to-r from-white/70 via-white/20 to-transparent'}`} />
+                    <div className="absolute z-40 flex flex-col items-start pointer-events-none transition-all duration-300 ease-out" style={{ left: `${titleX}%`, top: `${titleY}%`, transform: 'translate(-50%, -50%)', minWidth: '40%' }}>
+                        <h2 className="font-black leading-[0.85] tracking-tight uppercase whitespace-nowrap" style={{ fontSize: `${titleSize}vw`, fontFamily: currentFont.family, color: activeTextColor, textShadow: activeTextColor === '#000000' ? '0 5px 20px rgba(255,255,255,0.5)' : '0 20px 80px rgba(0,0,0,1)' }}>{libraryName}</h2>
+                        <span className="font-black tracking-[1.5em] uppercase block whitespace-nowrap" style={{ marginTop: `${titleGap * (isSmall ? 0.4 : 1)}px`, fontSize: '1.2vw', color: activeTextColor, opacity: 0.9 }}>{subTitle}</span>
+                    </div>
+                    <div className="absolute z-30 w-[30%] h-[85%] transition-all duration-500" style={{ left: `${posterX}%`, top: '50%', transform: 'translate(-50%, -50%)' }}>
+                        <div className="relative w-full h-full">
+                            {posters.slice(0, 6).map((url, i) => {
+                                const idx = (i - cycleIndex + 6) % 6;
+                                const op = 1 - (idx * 0.15);
+                                const sc = 1 - (idx * 0.08);
+                                const trans = `translateX(${-idx * fanSpread * (isSmall ? 0.4 : 1)}px) rotate(${-idx * fanRotation}deg) scale(${sc})`;
+                                return (
+                                    <div key={i} className="absolute inset-0 transition-all duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)]" style={{ zIndex: 10 - idx, opacity: op, transform: trans }}>
+                                        <div className="w-full h-full rounded-2xl overflow-hidden shadow-xl border border-white/10 bg-black">
+                                            <img src={url} className="w-full h-full object-cover block" crossOrigin="anonymous" />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// === End of Shared Components ===
+
 const DEFAULT_CONFIG: AppConfig = {
     emby: {
         serverUrl: "",
@@ -17,8 +168,9 @@ const DEFAULT_CONFIG: AppConfig = {
             cronSchedule: "0 0 * * *"
         }
     }
-    // 其他必填字段会由 api.getConfig() 提供
 } as any;
+
+type GeneratorMode = 'classic' | 'studio_stack' | 'studio_grid';
 
 export const EmbyView: React.FC = () => {
     const [config, setConfig] = useState<AppConfig | null>(null);
@@ -27,60 +179,62 @@ export const EmbyView: React.FC = () => {
     const [toast, setToast] = useState<string | null>(null);
     const [missingData, setMissingData] = useState<any[]>([]);
 
-    // 轮询获取缺集数据 (3秒一次，实现实时更新)
-    useEffect(() => {
-        const fetchMissingData = async () => {
-            try {
-                const res = await api.getMissingEpisodes();
-                if (res.success && res.data) {
-                    setMissingData(res.data);
-                }
-            } catch (err) {
-                console.error("Fetch missing data failed:", err);
-            }
-        };
-
-        fetchMissingData(); // Initial fetch
-        const interval = setInterval(fetchMissingData, 3000);
-        return () => clearInterval(interval);
-    }, []);
-
-    // Cover Generator State
-    const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
-    const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
+    // === Shared States ===
     const [selectedLibrary, setSelectedLibrary] = useState<string>('');
     const [coverTitle, setCoverTitle] = useState('电影收藏');
     const [coverSubtitle, setCoverSubtitle] = useState('MOVIE COLLECTION');
+    const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
+    const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
+
+    // === Classic Generator States ===
+    const [coverThemes, setCoverThemes] = useState<Array<{ index: number; name: string; colors: string[] }>>([]);
     const [selectedTheme, setSelectedTheme] = useState(0);
     const [coverFormat, setCoverFormat] = useState<'png' | 'gif'>('png');
     const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
-    // 参数滑块 (匹配 Python Tkinter 参数)
-    const [titleSize, setTitleSize] = useState(192);     // 主标题文字大小 10vw (默认)
-    const [offsetX, setOffsetX] = useState(40);          // 海报水平位移 (X) 默认 40
-    const [posterScale, setPosterScale] = useState(30);  // 整体缩放比例 30%
-    const [vAlign, setVAlign] = useState(60);            // 标题纵向对齐 60%
-    const [spacing, setSpacing] = useState(3.0);         // 堆叠间距系数 3.0
-    const [angleScale, setAngleScale] = useState(1.0);   // 旋转角度系数 1.0
-    const [posterCount, setPosterCount] = useState(5);   // 海报数量 (3-7)
-    const [useBackdrop, setUseBackdrop] = useState(false); // 是否使用横幅背景
-
-    // 批量选择 (用 Set 存储选中的 ID)
+    // Parameters for Classic
+    const [titleSize, setTitleSize] = useState(192);
+    const [offsetX, setOffsetX] = useState(40);
+    const [posterScale, setPosterScale] = useState(30);
+    const [vAlign, setVAlign] = useState(60);
+    const [spacing, setSpacing] = useState(3.0);
+    const [angleScale, setAngleScale] = useState(1.0);
+    const [posterCount, setPosterCount] = useState(5);
+    const [useBackdrop, setUseBackdrop] = useState(false);
+    // Batch
     const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
-    // 批量预览结果 (LibID -> Image URL)
     const [batchPreviews, setBatchPreviews] = useState<Record<string, string>>({});
 
-    // 加载配置
+    // === Studio Generator States ===
+    const [generatorMode, setGeneratorMode] = useState<GeneratorMode>('classic');
+    const [studioPosters, setStudioPosters] = useState<string[]>(DEFAULT_POSTERS);
+    const [studioTheme, setStudioTheme] = useState(STUDIO_THEMES[0]);
+    const [studioFont, setStudioFont] = useState(STUDIO_FONTS[0]);
+    const [studioOverrideColor, setStudioOverrideColor] = useState<string | null>(null);
+    const [studioBackdropUrl, setStudioBackdropUrl] = useState<string | undefined>(undefined);
+
+    // Studio Precision Params
+    const [sTitleX, setSTitleX] = useState(50);
+    const [sTitleY, setSTitleY] = useState(50);
+    const [sTitleGap, setSTitleGap] = useState(24);
+    const [sTitleSize, setSTitleSize] = useState(4.5);
+    const [fanSpread, setFanSpread] = useState(45);
+    const [fanRotation, setFanRotation] = useState(6);
+    const [sPosterX, setSPosterX] = useState(72);
+    const [gridIntensity, setGridIntensity] = useState(80);
+    const [cycleIndex, setCycleIndex] = useState(0);
+
+    const activeStudioTextColor = studioOverrideColor || studioTheme.textColor;
+
+    // Load Config & Missing Data
     useEffect(() => {
-        const initConfig = async () => {
+        const init = async () => {
             try {
                 const data = await api.getConfig();
                 if (data?.emby) {
                     setConfig(data);
-                    // 如果获取到了配置，加载媒体库 (不阻塞)
                     if (data.emby.serverUrl && data.emby.apiKey) {
-                        loadCoverData();
+                        loadCoverData(); // Classic & Shared data
                     }
                 } else {
                     setConfig(DEFAULT_CONFIG);
@@ -90,342 +244,237 @@ export const EmbyView: React.FC = () => {
                 setConfig(DEFAULT_CONFIG);
             }
         };
+        init();
 
-        initConfig();
+        const fetchMissingData = async () => {
+            const res = await api.getMissingEpisodes();
+            if (res.success && res.data) setMissingData(res.data);
+        };
+        fetchMissingData();
+        const interval = setInterval(fetchMissingData, 3000);
+        return () => clearInterval(interval);
     }, []);
 
-    // 批量生成并替换封面 (后台任务，刷新页面不中断)
-    const handleBatchApply = async () => {
-        if (batchSelection.size === 0) {
-            setToast('请至少选择一个媒体库');
-            return;
+    // Studio Cycle Animation
+    useEffect(() => {
+        if (generatorMode === 'studio_stack') {
+            const timer = setInterval(() => {
+                setCycleIndex(prev => (prev + 1) % studioPosters.length);
+            }, 4000);
+            return () => clearInterval(timer);
         }
+    }, [studioPosters.length, generatorMode]);
 
-        if (!confirm(`确定要为选中的 ${batchSelection.size} 个媒体库生成并覆盖现有封面吗？此操作不可逆。`)) {
-            return;
-        }
+    // Update Studio Layout Mode derived from Tab
+    const studioLayoutMode = generatorMode === 'studio_grid' ? 'grid' : 'stack';
 
-        setIsGenerating(true);
-
-        try {
-            const libraryIds = Array.from(batchSelection);
-
-            // 构建配置参数
-            const coverConfig = {
-                titleSize,
-                offsetX,
-                posterScale,
-                vAlign,
-                spacing,
-                angleScale,
-                posterCount,
-                useBackdrop,
-                format: coverFormat,
-                theme: selectedTheme
-            };
-
-            // 启动后台任务
-            const result = await api.startCoverBatchBackground(libraryIds, coverConfig);
-
-            if (!result.success) {
-                if (result.error?.includes('正在进行中')) {
-                    setToast('封面批量生成正在后台运行中，请稍后');
-                } else {
-                    setToast(result.error || '启动失败');
-                }
-            } else {
-                setToast('封面批量生成已在后台启动，进度请查看运行日志。刷新页面不会中断生成。');
-            }
-        } catch (e: any) {
-            const errorMsg = e.response?.data?.error || e.message || '网络错误';
-            setToast(`操作失败: ${errorMsg}`);
-        } finally {
-            setIsGenerating(false);
-            setTimeout(() => setToast(null), 5000);
-        }
+    // Helper Functions
+    const showToast = (msg: string, isError = false) => {
+        setToast(msg);
+        setTimeout(() => setToast(null), 3000);
     };
 
-    // 保存配置
     const handleSave = async () => {
         if (!config) return;
         setIsSaving(true);
         try {
             await api.saveConfig(config);
-            setToast('配置已保存');
-            setTimeout(() => setToast(null), 3000);
+            showToast('配置已保存');
         } catch (e: any) {
-            const errorMsg = e.response?.data?.error || e.message || '保存失败';
-            console.error("Config save failed:", e);
-            setToast(`保存失败: ${errorMsg}`);
+            showToast('保存失败: ' + e.message, true);
         } finally {
             setIsSaving(false);
         }
     };
 
-    // 扫描缺集 (后台任务，刷新页面不中断)
-    const handleScan = async () => {
-        setIsScanning(true);
-        setMissingData([]);  // 清空之前的结果
-
-        try {
-            // 启动后台扫描任务
-            const result = await api.startMissingScanBackground();
-
-            if (!result.success) {
-                // 如果任务已在运行，显示提示
-                if (result.error?.includes('正在进行中')) {
-                    setToast('缺集扫描正在后台运行中，请稍后查看结果');
-                } else {
-                    setToast(result.error || '启动扫描失败');
-                }
-                setIsScanning(false);
-                return;
-            }
-
-            setToast('缺集扫描已在后台启动，进度请查看运行日志。刷新页面不会中断扫描。');
-
-            // 扫描在后台运行，前端只需要显示"已启动"
-            // 用户可以刷新页面，扫描仍会继续
-            setIsScanning(false);
-
-        } catch (e: any) {
-            const errorMsg = e?.response?.data?.error || e?.message || '网络错误';
-            setToast(`启动扫描失败: ${errorMsg}`);
-            console.error('Scan start error:', e);
-            setIsScanning(false);
-        } finally {
-            setTimeout(() => setToast(null), 5000);
-        }
-    };
-
-    // 辅助更新函数
-    const updateNested = (section: keyof AppConfig, key: string, value: any) => {
-        if (!config) return;
-        setConfig(prev => prev ? ({
-            ...prev,
-            [section]: { ...(prev[section] as any), [key]: value }
-        }) : null);
-    };
-
+    // Config Updaters
     const updateNotifications = (key: string, value: any) => {
         if (!config) return;
-        setConfig(prev => prev ? ({
-            ...prev,
-            emby: {
-                ...prev.emby,
-                notifications: { ...prev.emby.notifications, [key]: value }
-            }
-        }) : null);
+        setConfig(prev => prev ? ({ ...prev, emby: { ...prev.emby, notifications: { ...prev.emby.notifications, [key]: value } } }) : null);
     };
-
+    const updateNested = (section: keyof AppConfig, key: string, value: any) => {
+        if (!config) return;
+        setConfig(prev => prev ? ({ ...prev, [section]: { ...(prev[section] as any), [key]: value } }) : null);
+    };
     const updateMissing = (key: string, value: any) => {
         if (!config) return;
-        setConfig(prev => prev ? ({
-            ...prev,
-            emby: {
-                ...prev.emby,
-                missingEpisodes: { ...prev.emby.missingEpisodes, [key]: value }
-            }
-        }) : null);
+        setConfig(prev => prev ? ({ ...prev, emby: { ...prev.emby, missingEpisodes: { ...prev.emby.missingEpisodes, [key]: value } } }) : null);
     };
 
-    const copyWebhook = async () => {
-        const port = window.location.port || '18080';
-        const webhookUrl = `http://${window.location.hostname}:${port}/api/emby/webhook`;
-
+    const handleScan = async () => {
+        setIsScanning(true);
+        setMissingData([]);
         try {
-            // 尝试使用现代 Clipboard API
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(webhookUrl);
-                setToast('Emby Webhook 地址已复制');
+            const result = await api.startMissingScanBackground();
+            if (!result.success && !result.error?.includes('正在进行中')) {
+                showToast(result.error || '失败', true);
             } else {
-                // Fallback: 使用 execCommand
-                const textArea = document.createElement('textarea');
-                textArea.value = webhookUrl;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-9999px';
-                textArea.style.top = '0';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-
-                const success = document.execCommand('copy');
-                document.body.removeChild(textArea);
-
-                if (success) {
-                    setToast('Emby Webhook 地址已复制');
-                } else {
-                    setToast('复制失败，请手动复制');
-                }
+                showToast('扫描已在后台启动');
             }
-        } catch (err) {
-            console.error('复制失败:', err);
-            // 最终 fallback: 显示提示让用户手动复制
-            setToast('请手动复制上方地址');
-        }
-        setTimeout(() => setToast(null), 2000);
+        } catch (e) { showToast('扫描失败', true); }
+        finally { setIsScanning(false); }
     };
 
-    // Cover Generator Functions
+    // === Logic for Cover Generators ===
+
     const loadCoverData = async () => {
         setIsLoadingLibraries(true);
         try {
-            const [themesRes, librariesRes] = await Promise.all([
-                api.getCoverThemes(),
-                api.getCoverLibraries()
-            ]);
+            // Load Themes (Classic)
+            const themesRes = await api.getCoverThemes();
             if (themesRes.success) setCoverThemes(themesRes.data);
+
+            // Load Libraries (Shared)
+            const librariesRes = await api.getCoverLibraries();
             if (librariesRes.success) {
                 setCoverLibraries(librariesRes.data);
                 if (librariesRes.data.length > 0) {
                     const firstLib = librariesRes.data[0];
                     setSelectedLibrary(firstLib.id);
-                    // 自动填充标题
                     setCoverTitle(firstLib.name);
-                    const typeMap: Record<string, string> = {
-                        'movies': 'MOVIE COLLECTION',
-                        'tvshows': 'TV SHOWS',
-                        'music': 'MUSIC COLLECTION',
-                        'homevideos': 'HOME VIDEOS',
-                        'books': 'BOOK COLLECTION',
-                        'photos': 'PHOTO ALBUM',
-                        'musicvideos': 'MUSIC VIDEOS'
-                    };
-                    setCoverSubtitle(typeMap[firstLib.type?.toLowerCase()] || firstLib.type?.toUpperCase() || 'MEDIA COLLECTION');
+                    updateSubtitle(firstLib.type);
+
+                    // If Studio mode is active, fetch detailed posters too
+                    fetchStudioPosters(firstLib.id);
                 }
             }
+        } catch (e) { console.error(e); }
+        finally { setIsLoadingLibraries(false); }
+    };
+
+    const updateSubtitle = (type?: string) => {
+        const typeMap: Record<string, string> = {
+            'movies': 'MOVIE COLLECTION', 'tvshows': 'TV SHOWS',
+            'music': 'MUSIC COLLECTION', 'homevideos': 'HOME VIDEOS',
+            'books': 'BOOK COLLECTION', 'photos': 'PHOTO ALBUM', 'musicvideos': 'MUSIC VIDEOS'
+        };
+        setCoverSubtitle(typeMap[type?.toLowerCase() || ''] || type?.toUpperCase() || 'MEDIA COLLECTION');
+    };
+
+    const fetchStudioPosters = async (libId: string) => {
+        // 使用后端代理获取 Base64 图片，避免 html2canvas 的 CORS 问题
+        if (!libId) return;
+
+        try {
+            // 请求 24 张海报以填充网格
+            const res = await api.getLibraryPosters(libId, 24);
+            if (res.success && res.data && res.data.length > 0) {
+                setStudioPosters(res.data);
+            } else {
+                setStudioPosters(DEFAULT_POSTERS);
+            }
         } catch (e) {
-            console.error('加载封面生成器数据失败:', e);
-        } finally {
-            setIsLoadingLibraries(false);
+            console.error("获取海报失败:", e);
+            setStudioPosters(DEFAULT_POSTERS);
         }
     };
 
-    const handleGenerateCover = async () => {
-        // 如果有批量选择，进行批量预览生成 (限制前6个以防卡顿)
-        if (batchSelection.size > 0) {
-            setIsGenerating(true);
-            setBatchPreviews({}); // 清空旧预览
-            setCoverPreview(null); // 清空单图预览
-
-            try {
-                // 构建配置参数
-                const coverConfig = {
-                    titleSize,
-                    offsetX,
-                    posterScale,
-                    vAlign,
-                    spacing,
-                    angleScale,
-                    posterCount,
-                    useBackdrop,
-                    format: coverFormat,
-                    theme: selectedTheme
-                };
-
-                const targetIds = Array.from(batchSelection).slice(0, 6); // 限制前6个
-
-                // 串行生成以避免后端压力过大 (或者可以用 Promise.all 限制并发)
-                for (const libId of targetIds) {
-                    // 查找库信息以获取正确标题 (可选)
-                    const lib = coverLibraries.find(l => l.id === libId);
-                    const currentTitle = lib ? lib.name : "未知库";
-
-                    // 简单的类型映射
-                    let currentSubtitle = "MEDIA COLLECTION";
-                    if (lib && lib.type) {
-                        const typeMap: Record<string, string> = {
-                            'movies': 'MOVIE COLLECTION', 'tvshows': 'TV SHOWS',
-                            'music': 'MUSIC COLLECTION', 'homevideos': 'HOME VIDEOS',
-                            'books': 'BOOK COLLECTION', 'photos': 'PHOTO ALBUM', 'musicvideos': 'MUSIC VIDEOS'
-                        };
-                        currentSubtitle = typeMap[lib.type.toLowerCase()] || lib.type.toUpperCase();
-                    }
-
-                    const result = await api.generateCover({
-                        libraryId: libId,
-                        config: { ...coverConfig, title: currentTitle, subtitle: currentSubtitle }
-                    });
-
-                    if (result.success) {
-                        setBatchPreviews(prev => ({ ...prev, [libId]: result.data.image }));
-                    }
-                }
-                setToast(`批量预览生成完成 (已显示前${targetIds.length}个)`);
-            } catch (e) {
-                setToast('批量生成部分失败');
-            } finally {
-                setIsGenerating(false);
-            }
-            return;
-        }
-
-        if (!selectedLibrary) {
-            setToast('请先选择媒体库');
-            setTimeout(() => setToast(null), 3000);
-            return;
-        }
+    // Classic Generator Trigger
+    const handleGenerateClassic = async () => {
+        if (!selectedLibrary) return showToast('请先选择媒体库');
         setIsGenerating(true);
-        setBatchPreviews({}); // 清空批量预览
         try {
-            // 构建配置参数
             const coverConfig = {
-                title: coverTitle,
-                subtitle: coverSubtitle,
-                titleSize,
-                offsetX,
-                posterScale,
-                vAlign,
-                spacing,
-                angleScale,
-                posterCount,
-                useBackdrop,
-                format: coverFormat,
-                theme: selectedTheme
+                title: coverTitle, subtitle: coverSubtitle,
+                titleSize, offsetX, posterScale, vAlign, spacing, angleScale, posterCount, useBackdrop,
+                format: coverFormat, theme: selectedTheme
             };
-
-            const result = await api.generateCover({
-                libraryId: selectedLibrary,
-                config: coverConfig
-            });
+            const result = await api.generateCover({ libraryId: selectedLibrary, config: coverConfig });
             if (result.success) {
                 setCoverPreview(result.data.image);
-                setToast('封面生成成功！');
+                showToast('生成成功');
             } else {
-                setToast(result.error || '生成失败');
+                showToast(result.error || '生成失败', true);
             }
-            setTimeout(() => setToast(null), 3000);
-        } catch (e) {
-            setToast('生成失败');
-            setTimeout(() => setToast(null), 3000);
-        } finally {
+        } catch (e) { showToast('生成失败', true); }
+        finally { setIsGenerating(false); }
+    };
+
+    // Studio Generator Trigger (Upload)
+    const handleGenerateStudio = async () => {
+        if (!selectedLibrary) return showToast('请先选择媒体库');
+        const element = document.getElementById('studio-canvas');
+        if (!element) return;
+
+        setIsGenerating(true);
+        showToast('正在渲染 4K 封面...');
+        try {
+            const canvas = await html2canvas(element, { useCORS: true, scale: 2, backgroundColor: null });
+
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    showToast("渲染失败: 无法生成图片 Blob", true);
+                    setIsGenerating(false);
+                    return;
+                }
+
+                try {
+                    const res = await api.uploadRenderedCover(selectedLibrary, blob, coverTitle);
+                    if (res.success) {
+                        showToast('已上传并备份到 ' + (res.localPath || '本地'));
+                    } else {
+                        showToast(res.error || '上传失败', true);
+                    }
+                } catch (e: any) {
+                    showToast('上传失败: ' + (e.message || '网络错误'), true);
+                } finally {
+                    setIsGenerating(false);
+                }
+
+            }, 'image/png');
+        } catch (e: any) {
+            showToast(e.message, true);
             setIsGenerating(false);
         }
     };
 
-    const downloadCover = () => {
-        if (!coverPreview) return;
-        const link = document.createElement('a');
-        link.href = coverPreview;
-        link.download = `emby-cover.${coverFormat}`;
-        link.click();
+    // Library Selection Handler
+    const handleSelectLibrary = (libId: string) => {
+        setSelectedLibrary(libId);
+        const lib = coverLibraries.find(l => l.id === libId);
+        if (lib) {
+            setCoverTitle(lib.name);
+            updateSubtitle(lib.type);
+            // Fetch posters for studio
+            fetchStudioPosters(libId);
+        }
     };
 
-    // === Loading 状态判断 ===
-    // 只有当 config 真的是 null 时才显示 Loading
-    // 现在因为有了 catch -> setConfig(DEFAULT)，除非 JS 报错，否则几乎不会一直卡在这里
+    const copyWebhook = async () => {
+        const port = window.location.port || '18080';
+        const webhookUrl = `http://${window.location.hostname}:${port}/api/emby/webhook`;
+        try {
+            await navigator.clipboard.writeText(webhookUrl);
+            showToast('已复制');
+        } catch { showToast('复制失败', true); }
+    };
+
     if (!config) return <div className="p-10 flex justify-center text-slate-500"><RefreshCw className="animate-spin" /></div>;
 
-    const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
+    const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-sm ring-1 ring-white/50 dark:ring-white/5";
     const inputClass = "w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-green-500 outline-none text-sm font-mono backdrop-blur-sm shadow-inner";
     const actionBtnClass = "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors";
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            {/* Styles for Animations */}
+            <style>{`
+                .scrollbar-hide::-webkit-scrollbar { display: none; }
+                @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-33.33%); } }
+                @keyframes scrollDown { from { transform: translateY(-33.33%); } to { transform: translateY(0); } }
+                .animate-scrollUp { animation: scrollUp linear infinite; }
+                .animate-scrollDown { animation: scrollDown linear infinite; }
+                /* Custom Range Slider for Studio */
+                .studio-range::-webkit-slider-thumb { 
+                    -webkit-appearance: none; width: 12px; height: 12px; 
+                    background: #fff; border-radius: 50%; border: 2px solid #000;
+                    cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                }
+            `}</style>
+
             {toast && (
-                <div className="fixed top-6 right-6 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] border-slate-700/50">
-                    <CheckCircle2 size={18} className="text-green-400" />
-                    {toast}
+                <div className={`fixed top-6 right-6 px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] backdrop-blur-md ${toast.includes('失败') ? 'bg-red-500/90 text-white border-red-400' : 'bg-slate-800/90 text-white border-slate-700'}`}>
+                    <CheckCircle2 size={18} /> {toast}
                 </div>
             )}
 
@@ -434,534 +483,303 @@ export const EmbyView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-
                 {/* Notifications & Reporting */}
                 <section className={`${glassCardClass} overflow-hidden h-fit`}>
                     <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-sky-50 dark:bg-sky-900/20 rounded-lg text-sky-600 dark:text-sky-400 shadow-inner">
-                                <Bell size={20} />
-                            </div>
+                            <div className="p-2 bg-sky-50 dark:bg-sky-900/20 rounded-lg text-sky-600 dark:text-sky-400 shadow-inner"><Bell size={20} /></div>
                             <h3 className="font-bold text-slate-700 dark:text-slate-200">通知与报告</h3>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className={`${actionBtnClass} bg-sky-50 text-sky-600 hover:bg-sky-100 dark:bg-sky-900/20 dark:text-sky-400 dark:hover:bg-sky-900/40 disabled:opacity-50`}
-                            >
-                                {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-                                保存
-                            </button>
-                        </div>
+                        <button onClick={handleSave} disabled={isSaving} className={`${actionBtnClass} bg-sky-50 text-sky-600 hover:bg-sky-100 disabled:opacity-50`}>
+                            {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />} 保存
+                        </button>
                     </div>
-
-                    <div className="p-6 space-y-6 transition-all duration-300">
-                        <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-xl border-[0.5px] border-slate-200/50 dark:border-slate-700/50 backdrop-blur-sm">
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Zap size={12} /> Emby Webhook 回调地址</label>
-                                <button onClick={copyWebhook} className="text-xs text-sky-600 hover:text-sky-500 flex items-center gap-1 font-bold"><Copy size={12} /> 复制</button>
+                    <div className="p-6 space-y-4">
+                        <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                            <div className="flex justify-between mb-2">
+                                <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Zap size={12} /> Webhook 地址</label>
+                                <button onClick={copyWebhook} className="text-xs text-sky-600 font-bold flex gap-1"><Copy size={12} /> 复制</button>
                             </div>
-                            <code className="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 break-all border-[0.5px] border-slate-200/50 dark:border-slate-800/50 select-all shadow-inner">
+                            <code className="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 break-all border border-slate-200/50 shadow-inner">
                                 http://{window.location.hostname}:{window.location.port || '18080'}/api/emby/webhook
                             </code>
-                            <p className="text-[10px] text-slate-400 mt-2">将此地址填入 Emby 服务器的 Webhook 设置中，可接收新媒体入库、播放开始/停止等通知</p>
                         </div>
-
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors border-[0.5px] border-transparent hover:border-slate-200/50 dark:hover:border-slate-700/30">
-                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">转发 Emby 通知 (附带海报)</span>
-                                <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
-                                    <input
-                                        id="fwdTg"
-                                        type="checkbox"
-                                        className="peer sr-only"
-                                        checked={config.emby.notifications?.forwardToTelegram || false}
-                                        onChange={(e) => updateNotifications('forwardToTelegram', e.target.checked)}
-                                    />
-                                    <label htmlFor="fwdTg" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-sky-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-white after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors border-[0.5px] border-transparent hover:border-slate-200/50 dark:hover:border-slate-700/30">
-                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">整理完成后自动刷新海报墙</span>
-                                <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
-                                    <input
-                                        id="refreshAfterOrganize"
-                                        type="checkbox"
-                                        className="peer sr-only"
-                                        checked={config.emby.refreshAfterOrganize || false}
-                                        onChange={(e) => updateNested('emby', 'refreshAfterOrganize', e.target.checked)}
-                                    />
-                                    <label htmlFor="refreshAfterOrganize" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-sky-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-white after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                                        <BarChart3 size={16} className="text-sky-500" />
-                                        观影报告推送频率
-                                    </label>
-                                    <select
-                                        value={config.emby.notifications?.playbackReportingFreq || 'daily'}
-                                        onChange={(e) => updateNotifications('playbackReportingFreq', e.target.value)}
-                                        className="px-3 py-1.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 text-xs font-bold backdrop-blur-sm"
-                                    >
-                                        <option value="daily">每天 (Daily)</option>
-                                        <option value="weekly">每周 (Weekly)</option>
-                                        <option value="monthly">每月 (Monthly)</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <div className="flex justify-between items-center p-2">
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">转发通知到 Telegram</span>
+                            <input type="checkbox" checked={config.emby.notifications?.forwardToTelegram} onChange={e => updateNotifications('forwardToTelegram', e.target.checked)} className="accent-sky-500 w-4 h-4" />
                         </div>
                     </div>
                 </section>
 
-                {/* Missing Episodes Dashboard */}
-                <section className={`${glassCardClass} overflow-hidden xl:col-span-2`}>
+                {/* Missing Episodes */}
+                <section className={`${glassCardClass} overflow-hidden h-fit`}>
                     <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-600 dark:text-purple-400 shadow-inner">
-                                <FileWarning size={20} />
-                            </div>
-                            <h3 className="font-bold text-slate-700 dark:text-slate-200">电视剧缺集检测</h3>
+                            <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-600 dark:text-purple-400"><FileWarning size={20} /></div>
+                            <h3 className="font-bold text-slate-700 dark:text-slate-200">缺集检测</h3>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className={`${actionBtnClass} bg-purple-50 text-purple-600 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/40 disabled:opacity-50`}
-                            >
-                                {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-                                保存设置
-                            </button>
-                        </div>
+                        <button onClick={handleScan} disabled={isScanning} className={`${actionBtnClass} bg-purple-50 text-purple-600 hover:bg-purple-100 disabled:opacity-50`}>
+                            {isScanning ? <RefreshCw className="animate-spin" size={12} /> : <Search size={12} />} 检测
+                        </button>
                     </div>
-
-                    <div className="p-6 transition-all duration-300">
-                        <div className="flex flex-col gap-6">
-                            <div className="flex items-end gap-4">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Clock size={12} /> 检测计划 (Cron 表达式)</label>
-                                    <input
-                                        type="text"
-                                        value={config.emby.missingEpisodes?.cronSchedule || "0 0 * * *"}
-                                        onChange={(e) => updateMissing('cronSchedule', e.target.value)}
-                                        placeholder="0 0 * * *"
-                                        className={inputClass + " font-mono"}
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pt-6">定期扫描 Emby 库中的电视剧，比对 TMDB 数据检测缺失的剧集。</p>
-                                </div>
-                            </div>
-
-                            {/* Dashboard Table */}
-                            <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border-[0.5px] border-slate-200/50 dark:border-slate-700/50 overflow-hidden">
-                                <div className="px-4 py-2 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex justify-between items-center bg-slate-100/30 dark:bg-slate-800/30">
-                                    <span className="text-xs font-bold text-slate-500 uppercase">检测结果预览</span>
-                                    <button
-                                        onClick={handleScan}
-                                        disabled={isScanning}
-                                        className="text-xs text-purple-600 hover:text-purple-500 font-bold flex items-center gap-1 disabled:opacity-50"
-                                    >
-                                        {isScanning ? <RefreshCw className="animate-spin" size={12} /> : <Search size={12} />}
-                                        {isScanning ? "扫描中..." : "立即检测"}
-                                    </button>
-                                </div>
-
-                                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
-                                    {missingData.length === 0 && !isScanning && (
-                                        <div className="p-8 text-center text-slate-400 text-xs">
-                                            暂无数据，请点击右上角"立即检测"
-                                        </div>
-                                    )}
-
-                                    {missingData.length > 0 && (
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="text-slate-500 dark:text-slate-400 bg-white/20 dark:bg-white/5 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 sticky top-0 backdrop-blur-sm">
-                                                <tr>
-                                                    <th className="p-4 font-medium w-24">海报</th>
-                                                    <th className="p-4 font-medium min-w-[140px]">剧集名称</th>
-                                                    <th className="p-4 font-medium w-24 text-center">季</th>
-                                                    <th className="p-4 font-medium w-24 text-center">总集数</th>
-                                                    <th className="p-4 font-medium w-24 text-center">已有</th>
-                                                    <th className="p-4 font-medium text-red-500 min-w-[140px]">缺失集数</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                {missingData.map((item) => (
-                                                    <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
-                                                        <td className="p-4">
-                                                            <div className="w-16 h-24 bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 rounded-lg overflow-hidden shadow-lg flex-shrink-0">
-                                                                {item.poster ? (
-                                                                    <img src={item.poster} alt="poster" className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">N/A</div>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <span className="font-semibold text-slate-800 dark:text-slate-200 text-base">{item.name}</span>
-                                                        </td>
-                                                        <td className="p-4 text-center">
-                                                            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-xs font-bold">
-                                                                S{String(item.season).padStart(2, '0')}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-4 text-center text-slate-600 dark:text-slate-400 font-medium text-base">{item.totalEp}</td>
-                                                        <td className="p-4 text-center">
-                                                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-bold">
-                                                                {item.localEp}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <span className="text-red-500 dark:text-red-400 font-mono font-bold text-sm bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded">
-                                                                {item.missing}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
-                                </div>
-                            </div>
+                    <div className="p-6">
+                        <div className="flex items-center gap-4 mb-4">
+                            <input type="text" value={config.emby.missingEpisodes?.cronSchedule} onChange={e => updateMissing('cronSchedule', e.target.value)} className={inputClass} placeholder="Cron Expression" />
+                        </div>
+                        <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-slate-200/50 h-[150px] overflow-y-auto p-4 text-sm text-slate-600 dark:text-slate-400">
+                            {missingData.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {missingData.map(m => (
+                                        <li key={m.id} className="flex justify-between"><span>{m.name}</span> <span className="text-red-500 font-bold">缺 {m.missing} 集</span></li>
+                                    ))}
+                                </ul>
+                            ) : <div className="text-center py-4">暂无缺集数据</div>}
                         </div>
                     </div>
                 </section>
 
-                {/* Cover Generator */}
-                <section className={`${glassCardClass} overflow-hidden xl:col-span-2`}>
-                    <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
+                {/* === Unified Cover Generator === */}
+                <section className={`${glassCardClass} overflow-hidden xl:col-span-2 flex flex-col`}>
+                    <div className="px-6 py-4 border-b border-slate-200/50 dark:border-slate-700/50 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-50/30 dark:bg-slate-800/20">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400 shadow-inner">
-                                <Image size={20} />
-                            </div>
-                            <h3 className="font-bold text-slate-700 dark:text-slate-200">封面图生成器</h3>
+                            <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400"><Image size={20} /></div>
+                            <h3 className="font-bold text-slate-700 dark:text-slate-200">封面生成器</h3>
                         </div>
-                        <div className="flex items-center gap-3 hidden">
+
+                        {/* Mode Switcher Tabs */}
+                        <div className="flex p-1 bg-slate-200/50 dark:bg-black/30 rounded-lg border border-slate-200 dark:border-slate-700">
                             <button
-                                onClick={loadCoverData}
-                                disabled={isLoadingLibraries}
-                                className={`${actionBtnClass} bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/40 disabled:opacity-50`}
+                                onClick={() => setGeneratorMode('classic')}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${generatorMode === 'classic' ? 'bg-white dark:bg-slate-800 shadow text-amber-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
                             >
-                                {isLoadingLibraries ? <RefreshCw className="animate-spin" size={12} /> : <RefreshCw size={12} />}
-                                加载媒体库
+                                经典 3D
+                            </button>
+                            <button
+                                onClick={() => setGeneratorMode('studio_stack')}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${generatorMode === 'studio_stack' ? 'bg-white dark:bg-slate-800 shadow text-amber-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                            >
+                                动态堆叠
+                            </button>
+                            <button
+                                onClick={() => setGeneratorMode('studio_grid')}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${generatorMode === 'studio_grid' ? 'bg-white dark:bg-slate-800 shadow text-amber-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                            >
+                                流体墙幕
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button onClick={loadCoverData} disabled={isLoadingLibraries} className={`${actionBtnClass} bg-slate-100 text-slate-600`}>
+                                <RefreshCw size={12} className={isLoadingLibraries ? 'animate-spin' : ''} /> 刷新库
+                            </button>
+                            <button
+                                onClick={generatorMode === 'classic' ? handleGenerateClassic : handleGenerateStudio}
+                                disabled={isGenerating}
+                                className={`${actionBtnClass} bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20`}
+                            >
+                                {isGenerating ? <Loader2 className="animate-spin" size={14} /> : <CloudUpload size={14} />}
+                                {generatorMode === 'classic' ? '生成并上传' : '渲染并同步'}
                             </button>
                         </div>
                     </div>
 
-                    <div className="p-6 transition-all duration-300">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Left: Controls */}
-                            <div className="space-y-5">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-between">
-                                        <span>选择媒体库 (已选 {batchSelection.size})</span>
-                                        <button
-                                            onClick={() => {
-                                                if (batchSelection.size === coverLibraries.length) {
-                                                    setBatchSelection(new Set());
-                                                } else {
-                                                    setBatchSelection(new Set(coverLibraries.map(l => l.id)));
-                                                }
-                                            }}
-                                            className="text-amber-500 hover:text-amber-600 text-xs"
+                    <div className="flex flex-col xl:flex-row h-[800px] xl:h-[600px] divide-y xl:divide-y-0 xl:divide-x divide-slate-200/50 dark:divide-slate-700/50">
+                        {/* Left: Controls Pane */}
+                        <div className="w-full xl:w-[400px] flex flex-col bg-slate-50/50 dark:bg-slate-900/30 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+                            {/* Library Selector */}
+                            <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50">
+                                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">选择媒体库</label>
+                                <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                                    {coverLibraries.map(lib => (
+                                        <div
+                                            key={lib.id}
+                                            onClick={() => handleSelectLibrary(lib.id)}
+                                            className={`px-3 py-2 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${selectedLibrary === lib.id ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                                         >
-                                            {batchSelection.size === coverLibraries.length ? '全不选' : '全选'}
-                                        </button>
-                                    </label>
-                                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden max-h-[180px] overflow-y-auto">
-                                        {coverLibraries.length === 0 && (
-                                            <div className="p-4 text-center text-slate-400 text-sm">请先点击"加载媒体库"</div>
-                                        )}
-                                        {coverLibraries.map(lib => (
-                                            <label
-                                                key={lib.id}
-                                                className={`flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border-b last:border-0 border-slate-100 dark:border-slate-800 transition-colors ${selectedLibrary === lib.id ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}
-                                                onClick={() => {
-                                                    // 防止触发两次
-                                                    // 点击行也能切换预览选中态，但 checkbox 是独立的
-                                                }}
-                                            >
+                                            <span className="text-sm">{lib.name}</span>
+                                            <span className="text-[10px] opacity-70 uppercase border border-current px-1 rounded">{lib.type}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Shared Title Inputs */}
+                            <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50 space-y-3">
+                                <label className="text-xs font-bold text-slate-500 uppercase block">标题设置</label>
+                                <input value={coverTitle} onChange={e => setCoverTitle(e.target.value)} className={inputClass} placeholder="主标题" />
+                                <input value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} className={inputClass} placeholder="副标题" />
+                            </div>
+
+                            {/* Dynamic Controls based on Mode */}
+                            <div className="flex-1 p-4 space-y-6">
+                                {generatorMode === 'classic' ? (
+                                    <>
+                                        {/* Classic Controls */}
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Palette size={12} /> 主题预设 (Classic)</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button onClick={() => setSelectedTheme(-1)} className={`px-2 py-1 text-[10px] border rounded ${selectedTheme === -1 ? 'bg-amber-500 text-white' : ''}`}>自动</button>
+                                                {coverThemes.map(t => (
+                                                    <button key={t.index} onClick={() => setSelectedTheme(t.index)} className={`w-6 h-6 rounded-full border ${selectedTheme === t.index ? 'ring-2 ring-amber-500' : ''}`} style={{ background: `linear-gradient(45deg, ${t.colors[0]}, ${t.colors[1]})` }} title={t.name} />
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>海报数量</span><span>{posterCount}</span></div>
+                                                <input type="range" min="1" max="7" value={posterCount} onChange={e => setPosterCount(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>字号大小</span><span>{titleSize}</span></div>
+                                                <input type="range" min="50" max="300" value={titleSize} onChange={e => setTitleSize(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>水平偏移 X</span><span>{offsetX}</span></div>
+                                                <input type="range" min="0" max="500" value={offsetX} onChange={e => setOffsetX(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                            </div>
+                                            <div className="flex items-center justify-between pt-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" checked={useBackdrop} onChange={e => setUseBackdrop(e.target.checked)} className="accent-amber-500" />
+                                                    <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">使用横幅背景</span>
+                                                </div>
+                                                <div className="flex bg-slate-200 dark:bg-slate-700 rounded-lg p-0.5">
+                                                    <button onClick={() => setCoverFormat('png')} className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${coverFormat === 'png' ? 'bg-white text-amber-600 shadow' : 'text-slate-500 hover:text-slate-300'}`}>静态</button>
+                                                    <button onClick={() => setCoverFormat('gif')} className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${coverFormat === 'gif' ? 'bg-white text-amber-600 shadow' : 'text-slate-500 hover:text-slate-300'}`}>动态</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Studio Controls */}
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Palette size={12} /> 风格预设 (Studio)</label>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {STUDIO_THEMES.map(t => (
+                                                    <button key={t.id} onClick={() => setStudioTheme(t)} className={`h-8 rounded-md border-2 overflow-hidden transition-all ${studioTheme.id === t.id ? 'border-amber-500 scale-105 shadow' : 'border-transparent opacity-70 hover:opacity-100'}`}>
+                                                        <div className="w-full h-full" style={{ background: t.bgStyle }} />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase flex gap-1"><Type size={12} /> 字体与颜色</label>
+                                            <div className="flex gap-2">
+                                                {STUDIO_FONTS.map(f => (
+                                                    <button key={f.id} onClick={() => setStudioFont(f)} className={`flex-1 py-1 text-[10px] border rounded ${studioFont.id === f.id ? 'bg-slate-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`} style={{ fontFamily: f.family }}>{f.name}</button>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-1 justify-between">
+                                                {STUDIO_TEXT_COLORS.map(c => (
+                                                    <button key={c.value} onClick={() => setStudioOverrideColor(c.value)} className={`w-6 h-6 rounded-full border ${studioOverrideColor === c.value ? 'ring-2 ring-amber-500' : ''}`} style={{ backgroundColor: c.value }} />
+                                                ))}
+                                                <button onClick={() => setStudioOverrideColor(null)} className="w-6 h-6 rounded-full border flex items-center justify-center bg-slate-100 text-slate-400"><History size={12} /></button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>标题位置 X / Y</span><span>{sTitleX}% / {sTitleY}%</span></div>
+                                                <div className="flex gap-2">
+                                                    <input type="range" min="0" max="100" value={sTitleX} onChange={e => setSTitleX(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                                    <input type="range" min="0" max="100" value={sTitleY} onChange={e => setSTitleY(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>标题字号</span><span>{sTitleSize}vw</span></div>
+                                                <input type="range" min="1" max="15" step="0.1" value={sTitleSize} onChange={e => setSTitleSize(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                            </div>
+
+                                            {generatorMode === 'studio_stack' ? (
+                                                <>
+                                                    <div>
+                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>展开度 & 旋转</span></div>
+                                                        <div className="flex gap-2">
+                                                            <input type="range" min="0" max="150" value={fanSpread} onChange={e => setFanSpread(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" title="展开" />
+                                                            <input type="range" min="0" max="45" value={fanRotation} onChange={e => setFanRotation(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" title="旋转" />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>海报位置 X</span><span>{sPosterX}%</span></div>
+                                                        <input type="range" min="0" max="100" value={sPosterX} onChange={e => setSPosterX(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div>
+                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>墙幕透明度</span><span>{gridIntensity}%</span></div>
+                                                    <input type="range" min="10" max="100" value={gridIntensity} onChange={e => setGridIntensity(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                                </div>
+                                            )}
+                                            {/* Use Library Backdrop Toggle for Studio */}
+                                            <div className="flex items-center gap-2 pt-2">
                                                 <input
                                                     type="checkbox"
-                                                    checked={batchSelection.has(lib.id)}
-                                                    onChange={(e) => {
-                                                        const newSet = new Set(batchSelection);
+                                                    checked={!!studioBackdropUrl}
+                                                    onChange={e => {
                                                         if (e.target.checked) {
-                                                            newSet.add(lib.id);
+                                                            alert("Studio 模式下暂未完全实装Emby背景图自动获取，将使用默认演示背景。");
+                                                            setStudioBackdropUrl('https://image.tmdb.org/t/p/original/8uS6B0KbhDZ3G9689br09v9I7xy.jpg');
                                                         } else {
-                                                            newSet.delete(lib.id);
+                                                            setStudioBackdropUrl(undefined);
                                                         }
-                                                        setBatchSelection(newSet);
                                                     }}
-                                                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 dark:border-slate-600"
+                                                    className="accent-amber-500"
                                                 />
-                                                <div
-                                                    className="flex-1"
-                                                    onClick={(e) => {
-                                                        e.preventDefault(); // 防止 checkbox 联动
-
-                                                        // 点击文字切换为当前预览对象
-                                                        setSelectedLibrary(lib.id);
-                                                        // 自动填充标题逻辑
-                                                        setCoverTitle(lib.name);
-                                                        const typeMap: Record<string, string> = {
-                                                            'movies': 'MOVIE COLLECTION',
-                                                            'tvshows': 'TV SHOWS',
-                                                            'music': 'MUSIC COLLECTION',
-                                                            'homevideos': 'HOME VIDEOS',
-                                                            'books': 'BOOK COLLECTION',
-                                                            'photos': 'PHOTO ALBUM',
-                                                            'musicvideos': 'MUSIC VIDEOS'
-                                                        };
-                                                        const typeEn = typeMap[lib.type?.toLowerCase()] || lib.type?.toUpperCase() || 'MEDIA COLLECTION';
-                                                        setCoverSubtitle(typeEn);
-                                                    }}
-                                                >
-                                                    <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{lib.name}</div>
-                                                    <div className="text-xs text-slate-400">{lib.type || '未知类型'}</div>
-                                                </div>
-                                                {selectedLibrary === lib.id && <div className="w-2 h-2 rounded-full bg-amber-500"></div>}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* 标题由媒体库自动填充，隐藏手动输入 */}
-
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                                        <Palette size={12} /> 主题配色
-                                    </label>
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            key="auto"
-                                            onClick={() => setSelectedTheme(-1)}
-                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${selectedTheme === -1 ? 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white border-transparent ring-2 ring-offset-2 ring-purple-500' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-purple-500'}`}
-                                            title="自动从海报提取颜色"
-                                        >
-                                            自动混色
-                                        </button>
-                                        {coverThemes.map(theme => (
-                                            <button
-                                                key={theme.index}
-                                                onClick={() => setSelectedTheme(theme.index)}
-                                                className={`w-8 h-8 rounded-lg transition-all ${selectedTheme === theme.index ? 'ring-2 ring-offset-2 ring-amber-500 scale-110' : 'opacity-80 hover:opacity-100'}`}
-                                                style={{ background: `linear-gradient(135deg, ${theme.colors[0]}, ${theme.colors[theme.colors.length - 1]})` }}
-                                                title={theme.name}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="useBackdrop"
-                                        checked={useBackdrop}
-                                        onChange={(e) => setUseBackdrop(e.target.checked)}
-                                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 dark:border-slate-600"
-                                    />
-                                    <label htmlFor="useBackdrop" className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                                        使用媒体库横幅做背景 (Use Library Backdrop)
-                                    </label>
-                                </div>
-
-                                {/* 参数滑块 - 匹配 Python Tkinter 参数 */}
-                                <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            主标题文字大小: {titleSize} (约 {(titleSize / 19.2).toFixed(1)}vw)
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={58}
-                                            max={230}
-                                            value={titleSize}
-                                            onChange={(e) => setTitleSize(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            海报水平位移 (X): {offsetX}
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={250}
-                                            value={offsetX}
-                                            onChange={(e) => setOffsetX(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            海报数量: {posterCount}
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={3}
-                                            max={7}
-                                            step={1}
-                                            value={posterCount}
-                                            onChange={(e) => setPosterCount(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            整体缩放比例 (%): {posterScale}
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={25}
-                                            max={35}
-                                            value={posterScale}
-                                            onChange={(e) => setPosterScale(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            标题纵向对齐 (%): {vAlign}
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={5}
-                                            max={65}
-                                            value={vAlign}
-                                            onChange={(e) => setVAlign(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            堆叠间距系数: {spacing}x
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={0.5}
-                                            max={3.0}
-                                            step={0.1}
-                                            value={spacing}
-                                            onChange={(e) => setSpacing(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                            旋转角度系数: {angleScale}x
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min={0.0}
-                                            max={2.0}
-                                            step={0.1}
-                                            value={angleScale}
-                                            onChange={(e) => setAngleScale(Number(e.target.value))}
-                                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-1">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">输出格式</label>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setCoverFormat('png')}
-                                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition-all ${coverFormat === 'png' ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
-                                            >
-                                                PNG 静态
-                                            </button>
-                                            <button
-                                                onClick={() => setCoverFormat('gif')}
-                                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition-all ${coverFormat === 'gif' ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}
-                                            >
-                                                GIF 动图
-                                            </button>
+                                                <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">使用横幅背景 (演示)</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 pt-2">
-                                    <button
-                                        onClick={handleGenerateCover}
-                                        disabled={isGenerating || !selectedLibrary}
-                                        className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20"
-                                    >
-                                        {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Image size={16} />}
-                                        {isGenerating ? '生成中...' : (batchSelection.size > 0 ? `批量预览 (${batchSelection.size > 6 ? '前6个' : batchSelection.size})` : '生成当前预览')}
-                                    </button>
-
-                                    <button
-                                        onClick={handleBatchApply}
-                                        disabled={isGenerating || batchSelection.size === 0}
-                                        className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-500/20"
-                                        title="为所有勾选的库生成并覆盖现有封面"
-                                    >
-                                        {isGenerating ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
-                                        批量覆盖 ({batchSelection.size})
-                                    </button>
-
-                                    {coverPreview && (
-                                        <button
-                                            onClick={downloadCover}
-                                            className="px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
-                                        >
-                                            <Download size={16} />
-                                        </button>
-                                    )}
-                                </div>
+                                    </>
+                                )}
                             </div>
+                        </div>
 
-                            {/* Right: Preview (16:9 Rounded Box) */}
-                            <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 flex items-center justify-center min-h-[400px]">
-                                {Object.keys(batchPreviews).length > 0 ? (
-                                    <div className="grid grid-cols-2 gap-4 w-full h-full overflow-y-auto max-h-[600px] p-2">
-                                        {Object.entries(batchPreviews).map(([libId, imgUrl]) => {
-                                            const libName = coverLibraries.find(l => l.id === libId)?.name || libId;
-                                            return (
-                                                <div key={libId} className="relative aspect-video rounded-xl overflow-hidden shadow-lg ring-1 ring-black/10 group">
-                                                    <img src={imgUrl} alt={libName} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                                                        <span className="text-white text-xs font-bold truncate">{libName}</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {isGenerating && (
-                                            <div className="aspect-video rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse flex items-center justify-center">
-                                                <RefreshCw className="animate-spin text-slate-400" />
+                        {/* Right: Preview Pane */}
+                        <div className="flex-1 bg-slate-100 dark:bg-black p-8 flex items-center justify-center relative overflow-hidden">
+                            {/* Background Grid Pattern */}
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#888 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+
+                            <div className="w-full max-w-[900px] shadow-2xl rounded-2xl overflow-hidden ring-4 ring-slate-900/10 dark:ring-white/10 transition-all duration-500 hover:scale-[1.01]">
+                                {generatorMode === 'classic' ? (
+                                    <div className="aspect-video bg-black flex items-center justify-center relative">
+                                        {coverPreview ? (
+                                            <img src={coverPreview} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="text-slate-500 text-sm font-mono flex flex-col items-center gap-2">
+                                                <Image size={48} className="opacity-20" />
+                                                <span>等待生成...</span>
                                             </div>
                                         )}
                                     </div>
-                                ) : coverPreview ? (
-                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-black/10 group">
-                                        <img
-                                            src={coverPreview}
-                                            alt="Cover Preview"
-                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                                        />
-                                        {/* 模拟 Emby 选中态边框效果 (Hover) */}
-                                        <div className="absolute inset-0 border-4 border-transparent group-hover:border-white/20 transition-colors pointer-events-none rounded-xl" />
-                                    </div>
                                 ) : (
-                                    <div className="text-center text-slate-400">
-                                        <Image size={48} className="mx-auto mb-2 opacity-50" />
-                                        <p className="text-sm">选择媒体库并点击生成预览</p>
+                                    /* Studio Preview */
+                                    <div id="studio-canvas">
+                                        <CoverCanvas
+                                            theme={studioTheme}
+                                            layoutMode={studioLayoutMode}
+                                            libraryName={coverTitle}
+                                            subTitle={coverSubtitle}
+                                            posters={studioPosters}
+                                            backdropUrl={studioBackdropUrl}
+                                            currentFont={studioFont}
+                                            activeTextColor={activeStudioTextColor}
+                                            titleX={sTitleX}
+                                            titleY={sTitleY}
+                                            titleGap={sTitleGap}
+                                            titleSize={sTitleSize}
+                                            gridIntensity={gridIntensity}
+                                            posterX={sPosterX}
+                                            fanSpread={fanSpread}
+                                            fanRotation={fanRotation}
+                                            cycleIndex={cycleIndex}
+                                        />
                                     </div>
                                 )}
                             </div>
                         </div>
                     </div>
                 </section>
-
             </div>
         </div>
     );

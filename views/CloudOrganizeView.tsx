@@ -43,7 +43,22 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
    cloud123: { enabled: false, clientId: '', clientSecret: '', downloadPath: '', downloadDirName: '未连接', qps: 1.0 },
    openList: { enabled: false, url: '', mountPath: '', username: '', password: '' },
    tmdb: { apiKey: '', language: 'zh-CN', includeAdult: false },
-   organize: { enabled: true, sourceCid: '', sourceDirName: '', targetCid: '', targetDirName: '', ai: { enabled: false, provider: 'openai', baseUrl: '', apiKey: '', model: '' }, rename: { enabled: true, movieTemplate: '', seriesTemplate: '', addTmdbIdToFolder: true }, movieRules: DEFAULT_MOVIE_RULES, tvRules: DEFAULT_TV_RULES }
+   organize: {
+      enabled: true,
+      sourceCid: '',
+      sourceDirName: '',
+      targetCid: '',
+      targetDirName: '',
+      ai: { enabled: false, provider: 'openai', baseUrl: '', apiKey: '', model: '' },
+      rename: {
+         enabled: true,
+         movieTemplate: '{{title}}{% if year %} ({{year}}){% endif %}{% if part %}-{{part}}{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}',
+         seriesTemplate: '{{title}} - {{season_episode}}{% if part %}-{{part}}{% endif %}{% if episode %} - 第 {{episode}} 集{% endif %}{% if tmdbid %} {tmdb-{{tmdbid}}}{% endif %}{% if resolution %} [{{resolution}}]{% endif %}{% if version %} [{{version}}]{% endif %}',
+         addTmdbIdToFolder: true
+      },
+      movieRules: DEFAULT_MOVIE_RULES,
+      tvRules: DEFAULT_TV_RULES
+   }
 };
 
 export const CloudOrganizeView: React.FC = () => {
@@ -89,7 +104,7 @@ export const CloudOrganizeView: React.FC = () => {
       try {
          await api.saveConfig(config);
          setToast('配置已保存到服务器');
-         setTimeout(() => setToast(null), 3000);
+         setTimeout(() => setToast(null), 5000);
       } catch (e) {
          setToast('保存失败 (网络错误)');
       } finally {
@@ -470,7 +485,26 @@ export const CloudOrganizeView: React.FC = () => {
                                  <FolderInput size={20} />
                                  {config.organize.sourceDirName || '默认下载目录'}
                               </div>
-                              <button onClick={() => { setSelectorTarget('source'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm">选择</button>
+                           </div>
+                           <div className="flex gap-2">
+                              <button onClick={() => { setSelectorTarget('source'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm whitespace-nowrap">选择</button>
+                              <button
+                                 onClick={() => {
+                                    if (config?.cloud115?.downloadPath) {
+                                       updateOrganize('sourceCid', config.cloud115.downloadPath);
+                                       updateOrganize('sourceDirName', config.cloud115.downloadDirName);
+                                       setToast('已同步 115 默认下载目录');
+                                       setTimeout(() => setToast(null), 5000);
+                                    } else {
+                                       setToast('未配置 115 下载目录');
+                                       setTimeout(() => setToast(null), 5000);
+                                    }
+                                 }}
+                                 className="px-3 py-3 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-indigo-500 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm text-slate-500 hover:text-indigo-600"
+                                 title="同步设置为 115 默认下载目录"
+                              >
+                                 <RotateCcw size={18} />
+                              </button>
                            </div>
                         </div>
                         <div>
@@ -700,94 +734,96 @@ export const CloudOrganizeView: React.FC = () => {
          </div>
 
          {/* Edit Rule Modal */}
-         {editingRuleId && tempRule && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border-[0.5px] border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
-                  <div className="p-5 border-b-[0.5px] border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-                     <h3 className="font-bold text-slate-700 dark:text-slate-200">编辑模块: {tempRule.name}</h3>
-                     <button onClick={() => setEditingRuleId(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"><X size={20} className="text-slate-400" /></button>
-                  </div>
-
-                  <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
-                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-3">模块名称 (即文件夹名)</label>
-                        <input
-                           type="text"
-                           value={tempRule.name}
-                           onChange={(e) => setTempRule({ ...tempRule, name: e.target.value })}
-                           className="w-full px-5 py-3 rounded-lg border-[0.5px] border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-base"
-                        />
+         {
+            editingRuleId && tempRule && (
+               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border-[0.5px] border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
+                     <div className="p-5 border-b-[0.5px] border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                        <h3 className="font-bold text-slate-700 dark:text-slate-200">编辑模块: {tempRule.name}</h3>
+                        <button onClick={() => setEditingRuleId(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"><X size={20} className="text-slate-400" /></button>
                      </div>
 
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Genre Selection */}
-                        <div className="space-y-3">
-                           <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
-                              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><LayoutList size={12} /> 类型</label>
-                           </div>
-                           <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                              {GENRES.map(g => (
-                                 <label key={g.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('genre_ids', g.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                                    <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('genre_ids', g.id)} onChange={() => toggleTempCondition('genre_ids', g.id)} />
-                                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{g.name}</span>
-                                 </label>
-                              ))}
-                           </div>
+                     <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
+                        <div>
+                           <label className="block text-xs font-bold text-slate-500 uppercase mb-3">模块名称 (即文件夹名)</label>
+                           <input
+                              type="text"
+                              value={tempRule.name}
+                              onChange={(e) => setTempRule({ ...tempRule, name: e.target.value })}
+                              className="w-full px-5 py-3 rounded-lg border-[0.5px] border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-base"
+                           />
                         </div>
 
-                        {/* Region Selection */}
-                        <div className="space-y-3">
-                           <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
-                              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Globe size={12} /> 地区</label>
-                              <button
-                                 onClick={() => toggleExclusive('origin_country')}
-                                 className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${isExclusiveMode('origin_country') ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
-                              >
-                                 {isExclusiveMode('origin_country') ? '模式: 排除所选' : '模式: 包含所选'}
-                              </button>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                           {/* Genre Selection */}
+                           <div className="space-y-3">
+                              <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
+                                 <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><LayoutList size={12} /> 类型</label>
+                              </div>
+                              <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                                 {GENRES.map(g => (
+                                    <label key={g.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('genre_ids', g.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                                       <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('genre_ids', g.id)} onChange={() => toggleTempCondition('genre_ids', g.id)} />
+                                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{g.name}</span>
+                                    </label>
+                                 ))}
+                              </div>
                            </div>
-                           <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                              {COUNTRIES.map(c => (
-                                 <label key={c.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('origin_country', c.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                                    <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('origin_country', c.id)} onChange={() => toggleTempCondition('origin_country', c.id)} />
-                                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.name}</span>
-                                 </label>
-                              ))}
-                           </div>
-                        </div>
 
-                        {/* Language Selection */}
-                        <div className="space-y-3">
-                           <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
-                              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Type size={12} /> 语言</label>
-                              <button
-                                 onClick={() => toggleExclusive('original_language')}
-                                 className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${isExclusiveMode('original_language') ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
-                              >
-                                 {isExclusiveMode('original_language') ? '模式: 排除所选' : '模式: 包含所选'}
-                              </button>
+                           {/* Region Selection */}
+                           <div className="space-y-3">
+                              <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
+                                 <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Globe size={12} /> 地区</label>
+                                 <button
+                                    onClick={() => toggleExclusive('origin_country')}
+                                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${isExclusiveMode('origin_country') ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
+                                 >
+                                    {isExclusiveMode('origin_country') ? '模式: 排除所选' : '模式: 包含所选'}
+                                 </button>
+                              </div>
+                              <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                                 {COUNTRIES.map(c => (
+                                    <label key={c.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('origin_country', c.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                                       <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('origin_country', c.id)} onChange={() => toggleTempCondition('origin_country', c.id)} />
+                                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{c.name}</span>
+                                    </label>
+                                 ))}
+                              </div>
                            </div>
-                           <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                              {LANGUAGES.map(l => (
-                                 <label key={l.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('original_language', l.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                                    <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('original_language', l.id)} onChange={() => toggleTempCondition('original_language', l.id)} />
-                                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{l.name}</span>
-                                 </label>
-                              ))}
+
+                           {/* Language Selection */}
+                           <div className="space-y-3">
+                              <div className="flex justify-between items-center border-b-[0.5px] border-slate-200 dark:border-slate-700 pb-2">
+                                 <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><Type size={12} /> 语言</label>
+                                 <button
+                                    onClick={() => toggleExclusive('original_language')}
+                                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${isExclusiveMode('original_language') ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
+                                 >
+                                    {isExclusiveMode('original_language') ? '模式: 排除所选' : '模式: 包含所选'}
+                                 </button>
+                              </div>
+                              <div className="max-h-72 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                                 {LANGUAGES.map(l => (
+                                    <label key={l.id} className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors border-[0.5px] ${isSelected('original_language', l.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                                       <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" checked={isSelected('original_language', l.id)} onChange={() => toggleTempCondition('original_language', l.id)} />
+                                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{l.name}</span>
+                                    </label>
+                                 ))}
+                              </div>
                            </div>
                         </div>
                      </div>
-                  </div>
 
-                  <div className="p-5 border-t-[0.5px] border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50">
-                     <button onClick={() => setEditingRuleId(null)} className="px-5 py-2.5 text-slate-500 hover:text-slate-700 text-sm font-medium">取消</button>
-                     <button onClick={handleSaveRule} className="px-6 py-2.5 bg-indigo-600/90 hover:bg-indigo-600 backdrop-blur-sm border-[0.5px] border-white/10 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
-                        <Check size={18} /> 保存模块
-                     </button>
+                     <div className="p-5 border-t-[0.5px] border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50">
+                        <button onClick={() => setEditingRuleId(null)} className="px-5 py-2.5 text-slate-500 hover:text-slate-700 text-sm font-medium">取消</button>
+                        <button onClick={handleSaveRule} className="px-6 py-2.5 bg-indigo-600/90 hover:bg-indigo-600 backdrop-blur-sm border-[0.5px] border-white/10 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
+                           <Check size={18} /> 保存模块
+                        </button>
+                     </div>
                   </div>
                </div>
-            </div>
-         )}
+            )
+         }
 
          <FileSelector
             isOpen={fileSelectorOpen}
@@ -796,6 +832,6 @@ export const CloudOrganizeView: React.FC = () => {
             title={`选择 ${selectorTarget === 'target' ? '存放目录' : selectorTarget === 'source' ? '源目录' : '下载目录'}`}
             cloudType={selectorTarget === 'download123' ? '123' : '115'}
          />
-      </div>
+      </div >
    );
 };

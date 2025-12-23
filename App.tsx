@@ -6,7 +6,6 @@ import { EmbyView } from './views/EmbyView';
 import { LogsView } from './views/LogsView';
 import { LoginView } from './views/LoginView';
 import { ResourceSearchView } from './views/ResourceSearchView';
-import { CoverGeneratorView } from './views/CoverGeneratorView';
 import { ViewState } from './types';
 import { api } from './services/api';
 import { checkAuth, logout } from './services/auth';
@@ -31,7 +30,6 @@ const PATH_MAP: Record<ViewState, string> = {
   [ViewState.CLOUD_ORGANIZE]: 'cloud-organize',
   [ViewState.EMBY_INTEGRATION]: 'emby',
   [ViewState.RESOURCE_SEARCH]: 'resource-search',
-  [ViewState.COVER_GENERATOR]: 'cover-generator',
   [ViewState.LOGS]: 'logs',
 };
 
@@ -48,6 +46,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(getInitialView);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showLogs, setShowLogs] = useState(false); // Global Logs Overlay State
 
   // Background State
   const [backdrops, setBackdrops] = useState<string[]>([]);
@@ -100,14 +99,32 @@ const App: React.FC = () => {
     }
   }, [isDark]);
 
-  // Global Background Fetching (Backend Proxy to TMDB)
+  // Global Background Fetching (Backend Proxy to TMDB) - Caches for 7 days
   useEffect(() => {
     const fetchBackdrops = async () => {
+      // Check localStorage cache first (7 days = 7 * 24 * 60 * 60 * 1000 ms)
+      const CACHE_KEY = 'tmdb_wallpaper';
+      const CACHE_EXPIRY_KEY = 'tmdb_wallpaper_expiry';
+      const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+      const cachedUrl = localStorage.getItem(CACHE_KEY);
+      const cachedExpiry = localStorage.getItem(CACHE_EXPIRY_KEY);
+
+      if (cachedUrl && cachedExpiry && Date.now() < parseInt(cachedExpiry, 10)) {
+        setBackdrops([cachedUrl]);
+        return;
+      }
+
+      // Fetch fresh wallpaper from backend
       let success = false;
       try {
         const res = await api.getTrendingWallpaper();
         if (res && (res as any).url) {
-          setBackdrops([(res as any).url]);
+          const url = (res as any).url;
+          setBackdrops([url]);
+          // Cache in localStorage
+          localStorage.setItem(CACHE_KEY, url);
+          localStorage.setItem(CACHE_EXPIRY_KEY, String(Date.now() + CACHE_DURATION));
           success = true;
         }
       } catch (e) {
@@ -122,18 +139,18 @@ const App: React.FC = () => {
     fetchBackdrops();
   }, []);
 
-  // Daily Background Rotation Logic
+  // Weekly Background Rotation Logic (updated for 7-day period)
   useEffect(() => {
     if (backdrops.length > 0) {
-      // Calculate day of the year
+      // Calculate week of the year for 7-day rotation
       const now = new Date();
-      const start = new Date(now.getFullYear(), 0, 0);
-      const diff = (now.getTime() - start.getTime()) + ((start.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000);
-      const oneDay = 1000 * 60 * 60 * 24;
-      const dayOfYear = Math.floor(diff / oneDay);
+      const start = new Date(now.getFullYear(), 0, 1);
+      const diff = now.getTime() - start.getTime();
+      const oneWeek = 1000 * 60 * 60 * 24 * 7;
+      const weekOfYear = Math.floor(diff / oneWeek);
 
-      // Select index based on day of year, ensuring it stays same for 24h
-      const index = dayOfYear % backdrops.length;
+      // Select index based on week of year
+      const index = weekOfYear % backdrops.length;
       setCurrentBackdropIndex(index);
     }
   }, [backdrops]);
@@ -157,7 +174,6 @@ const App: React.FC = () => {
       case ViewState.CLOUD_ORGANIZE: return <CloudOrganizeView />;
       case ViewState.EMBY_INTEGRATION: return <EmbyView />;
       case ViewState.RESOURCE_SEARCH: return <ResourceSearchView />;
-      case ViewState.COVER_GENERATOR: return <CoverGeneratorView />;
       case ViewState.LOGS: return <LogsView />;
       default: return <UserCenterView />;
     }
@@ -263,6 +279,7 @@ const App: React.FC = () => {
               onLogout={handleLogout}
               collapsed={sidebarCollapsed}
               toggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              onToggleLogs={() => setShowLogs(!showLogs)}
             />
 
             {/* Main Content Area */}
@@ -272,6 +289,9 @@ const App: React.FC = () => {
                 {renderContent()}
               </div>
             </main>
+
+            {/* Logs Overlay */}
+            {showLogs && <LogsView onClose={() => setShowLogs(false)} />}
           </div>
         )}
       </div>

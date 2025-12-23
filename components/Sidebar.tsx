@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ViewState } from '../types';
-import { UserCog, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Palette } from 'lucide-react';
+import { UserCog, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
   onLogout: () => void;
   collapsed: boolean;
   toggleCollapse: () => void;
+  onToggleLogs: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -21,14 +22,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   toggleTheme,
   onLogout,
   collapsed,
-  toggleCollapse
+  toggleCollapse,
+  onToggleLogs
 }) => {
   const navItems = [
     { id: ViewState.USER_CENTER, label: '用户中心', icon: UserCog },
     { id: ViewState.CLOUD_ORGANIZE, label: '网盘整理', icon: CloudCog },
     { id: ViewState.RESOURCE_SEARCH, label: '资源搜索', icon: Sparkles },
     { id: ViewState.EMBY_INTEGRATION, label: 'Emby 联动', icon: Tv },
-    { id: ViewState.COVER_GENERATOR, label: '封面工坊', icon: Palette },
     { id: ViewState.LOGS, label: '运行日志', icon: Terminal },
   ];
 
@@ -52,7 +53,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
-              onClick={() => onChangeView(item.id)}
+              onClick={() => {
+                if (item.id === ViewState.LOGS) {
+                  onToggleLogs();
+                } else {
+                  onChangeView(item.id);
+                }
+              }}
               title={collapsed ? item.label : undefined}
               className={`w-full flex items-center ${collapsed ? 'justify-center px-0 py-3' : 'gap-3 px-3 py-3'} rounded-xl transition-all duration-200 group relative ${isActive
                 ? 'bg-brand-50/80 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400 font-bold shadow-sm backdrop-blur-sm'

@@ -315,7 +315,7 @@ def search_resources():
         # 记录错误信息
         errors = []
         
-        # 1. 检查是否配置了盘搜 API URL
+        # 1. 检查是否配置了盘搜 API URL (Pansou)
         pansou_enabled = False
         try:
             from app import get_db_session
@@ -337,13 +337,33 @@ def search_resources():
                         for r in pansou_results:
                             r['_source_type'] = 'pansou'
                         logger.info(f"盘搜 API 搜索成功，返回 {len(pansou_results)} 个结果")
+                    elif pan_result.get('error'):
+                         errors.append(f"盘搜服务: {pan_result.get('error')}")
+                         # Add to section specific error
+                         # We can't easily change the return structure of 'sections' without breaking types in some clients,
+                         # but we can return a separate 'section_errors' dict.
                 except Exception as e:
                     logger.warning(f"盘搜 API 搜索失败: {e}")
                     errors.append(f"盘搜服务: {str(e)}")
         except Exception as e:
             logger.warning(f"检查盘搜配置失败: {e}")
-        
-        # 2. 检查并使用 AI 搜索
+
+        # 2. 搜索用户添加的频道/来源 (User Sources)
+        try:
+            from services.source_crawler_service import get_crawler_service
+            crawler = get_crawler_service()
+            crawled = crawler.search_in_crawled(query)
+            if crawled:
+                source_results = crawled
+                # 标记来源
+                for r in source_results:
+                    r['_source_type'] = 'user_source'
+                logger.info(f"从用户来源中找到 {len(source_results)} 个匹配资源")
+        except Exception as e:
+            logger.warning(f"搜索用户来源失败: {e}")
+            errors.append(f"频道来源: {str(e)}")
+
+        # 3. 检查并使用 AI 搜索 (AI)
         ai_enabled = False
         ai_config = _get_ai_config()
         if ai_config:
@@ -362,65 +382,32 @@ def search_resources():
                 logger.warning(f"AI 搜索失败: {e}")
                 errors.append(f"AI 搜索: {str(e)}")
         
-        # 3. 搜索用户添加的频道/来源
-        try:
-            from services.source_crawler_service import get_crawler_service
-            crawler = get_crawler_service()
-            crawled = crawler.search_in_crawled(query)
-            if crawled:
-                source_results = crawled
-                # 标记来源
-                for r in source_results:
-                    r['_source_type'] = 'user_source'
-                logger.info(f"从用户来源中找到 {len(source_results)} 个匹配资源")
-        except Exception as e:
-            logger.warning(f"搜索用户来源失败: {e}")
-        
         # 4. 构建分区响应
-        has_any_source = pansou_enabled or ai_enabled or len(source_results) > 0
+        has_any_source = pansou_enabled or ai_enabled or len(source_results) > 0 or True # Always try user sources
         
         # 合并所有结果用于兼容旧前端
-        all_results = pansou_results + ai_results + source_results
+        all_results = pansou_results + source_results + ai_results
         
         # 确定搜索来源描述
         sources_used = []
         if pansou_results:
             sources_used.append('pansou')
-        if ai_results:
-            sources_used.append('ai')
         if source_results:
             sources_used.append('user_source')
+        if ai_results:
+            sources_used.append('ai')
         
         search_source = '+'.join(sources_used) if sources_used else 'none'
         
-        # 如果没有配置任何搜索源
-        if not has_any_source:
-            return jsonify({
-                'success': True,
-                'data': [],
-                'sections': {},
-                'message': '请先配置搜索接口或 AI，或添加频道来源',
-                'source': 'none',
-                'ai_enabled': False,
-                'pansou_enabled': False
-            })
+        # 构建 section_errors map (Simple mapping from collected errors)
+        section_errors = {
+            'pansou': next((e for e in errors if '盘搜服务' in e), None),
+            'ai': next((e for e in errors if 'AI 搜索' in e), None),
+            'user_source': next((e for e in errors if '频道来源' in e), None)
+        }
         
-        # 如果没有搜索到任何结果
-        if not all_results:
-            error_msg = '；'.join(errors) if errors else f"未找到 '{query}' 相关资源"
-            return jsonify({
-                'success': True,
-                'data': [],
-                'sections': {
-                    'pansou': [],
-                    'ai': [],
-                    'user_source': []
-                },
-                'message': error_msg,
-                'source': search_source,
-                'ai_enabled': ai_enabled,
-                'pansou_enabled': pansou_enabled
-            })
+        # 如果没有配置任何搜索源 (Skip this check as User Sources are usually always available or implied)
+        # But we kept the flags.
         
         return jsonify({
             'success': True,
@@ -430,6 +417,7 @@ def search_resources():
                 'ai': ai_results,
                 'user_source': source_results
             },
+            'section_errors': section_errors,
             'source': search_source,
             'ai_enabled': ai_enabled,
             'pansou_enabled': pansou_enabled,

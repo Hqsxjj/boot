@@ -17,6 +17,9 @@ UNENCRYPTED_KEYS = {
     'cloud123_credentials',
     'cloud123_cookies',
     'cloud123_session_metadata',
+    'cloud123_password_credentials',
+    'cloud123_oauth_credentials',
+    'cloud123_token',
 }
 
 
@@ -35,8 +38,10 @@ class SecretStore:
         
         if not encryption_key:
             # 尝试从文件加载持久化的密钥
-            key_file = os.path.join(os.path.dirname(__file__), '..', 'data', '.encryption_key')
-            key_file = os.path.abspath(key_file)
+            # 使用 DATA_DIR 确保与数据库在同一持久化目录
+            default_dir = os.path.join(os.getcwd(), 'data')
+            data_dir = os.environ.get('DATA_DIR', default_dir)
+            key_file = os.path.join(data_dir, '.encryption_key')
             
             # 确保 data 目录存在
             os.makedirs(os.path.dirname(key_file), exist_ok=True)

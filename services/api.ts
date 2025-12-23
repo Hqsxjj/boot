@@ -226,10 +226,28 @@ export const api = {
    * @param passport 手机号或邮箱
    * @param password 密码
    */
+  /**
+   * 123 云盘密码登录
+   * @param passport 手机号或邮箱
+   * @param password 密码
+   */
   login123WithPassword: async (passport: string, password: string) => {
     const res = await apiClient.post<ApiResponse<{ message: string; login_method: string }>>(
       '/123/login/password',
       { passport, password }
+    );
+    return res.data;
+  },
+
+  /**
+   * 123 云盘 OAuth 登录 (保存凭证)
+   * @param clientId Client ID
+   * @param clientSecret Client Secret
+   */
+  login123WithOAuth: async (clientId: string, clientSecret: string) => {
+    const res = await apiClient.post<ApiResponse<{ message: string }>>(
+      '/123/login/oauth',
+      { clientId, clientSecret }
     );
     return res.data;
   },
@@ -658,11 +676,27 @@ export const api = {
     return res.data;
   },
 
+
   startCoverBatchBackground: async (libraryIds: string[], config: any) => {
     const res = await apiClient.post<ApiResponse<any>>('/emby/cover/batch/start', {
       library_ids: libraryIds,
       config
     });
+    return res.data;
+  },
+
+  uploadRenderedCover: async (libraryId: string, imageBlob: Blob, title: string = 'cover') => {
+    const formData = new FormData();
+    formData.append('file', imageBlob, 'cover.png');
+    formData.append('libraryId', libraryId);
+    formData.append('title', title);
+
+    const res = await apiClient.post<ApiResponse<any>>('/emby/cover/upload_rendered', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    // @ts-ignore
     return res.data;
   },
 

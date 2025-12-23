@@ -97,6 +97,13 @@ export const ResourceSearchView: React.FC = () => {
         user_source: Resource[];
     }>({ pansou: [], ai: [], user_source: [] });
 
+    // 分区错误信息
+    const [sectionErrors, setSectionErrors] = useState<{
+        pansou: string | null;
+        ai: string | null;
+        user_source: string | null;
+    }>({ pansou: null, ai: null, user_source: null });
+
     // 来源管理状态
     const [sources, setSources] = useState<Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>>([]);
     const [isLoadingSources, setIsLoadingSources] = useState(false);
@@ -124,9 +131,21 @@ export const ResourceSearchView: React.FC = () => {
     const [resourceShareInfo, setResourceShareInfo] = useState<Record<string, { shareCode: string; accessCode: string; cloudType: string }>>({});
 
 
+    const [config, setConfig] = useState<any>(null); // Load config for download paths
+
     useEffect(() => {
         fetchTrending();
+        fetchConfig();
     }, []);
+
+    const fetchConfig = async () => {
+        try {
+            const cfg = await api.getConfig();
+            setConfig(cfg);
+        } catch (e) {
+            console.error("Failed to load config", e);
+        }
+    };
 
     // Filter function to remove resources without valid share links
     const hasValidShareLink = (resource: Resource): boolean => {
@@ -163,7 +182,9 @@ export const ResourceSearchView: React.FC = () => {
 
         setIsSearching(true);
         setSearchResults([]);
+        setSearchResults([]);
         setSearchSections({ pansou: [], ai: [], user_source: [] });
+        setSectionErrors({ pansou: null, ai: null, user_source: null });
         setSearchMessage(null);
 
         try {
@@ -191,17 +212,27 @@ export const ResourceSearchView: React.FC = () => {
                     });
                 }
 
+                // 处理分区错误
+                const secErrors = (response as any).section_errors;
+                if (secErrors) {
+                    setSectionErrors({
+                        pansou: secErrors.pansou || null,
+                        ai: secErrors.ai || null,
+                        user_source: secErrors.user_source || null
+                    });
+                }
+
                 if ((response as any).message) {
                     setSearchMessage((response as any).message);
                 }
             } else {
                 setToast((response as any).error || '搜索失败');
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
             }
         } catch (e: any) {
             console.error('Search failed:', e);
             setToast('搜索请求失败，请检查网络连接');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } finally {
             setIsSearching(false);
         }
@@ -388,11 +419,11 @@ export const ResourceSearchView: React.FC = () => {
             } else {
                 setToast(response?.error || '转存失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             console.error(e);
             setToast('转存失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -499,7 +530,7 @@ export const ResourceSearchView: React.FC = () => {
                     }
                 } else {
                     setToast('不支持的链接格式');
-                    setTimeout(() => setToast(null), 3000);
+                    setTimeout(() => setToast(null), 5000);
                     return;
                 }
 
@@ -515,7 +546,7 @@ export const ResourceSearchView: React.FC = () => {
                 response = await api.get123ShareFiles(shareCode, accessCode, cid);
             } else {
                 setToast('不支持的网盘类型');
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
                 return;
             }
 
@@ -538,12 +569,12 @@ export const ResourceSearchView: React.FC = () => {
                 }
             } else {
                 setToast(response.error || '获取文件列表失败');
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
             }
         } catch (e) {
             console.error(e);
             setToast('获取文件列表失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } finally {
             const newLoading = new Set(loadingResourceFiles);
             newLoading.delete(resourceKey);
@@ -649,7 +680,7 @@ export const ResourceSearchView: React.FC = () => {
 
         if (!selectedIds || selectedIds.size === 0) {
             setToast('请先选择要转存的文件');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
             return;
         }
 
@@ -665,6 +696,12 @@ export const ResourceSearchView: React.FC = () => {
             const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
+                // Check if 115 download path is configured
+                if (!config?.cloud115?.downloadPath) {
+                    setToast('请先在设置中配置 115 网盘默认下载目录');
+                    setTimeout(() => setToast(null), 5000);
+                    return;
+                }
                 const shareCode = match115[1];
                 let accessCode = '';
                 try {
@@ -676,10 +713,17 @@ export const ResourceSearchView: React.FC = () => {
                 response = await api.save115Share(
                     shareCode,
                     accessCode,
-                    undefined,
+                    config.cloud115.downloadPath,
                     Array.from(selectedIds)
                 );
             } else if (match123) {
+                // Check if 123 download path is configured
+                if (!config?.cloud123?.downloadPath) { // Note: 123 uses downloadPath (dirId)
+                    setToast('请先在设置中配置 123 云盘离线下载目录');
+                    setTimeout(() => setToast(null), 5000);
+                    return;
+                }
+
                 // 123 cloud: share code and access code can be in format /s/shareCode-accessCode
                 const fullCode = match123[1];
                 let shareCode = fullCode;
@@ -705,12 +749,12 @@ export const ResourceSearchView: React.FC = () => {
                 response = await api.save123Share(
                     shareCode,
                     accessCode,
-                    undefined,
+                    config.cloud123.downloadPath,
                     Array.from(selectedIds)
                 );
             } else {
                 setToast('不支持的链接格式');
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
                 return;
             }
 
@@ -719,11 +763,11 @@ export const ResourceSearchView: React.FC = () => {
             } else {
                 setToast(response.error || '转存失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             console.error(e);
             setToast('转存失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -732,7 +776,7 @@ export const ResourceSearchView: React.FC = () => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) {
             setToast('无法获取分享链接');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
             return;
         }
 
@@ -743,6 +787,12 @@ export const ResourceSearchView: React.FC = () => {
             const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
+                // Check if 115 download path is configured
+                if (!config?.cloud115?.downloadPath) {
+                    setToast('请先在设置中配置 115 网盘默认下载目录');
+                    setTimeout(() => setToast(null), 5000);
+                    return;
+                }
                 const shareCode = match115[1];
                 let accessCode = '';
                 try {
@@ -752,8 +802,14 @@ export const ResourceSearchView: React.FC = () => {
                 if (!accessCode && resource.share_code) {
                     accessCode = resource.share_code;
                 }
-                response = await api.save115Share(shareCode, accessCode, undefined, [fileId]);
+                response = await api.save115Share(shareCode, accessCode, config.cloud115.downloadPath, [fileId]);
             } else if (match123) {
+                // Check if 123 download path is configured
+                if (!config?.cloud123?.downloadPath) {
+                    setToast('请先在设置中配置 123 云盘离线下载目录');
+                    setTimeout(() => setToast(null), 5000);
+                    return;
+                }
                 const shareCode = match123[1];
                 let accessCode = '';
                 try {
@@ -763,10 +819,10 @@ export const ResourceSearchView: React.FC = () => {
                 if (!accessCode && resource.share_code) {
                     accessCode = resource.share_code;
                 }
-                response = await api.save123Share(shareCode, accessCode, undefined, [fileId]);
+                response = await api.save123Share(shareCode, accessCode, config.cloud123.downloadPath, [fileId]);
             } else {
                 setToast('不支持的链接格式');
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
                 return;
             }
 
@@ -775,11 +831,11 @@ export const ResourceSearchView: React.FC = () => {
             } else {
                 setToast(response.error || '转存失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             console.error(e);
             setToast('转存失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -944,7 +1000,7 @@ export const ResourceSearchView: React.FC = () => {
                             </div>
 
                             {/* 盘搜 API 结果 */}
-                            {searchSections.pansou.length > 0 && (
+                            {(searchSections.pansou.length > 0 || sectionErrors.pansou) && (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2">
                                         <div className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold rounded-full">
@@ -952,33 +1008,42 @@ export const ResourceSearchView: React.FC = () => {
                                         </div>
                                         <span className="text-sm text-slate-500">{searchSections.pansou.length} 条结果</span>
                                     </div>
-                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
-                                        {searchSections.pansou.map((resource, index) => (
-                                            <ResourceCard
-                                                key={`pansou-${index}`}
-                                                resource={resource}
-                                                onClick={() => handleResourceClick(resource)}
-                                                onToggleExpand={toggleResourceExpand}
-                                                isExpanded={expandedResources.has(resource.id || resource.title)}
-                                                files={resourceFiles[resource.id || resource.title] || []}
-                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
-                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
-                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
-                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
-                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
-                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
-                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
-                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
-                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
-                                                viewMode={viewMode}
-                                            />
-                                        ))}
-                                    </div>
+
+                                    {sectionErrors.pansou && (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/30">
+                                            ⚠️ {sectionErrors.pansou}
+                                        </div>
+                                    )}
+
+                                    {searchSections.pansou.length > 0 && (
+                                        <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                            {searchSections.pansou.map((resource, index) => (
+                                                <ResourceCard
+                                                    key={`pansou-${index}`}
+                                                    resource={resource}
+                                                    onClick={() => handleResourceClick(resource)}
+                                                    onToggleExpand={toggleResourceExpand}
+                                                    isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                    files={resourceFiles[resource.id || resource.title] || []}
+                                                    isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                    selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                    onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                    onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                    onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                    onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                    breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                    onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                    onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                    viewMode={viewMode}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {/* AI 搜索结果 */}
-                            {searchSections.ai.length > 0 && (
+                            {(searchSections.ai.length > 0 || sectionErrors.ai) && (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2">
                                         <div className="px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-bold rounded-full flex items-center gap-1">
@@ -987,33 +1052,42 @@ export const ResourceSearchView: React.FC = () => {
                                         </div>
                                         <span className="text-sm text-slate-500">{searchSections.ai.length} 条结果</span>
                                     </div>
-                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
-                                        {searchSections.ai.map((resource, index) => (
-                                            <ResourceCard
-                                                key={`ai-${index}`}
-                                                resource={resource}
-                                                onClick={() => handleResourceClick(resource)}
-                                                onToggleExpand={toggleResourceExpand}
-                                                isExpanded={expandedResources.has(resource.id || resource.title)}
-                                                files={resourceFiles[resource.id || resource.title] || []}
-                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
-                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
-                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
-                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
-                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
-                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
-                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
-                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
-                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
-                                                viewMode={viewMode}
-                                            />
-                                        ))}
-                                    </div>
+
+                                    {sectionErrors.ai && (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/30">
+                                            ⚠️ {sectionErrors.ai}
+                                        </div>
+                                    )}
+
+                                    {searchSections.ai.length > 0 && (
+                                        <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                            {searchSections.ai.map((resource, index) => (
+                                                <ResourceCard
+                                                    key={`ai-${index}`}
+                                                    resource={resource}
+                                                    onClick={() => handleResourceClick(resource)}
+                                                    onToggleExpand={toggleResourceExpand}
+                                                    isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                    files={resourceFiles[resource.id || resource.title] || []}
+                                                    isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                    selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                    onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                    onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                    onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                    onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                    breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                    onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                    onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                    viewMode={viewMode}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {/* 用户来源结果 */}
-                            {searchSections.user_source.length > 0 && (
+                            {(searchSections.user_source.length > 0 || sectionErrors.user_source) && (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2">
                                         <div className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-bold rounded-full flex items-center gap-1">
@@ -1022,28 +1096,37 @@ export const ResourceSearchView: React.FC = () => {
                                         </div>
                                         <span className="text-sm text-slate-500">{searchSections.user_source.length} 条结果</span>
                                     </div>
-                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
-                                        {searchSections.user_source.map((resource, index) => (
-                                            <ResourceCard
-                                                key={`source-${index}`}
-                                                resource={resource}
-                                                onClick={() => handleResourceClick(resource)}
-                                                onToggleExpand={toggleResourceExpand}
-                                                isExpanded={expandedResources.has(resource.id || resource.title)}
-                                                files={resourceFiles[resource.id || resource.title] || []}
-                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
-                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
-                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
-                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
-                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
-                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
-                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
-                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
-                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
-                                                viewMode={viewMode}
-                                            />
-                                        ))}
-                                    </div>
+
+                                    {sectionErrors.user_source && (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/30">
+                                            ⚠️ {sectionErrors.user_source}
+                                        </div>
+                                    )}
+
+                                    {searchSections.user_source.length > 0 && (
+                                        <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                            {searchSections.user_source.map((resource, index) => (
+                                                <ResourceCard
+                                                    key={`source-${index}`}
+                                                    resource={resource}
+                                                    onClick={() => handleResourceClick(resource)}
+                                                    onToggleExpand={toggleResourceExpand}
+                                                    isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                    files={resourceFiles[resource.id || resource.title] || []}
+                                                    isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                    selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                    onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                    onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                    onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                    onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                    breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                    onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                    onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                    viewMode={viewMode}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </section>
@@ -1281,10 +1364,10 @@ const SourceManager: React.FC<{
             } else {
                 setToast(res.error || '保存失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             setToast('保存失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } finally {
             setIsSavingPansou(false);
         }
@@ -1311,10 +1394,10 @@ const SourceManager: React.FC<{
             } else {
                 setToast(res.error || '抓取失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             setToast('抓取失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } finally {
             setIsCrawling(false);
         }
@@ -1323,7 +1406,7 @@ const SourceManager: React.FC<{
     const handleAddSource = async () => {
         if (!newSourceUrl.trim()) {
             setToast('请输入链接');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
             return;
         }
         setIsAdding(true);
@@ -1337,10 +1420,10 @@ const SourceManager: React.FC<{
             } else {
                 setToast(res.error || '添加失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             setToast('添加失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } finally {
             setIsAdding(false);
         }
@@ -1356,10 +1439,10 @@ const SourceManager: React.FC<{
             } else {
                 setToast(res.error || '删除失败');
             }
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         } catch (e) {
             setToast('删除失败');
-            setTimeout(() => setToast(null), 3000);
+            setTimeout(() => setToast(null), 5000);
         }
     };
 
@@ -1414,37 +1497,55 @@ const SourceManager: React.FC<{
                 </button>
             </div>
 
-            {/* Add Source Form */}
+            {/* Add Source Form - Redesigned Layout (3 Lines) */}
             <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-800/50 space-y-4">
-                <div className="flex gap-4">
+                {/* Line 1: Type Selection */}
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        来源类型
+                    </label>
                     <select
                         value={newSourceType}
                         onChange={(e) => setNewSourceType(e.target.value as 'telegram' | 'website')}
-                        className={`${inputClass} w-40`}
+                        className={`${inputClass} w-full`}
                     >
                         <option value="telegram">TG 频道/群组</option>
                         <option value="website">网站</option>
                     </select>
+                </div>
+
+                {/* Line 2: URL Input */}
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        链接地址
+                    </label>
                     <input
                         type="text"
                         value={newSourceUrl}
                         onChange={(e) => setNewSourceUrl(e.target.value)}
                         placeholder={newSourceType === 'telegram' ? 'https://t.me/channel_name 或 @channel_name' : 'https://example.com'}
-                        className={`${inputClass} flex-1`}
+                        className={`${inputClass} w-full`}
                     />
                 </div>
-                <div className="flex gap-4">
-                    <input
-                        type="text"
-                        value={newSourceName}
-                        onChange={(e) => setNewSourceName(e.target.value)}
-                        placeholder="备注名称 (可选)"
-                        className={`${inputClass} flex-1`}
-                    />
+
+                {/* Line 3: Name Input and Add Button */}
+                <div className="flex gap-4 items-end">
+                    <div className="flex-1">
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            备注名称
+                        </label>
+                        <input
+                            type="text"
+                            value={newSourceName}
+                            onChange={(e) => setNewSourceName(e.target.value)}
+                            placeholder="请输入备注名称 (可选)"
+                            className={`${inputClass} w-full`}
+                        />
+                    </div>
                     <button
                         onClick={handleAddSource}
                         disabled={isAdding || !newSourceUrl.trim()}
-                        className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                        className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center gap-2 h-[46px]"
                     >
                         {isAdding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                         添加来源
@@ -1507,7 +1608,7 @@ const SourceManager: React.FC<{
                         type="text"
                         value={pansouApiUrl}
                         onChange={(e) => setPansouApiUrl(e.target.value)}
-                        placeholder={pansouDefaultUrl || 'https://pan.jivon.de'}
+                        placeholder="请输入搜索接口地址"
                         className={`${inputClass} flex-1`}
                     />
                     <button
@@ -1525,15 +1626,7 @@ const SourceManager: React.FC<{
             </div>
 
             {/* Info */}
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
-                <div className="flex items-start gap-3">
-                    <Info size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                    <div className="text-sm text-blue-700 dark:text-blue-300">
-                        <p><strong>提示：</strong>添加的来源会在后续版本中用于扩展资源搜索范围。</p>
-                        <p className="mt-1">TG 频道格式：<code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">https://t.me/channel_name</code> 或 <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">@channel_name</code></p>
-                    </div>
-                </div>
-            </div>
+            {/* Info Hint Removed as per request */}
         </section>
     );
 };
@@ -1782,7 +1875,7 @@ const SubscriptionManager: React.FC<{ glassCardClass: string; inputClass: string
 
     const showToast = (msg: string) => {
         setToast(msg);
-        setTimeout(() => setToast(null), 3000);
+        setTimeout(() => setToast(null), 5000);
     };
 
     return (

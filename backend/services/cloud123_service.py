@@ -184,6 +184,10 @@ class Cloud123Service:
             }
             self.secret_store.set_secret('cloud123_password_credentials', json.dumps(creds))
             
+            # Clear conflicting OAuth credentials to ensure switching works
+            self.secret_store.delete_secret('cloud123_oauth_credentials')
+            self.secret_store.delete_secret('cloud123_token')
+            
             # 更新缓存的客户端
             self._client = client
             

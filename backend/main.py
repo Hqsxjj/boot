@@ -114,6 +114,9 @@ def create_app(config=None):
     logger.info('正在启动应用初始化...')
     
     # Initialize dual databases (secrets.db + appdata.db)
+    from models.database import get_database_url, get_appdata_db_url
+    logger.info(f'DB Path: Secrets={get_database_url()}, AppData={get_appdata_db_url()}')
+    
     secrets_engine, appdata_engine = init_all_databases()
     secrets_session_factory = get_session_factory(secrets_engine)
     appdata_session_factory = get_session_factory(appdata_engine)

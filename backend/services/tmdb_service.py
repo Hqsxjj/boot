@@ -31,9 +31,9 @@ class TmdbService:
         return None
 
     def get_trending_wallpaper(self, config):
-        # Check cache (1 hour)
+        # Check cache (7 days = 168 hours)
         if self._cache_url and self._cache_time:
-            if datetime.now() - self._cache_time < timedelta(hours=1):
+            if datetime.now() - self._cache_time < timedelta(hours=168):
                 return self._cache_url
 
         url = self._fetch_new_wallpaper(config)

@@ -20,7 +20,8 @@ import {
     Download,
     Loader2,
     Eye,
-    EyeOff
+    EyeOff,
+    CheckCircle2
 } from 'lucide-react';
 
 // ==================== 类型定义 ====================
@@ -55,6 +56,8 @@ interface Cloud115LoginProps {
     loginMethod?: LoginMethod;
     /** loginMethod 变化回调 */
     onLoginMethodChange?: (method: LoginMethod) => void;
+    /** 是否已连接 */
+    isConnected?: boolean;
 }
 
 // ==================== 样式常量 ====================
@@ -76,10 +79,13 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     onCookiesChange,
     loginMethod: externalLoginMethod,
     onLoginMethodChange,
+    isConnected = false
 }) => {
     // ========== 状态管理 ==========
     const [internalLoginMethod, setInternalLoginMethod] = useState<LoginMethod>('qrcode');
     const loginMethod = externalLoginMethod ?? internalLoginMethod;
+    // Local connected state (to handle UI updates before parent refresh)
+    const [localConnected, setLocalConnected] = useState(isConnected);
 
     const [loginApps, setLoginApps] = useState<LoginApp[]>([]);
     const [qrState, setQrState] = useState<QrState>('idle');
@@ -89,6 +95,11 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
     // 长轮询控制标志
     const isPollingRef = useRef<boolean>(false);
+
+    // Sync local connected state with prop
+    useEffect(() => {
+        setLocalConnected(isConnected);
+    }, [isConnected]);
 
     // ========== 登录方式切换 ==========
     const handleMethodChange = (method: LoginMethod) => {
@@ -153,6 +164,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                     stopPolling();
                     setQrState('success');
                     onToast?.('登录成功，Cookie 已自动保存');
+                    setLocalConnected(true);
                     onLoginSuccess?.();
                     break;
                 case 'expired':
@@ -239,6 +251,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
             if (result.success) {
                 onToast?.('Cookie 导入成功');
+                setLocalConnected(true);
                 onLoginSuccess?.();
             } else {
                 onToast?.(result.error || 'Cookie 导入失败');
@@ -260,19 +273,19 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
     // ========== 渲染登录方式 Tabs ==========
     const renderTabs = () => (
-        <div className="flex flex-wrap gap-3 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
             {[
-                { id: 'cookie' as LoginMethod, label: 'Cookie 导入', icon: Cookie },
-                { id: 'qrcode' as LoginMethod, label: '扫码获取', icon: QrCode },
-                { id: 'open_app' as LoginMethod, label: '第三方 App', icon: Smartphone },
+                { id: 'qrcode' as LoginMethod, label: '扫码登录', icon: QrCode },
+                { id: 'cookie' as LoginMethod, label: 'Cookie', icon: Cookie },
+                { id: 'open_app' as LoginMethod, label: '三方App', icon: Smartphone },
             ].map((tab) => (
                 <button
                     key={tab.id}
                     onClick={() => handleMethodChange(tab.id)}
-                    className={`flex items - center gap - 2 px - 4 py - 2.5 rounded - lg text - sm font - medium border - [0.5px] transition - all shadow - sm ${loginMethod === tab.id
-                        ? 'bg-brand-50 border-brand-200 text-brand-600 dark:bg-brand-900/20 dark:border-brand-800 dark:text-brand-400 ring-2 ring-brand-500/20'
-                        : 'bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-600 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                        } `}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-bold transition-all ${loginMethod === tab.id
+                        ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                        }`}
                 >
                     <tab.icon size={16} />
                     {tab.label}
@@ -322,7 +335,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 className={btnPrimaryClass}
             >
                 {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                导入 Cookie
+                验证并保存
             </button>
         </div>
     );
@@ -331,15 +344,15 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     const renderQrCodeLogin = () => (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* 终端选择 */}
-            <div className="max-w-sm">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                    <Smartphone size={14} />
-                    模拟登录终端
+            <div className="max-w-xs mx-auto">
+                <label className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase mb-2">
+                    <Smartphone size={12} />
+                    选择模拟终端
                 </label>
                 <select
                     value={selectedApp}
                     onChange={(e) => onAppChange?.(e.target.value)}
-                    className={`${inputClass} cursor - pointer`}
+                    className={`${inputClass} text-center cursor-pointer`}
                 >
                     {loginApps.map((app) => (
                         <option key={app.key} value={app.key}>
@@ -358,7 +371,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     const renderOpenAppLogin = () => (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* App ID 输入 */}
-            <div className="max-w-sm">
+            <div>
                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
                     第三方 App ID
                 </label>
@@ -381,11 +394,11 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
     // ========== 渲染二维码区域（共用） ==========
     const renderQrCodeArea = () => (
-        <div className="flex flex-col items-center py-6">
+        <div className="flex flex-col items-center py-4">
             {qrState === 'idle' && (
                 <button onClick={generateQrCode} className={btnPrimaryClass}>
                     <QrCode size={18} />
-                    生成二维码
+                    点击生成二维码
                 </button>
             )}
 
@@ -396,13 +409,13 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             )}
 
             {qrImage && qrState !== 'loading' && (
-                <div className="text-center">
+                <div className="text-center w-full">
                     {/* 二维码图片 */}
                     <div className="relative inline-block mb-4">
                         <img
                             src={qrImage}
                             alt="115 登录二维码"
-                            className={`w - 48 h - 48 rounded - xl border - 4 border - white shadow - xl transition - all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
+                            className={`w-48 h-48 rounded-xl border-4 border-white shadow-xl transition-all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
                                 } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''} `}
                         />
 
@@ -436,7 +449,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                     <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-1">
                         请使用 115 App 扫码登录
                     </p>
-                    <p className={`text - xs font - bold ${qrState === 'success' ? 'text-green-500' :
+                    <p className={`text-xs font-bold ${qrState === 'success' ? 'text-green-500' :
                         qrState === 'scanned' ? 'text-amber-500' :
                             qrState === 'expired' ? 'text-red-400' :
                                 qrState === 'error' ? 'text-red-400' :
@@ -464,18 +477,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                                 <Download size={14} />
                                 保存
                             </a>
-                            <button onClick={copyQrLink} className={btnSecondaryClass}>
-                                <Copy size={14} />
-                                复制链接
-                            </button>
                         </div>
-                    )}
-
-                    {/* 提示 */}
-                    {qrState === 'waiting' && (
-                        <p className="text-xs text-slate-400 mt-4 max-w-xs mx-auto">
-                            💡 可长按二维码保存到相册，在 115 App 中选择「扫一扫」识别
-                        </p>
                     )}
                 </div>
             )}
@@ -483,13 +485,42 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     );
 
     // ========== 主渲染 ==========
+
+    // 如果已连接并显示 Connected UI
+    if (localConnected) {
+        return (
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-8 border border-green-200 dark:border-green-800 text-center space-y-4 animate-in fade-in zoom-in duration-300">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center mx-auto text-green-600 dark:text-green-400 shadow-inner">
+                    <CheckCircle2 size={32} />
+                </div>
+                <div>
+                    <h4 className="font-bold text-lg text-green-700 dark:text-green-300">已成功连接</h4>
+                    <p className="text-sm text-green-600/80 dark:text-green-400/80 mt-1">115 网盘服务运行正常</p>
+                </div>
+                <button
+                    onClick={() => {
+                        setLocalConnected(false);
+                        stopPolling();
+                        setQrState('idle');
+                        setQrImage('');
+                    }}
+                    className="px-6 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-bold shadow-sm border border-slate-200 dark:border-slate-700 hover:text-red-600 hover:border-red-200 transition-colors mt-2"
+                >
+                    切换账号 / 重新登录
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className="w-full">
             {renderTabs()}
 
-            {loginMethod === 'cookie' && renderCookieImport()}
-            {loginMethod === 'qrcode' && renderQrCodeLogin()}
-            {loginMethod === 'open_app' && renderOpenAppLogin()}
+            <div className="min-h-[300px] flex flex-col">
+                {loginMethod === 'cookie' && renderCookieImport()}
+                {loginMethod === 'qrcode' && renderQrCodeLogin()}
+                {loginMethod === 'open_app' && renderOpenAppLogin()}
+            </div>
         </div>
     );
 };

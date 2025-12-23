@@ -50,14 +50,39 @@ STAGES_CONFIG = {
 class CoverGenerator:
     """Emby 封面图生成器"""
     
+    
     def __init__(self, emby_url: str = None, api_key: str = None):
         self.emby_url = emby_url
         self.api_key = api_key
+        self.proxies = {}
+        self.verify_ssl = False
+        self.timeout = 20
         
-    def set_emby_config(self, emby_url: str, api_key: str):
+    def set_emby_config(self, emby_url: str, api_key: str, proxies: dict = None, verify_ssl: bool = False):
         """设置 Emby 连接配置"""
         self.emby_url = emby_url.rstrip('/')
         self.api_key = api_key
+        self.proxies = proxies or {}
+        self.verify_ssl = verify_ssl
+        
+    def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """统一请求处理，自动添加代理、SSL配置和默认头"""
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = self.timeout
+            
+        if 'verify' not in kwargs:
+            kwargs['verify'] = self.verify_ssl
+            
+        if 'proxies' not in kwargs and self.proxies:
+            kwargs['proxies'] = self.proxies
+            
+        # 默认 headers
+        headers = kwargs.get('headers', {})
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = 'Boot-Cover-Generator/1.0'
+        kwargs['headers'] = headers
+        
+        return requests.request(method, url, **kwargs)
         
     def _generate_layout(self, count: int) -> List[dict]:
         """根据海报数量动态生成布局 STAGES"""
@@ -98,7 +123,7 @@ class CoverGenerator:
         try:
             url = f"{self.emby_url}/emby/Library/VirtualFolders"
             params = {"api_key": self.api_key}
-            resp = requests.get(url, params=params, timeout=10, verify=False)
+            resp = self._make_request('GET', url, params=params)
             resp.raise_for_status()
             
             libraries = []
@@ -132,7 +157,7 @@ class CoverGenerator:
                 "Recursive": True,
                 "IncludeItemTypes": "Movie,Series"
             }
-            resp = requests.get(url, params=params, timeout=10, verify=False)
+            resp = self._make_request('GET', url, params=params)
             resp.raise_for_status()
             
             items = resp.json().get("Items", [])
@@ -149,7 +174,7 @@ class CoverGenerator:
                 img_params = {"api_key": self.api_key, "maxWidth": 1000}
                 
                 try:
-                    img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+                    img_resp = self._make_request('GET', img_url, params=img_params)
                     if img_resp.status_code == 200:
                         img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
                         posters.append(img)
@@ -171,13 +196,13 @@ class CoverGenerator:
             img_url = f"{self.emby_url}/emby/Items/{library_id}/Images/Backdrop/0"
             img_params = {"api_key": self.api_key, "maxWidth": 2000} # 高清
             
-            img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+            img_resp = self._make_request('GET', img_url, params=img_params)
             if img_resp.status_code == 200:
                 return Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
             
             # 如果没有 Backdrop，尝试 Thumb (某些库只有Thumb)
             img_url = f"{self.emby_url}/emby/Items/{library_id}/Images/Thumb/0"
-            img_resp = requests.get(img_url, params=img_params, timeout=10, verify=False)
+            img_resp = self._make_request('GET', img_url, params=img_params)
             if img_resp.status_code == 200:
                 return Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
                 
@@ -694,8 +719,8 @@ class CoverGenerator:
         frames = []
         num_posters = len(posters)
         
-        # 使用较小分辨率生成 GIF 以减小文件大小
-        gif_width = min(width, 960)
+        # 使用较小分辨率生成 GIF 以减小文件大小 (Emby 推荐封面 GIF 宽度在 600px 左右以避免客户端卡顿)
+        gif_width = min(width, 600)
         gif_height = int(gif_width * height / width)
         
         for frame_idx in range(frame_count):
@@ -729,7 +754,8 @@ class CoverGenerator:
             save_all=True,
             append_images=frames[1:],
             duration=duration_ms,
-            loop=0
+            loop=0,
+            optimize=True
         )
         
         return buffer.getvalue()
@@ -778,7 +804,7 @@ class CoverGenerator:
                 logger.info(f"尝试上传到: {url}")
                 
                 # Emby API 接受 binary body
-                resp = requests.post(url, params=params, headers=headers, data=image_data, timeout=30, verify=False)
+                resp = self._make_request('POST', url, params=params, headers=headers, data=image_data, timeout=60)
                 
                 # Emby 可能返回 200, 201, 或 204 表示成功
                 if resp.status_code in [200, 201, 204]:

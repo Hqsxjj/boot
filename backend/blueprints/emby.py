@@ -786,7 +786,8 @@ def get_cover_libraries():
             return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
         
         generator = get_cover_generator()
-        generator.set_emby_config(emby_url, api_key)
+        proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+        generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
         libraries = generator.get_libraries()
         
         return jsonify({
@@ -822,7 +823,8 @@ def apply_covers_to_emby():
             return jsonify({'success': False, 'error': '未选择任何媒体库'}), 400
             
         generator = get_cover_generator()
-        generator.set_emby_config(emby_url, api_key)
+        proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+        generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
         
         # 获取所有库的信息以便查名称
         libraries = generator.get_libraries()
@@ -966,7 +968,8 @@ def get_library_posters(library_id: str):
         limit = request.args.get('limit', 10, type=int)
         
         generator = get_cover_generator()
-        generator.set_emby_config(emby_url, api_key)
+        proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+        generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
         posters = generator.get_library_posters(library_id, limit=limit)
         
         # 转换为 base64
@@ -1017,7 +1020,8 @@ def generate_cover():
         generator = get_cover_generator()
         
         if emby_url and api_key:
-            generator.set_emby_config(emby_url, api_key)
+            proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+            generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
             use_backdrop = data.get('useBackdrop', False)
         poster_count = int(data.get('posterCount', 5))
         poster_count = max(3, min(7, poster_count))
@@ -1156,7 +1160,17 @@ def start_cover_batch_background():
         api_key = emby_config.get('apiKey', '').strip()
         
         if emby_url and api_key:
-            generator.set_emby_config(emby_url, api_key)
+            # Need to get proxy config here safely
+            proxies = None
+            try:
+                # Re-instantiate service inside thread if needed, or query store
+                # Since we have _store, let's just get config manually or use emby service if thread-safe
+                # _emby_service is global.
+                if _emby_service:
+                    proxies = _emby_service._get_proxy_config()
+            except:
+                pass
+            generator.set_emby_config(emby_url, api_key, proxies=proxies)
         
         total = len(library_ids)
         success_count = 0
@@ -1226,3 +1240,78 @@ def start_cover_batch_background():
         'message': f'批量封面生成已在后台启动 ({len(library_ids)} 个库)',
         'task': task.to_dict()
     }), 200
+
+@emby_bp.route('/cover/upload_rendered', methods=['POST'])
+@require_auth
+def upload_rendered_cover():
+    """接收前端渲染好的图片，保存到本地并上传到 Emby"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+        
+        # 1. 获取上传的文件和参数
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': '未包含文件数据'}), 400
+            
+        file = request.files['file']
+        library_id = request.form.get('libraryId')
+        title = request.form.get('title', 'cover')
+        
+        if not library_id:
+            return jsonify({'success': False, 'error': '未指定媒体库 ID'}), 400
+            
+        # 2. 准备配置
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        if not emby_url or not api_key:
+            return jsonify({'success': False, 'error': '请先配置 Emby 服务器'}), 400
+            
+        generator = get_cover_generator()
+        proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+        generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
+        
+        # 3. 创建本地缓存目录 (data/covers/custom/[library_id])
+        import os
+        data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+        data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+        
+        # 清理标题用于文件名
+        safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip()
+        cache_dir = os.path.join(data_dir, 'covers', 'studio_generated')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{safe_title}_{timestamp}.png"
+        local_file_path = os.path.join(cache_dir, filename)
+        
+        # 4. 保存到本地
+        # 读取二进制数据
+        image_data = file.read()
+        with open(local_file_path, 'wb') as f:
+            f.write(image_data)
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Studio 封面已备份到本地: {local_file_path}")
+        
+        # 5. 上传到 Emby
+        # 重置指针以上传
+        # 或者直接使用 image_data
+        
+        if generator.upload_cover(library_id, image_data, "image/png"):
+            return jsonify({
+                'success': True,
+                'message': '上传成功',
+                'localPath': local_file_path
+            }), 200
+        else:
+            return jsonify({'success': False, 'error': 'Emby 上传失败，但已保存到本地', 'localPath': local_file_path}), 500
+            
+    except Exception as e:
+        import traceback
+        logging.getLogger(__name__).error(f"处理 Studio 封面上传失败: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+

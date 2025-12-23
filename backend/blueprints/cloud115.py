@@ -140,10 +140,16 @@ def poll_login_status(session_id: str):
             
             if login_method == 'open_app':
                 _secret_store.set_secret('cloud115_openapp_cookies', cookies_json)
-                logger.info('poll_login_status: 已保存到 cloud115_openapp_cookies')
+                # Clear other methods to ensure "Switching" works effectively
+                _secret_store.delete_secret('cloud115_qr_cookies')
+                _secret_store.delete_secret('cloud115_manual_cookies')
+                logger.info('poll_login_status: 已保存到 cloud115_openapp_cookies (并清理了其他方式的凭证)')
             else:
                 _secret_store.set_secret('cloud115_qr_cookies', cookies_json)
-                logger.info('poll_login_status: 已保存到 cloud115_qr_cookies')
+                # Clear other methods
+                _secret_store.delete_secret('cloud115_openapp_cookies')
+                _secret_store.delete_secret('cloud115_manual_cookies')
+                logger.info('poll_login_status: 已保存到 cloud115_qr_cookies (并清理了其他方式的凭证)')
             
             # Also update legacy key for backwards compatibility
             _secret_store.set_secret('cloud115_cookies', cookies_json)
@@ -232,6 +238,10 @@ def ingest_cookies():
         # 先保存cookies，然后尝试验证
         cookies_json = json.dumps(cookies)
         _secret_store.set_secret('cloud115_manual_cookies', cookies_json)
+        # Clear other methods
+        _secret_store.delete_secret('cloud115_openapp_cookies')
+        _secret_store.delete_secret('cloud115_qr_cookies')
+        
         _secret_store.set_secret('cloud115_cookies', cookies_json)
         
         # Store metadata
