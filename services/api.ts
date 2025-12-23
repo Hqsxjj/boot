@@ -236,12 +236,13 @@ export const api = {
 
   // --- 123 Share Interface ---
 
-  get123ShareFiles: async (shareCode: string, accessCode?: string) => {
+  get123ShareFiles: async (shareCode: string, accessCode?: string, cid?: string) => {
     const res = await apiClient.post<ApiResponse<{ id: string; name: string; size: number; is_directory: boolean }[]>>(
       '/123/share/files',
       {
         shareCode,
         accessCode,
+        file_id: cid,
       }
     );
     return res.data;
@@ -341,6 +342,14 @@ export const api = {
     const res = await apiClient.post<ApiResponse<any[]>>(`/emby/scan-series/${encodeURIComponent(seriesId)}`);
     return res.data;
   },
+
+  // 获取缺集列表 (DB)
+  getMissingEpisodes: async () => {
+    const res = await apiClient.get<ApiResponse<any[]>>('/emby/missing');
+    return res.data;
+  },
+
+
 
   // --- STRM 接口 ---
 
@@ -473,6 +482,17 @@ export const api = {
 
   getCrawlResults: async (keyword?: string) => {
     const res = await apiClient.get<ApiResponse<any>>('/sources/results', { params: { keyword } });
+    return res.data;
+  },
+
+  // --- Pansou API 配置 ---
+  getPansouConfig: async () => {
+    const res = await apiClient.get<ApiResponse<{ api_url: string; default_url: string }>>('/resource-search/pan/config');
+    return res.data;
+  },
+
+  savePansouConfig: async (apiUrl: string) => {
+    const res = await apiClient.post<ApiResponse<any>>('/resource-search/pan/config', { api_url: apiUrl });
     return res.data;
   },
 

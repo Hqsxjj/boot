@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
-import { Save, RefreshCw, KeyRound, User, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, Shield, Tv, X, Loader2 } from 'lucide-react';
+import { Save, RefreshCw, KeyRound, User, Smartphone, HardDrive, Cloud, Globe, Film, Bot, CheckCircle2, AlertCircle, Zap, Download, MonitorDown, Shield, Tv, X, Loader2, MessageSquare, Gauge } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { Cloud115Login } from '../components/Cloud115Login';
 
@@ -617,6 +617,23 @@ export const UserCenterView: React.FC = () => {
               </button>
             </div>
             <div className="p-6">
+              <div className="border-t border-slate-200/50 dark:border-slate-700/50 pt-4 mt-4">
+                <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-2 gap-2">
+                  <Gauge size={16} /> 请求速率限制 (QPS)
+                </label>
+                <input
+                  type="range" min="0.1" max="1.2" step="0.1"
+                  value={config.cloud115.qps}
+                  onChange={(e) => updateNested('cloud115', 'qps', parseFloat(e.target.value))}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-orange-600 mb-2"
+                />
+                <div className="flex justify-between text-xs text-slate-500 font-medium">
+                  <span>0.1 (慢)</span>
+                  <span className="font-bold text-orange-600">{config.cloud115.qps} 请求/秒</span>
+                  <span>1.2 (快)</span>
+                </div>
+              </div>
+
               <Cloud115Login
                 loginMethod={config.cloud115.loginMethod as 'cookie' | 'qrcode' | 'open_app'}
                 onLoginMethodChange={(method) => updateNested('cloud115', 'loginMethod', method)}
@@ -658,6 +675,24 @@ export const UserCenterView: React.FC = () => {
               </button>
             </div>
             <div className="p-6 space-y-6">
+
+              {/* QPS Settings for 123 */}
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700/50">
+                <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-2 gap-2">
+                  <Gauge size={16} /> 请求速率限制 (QPS)
+                </label>
+                <input
+                  type="range" min="0.1" max="2.0" step="0.1"
+                  value={config.cloud123.qps || 1.0}
+                  onChange={(e) => updateNested('cloud123', 'qps', parseFloat(e.target.value))}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-blue-600 mb-2"
+                />
+                <div className="flex justify-between text-xs text-slate-500 font-medium">
+                  <span>0.1 (慢)</span>
+                  <span className="font-bold text-blue-600">{config.cloud123.qps || 1.0} 请求/秒</span>
+                  <span>2.0 (快)</span>
+                </div>
+              </div>
               {/* 登录方式切换 */}
               <div className="flex gap-2">
                 <button
@@ -985,6 +1020,33 @@ export const UserCenterView: React.FC = () => {
                 {isTgTesting ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
                 保存并发送测试
               </button>
+
+              {/* 指令速查表 */}
+              <div className="mt-6 pt-6 border-t border-slate-200/50 dark:border-slate-700/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare size={16} className="text-teal-500" />
+                  <h4 className="font-bold text-sm text-slate-700 dark:text-slate-200">指令速查</h4>
+                </div>
+                <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                  {[
+                    { cmd: '/start', desc: '初始化机器人并检查账号连接状态' },
+                    { cmd: '/magnet', desc: '添加磁力/Ed2k/HTTP 链接离线任务 (115)' },
+                    { cmd: '/123_offline', desc: '添加 123 云盘离线下载任务' },
+                    { cmd: '/link', desc: '转存 115 分享链接 (支持加密)' },
+                    { cmd: '/rename', desc: '使用 TMDB 手动重命名指定文件/文件夹' },
+                    { cmd: '/organize', desc: '对 115 默认目录执行自动分类整理' },
+                    { cmd: '/123_organize', desc: '对 123 云盘目录执行自动分类整理' },
+                    { cmd: '/dir', desc: '设置或查看当前默认下载文件夹 (CID)' },
+                    { cmd: '/quota', desc: '查看 115 账号离线配额和空间使用情况' },
+                    { cmd: '/tasks', desc: '查看当前正在进行的离线任务列表' },
+                  ].map((item) => (
+                    <div key={item.cmd} className="flex items-start gap-2 text-xs">
+                      <code className="px-1.5 py-0.5 bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 rounded font-mono font-bold whitespace-nowrap">{item.cmd}</code>
+                      <span className="text-slate-500 dark:text-slate-400">{item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

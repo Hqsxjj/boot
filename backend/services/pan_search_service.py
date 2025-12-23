@@ -8,10 +8,25 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 # 网盘搜索 API 配置
-PANSOU_API_BASE = "https://pan.jivon.de"
+DEFAULT_PANSOU_API_BASE = "https://pan.jivon.de"
+PANSOU_API_KEY = "pansou_api_url"  # SecretStore 中存储的 key
 
 # 支持的网盘类型
 SUPPORTED_CLOUD_TYPES = ['115', '123', 'aliyun', 'baidu', 'quark', 'magnet', 'ed2k']
+
+
+def get_pansou_api_url() -> str:
+    """从配置中获取 Pansou API URL，如果未配置则返回默认值。"""
+    try:
+        from app import get_db_session
+        from services.secret_store import SecretStore
+        store = SecretStore(get_db_session)
+        url = store.get_secret(PANSOU_API_KEY)
+        if url and url.strip():
+            return url.strip().rstrip('/')
+    except Exception as e:
+        logger.warning(f"读取 Pansou API URL 配置失败: {e}")
+    return DEFAULT_PANSOU_API_BASE
 
 
 class PanSearchService:
@@ -22,10 +37,13 @@ class PanSearchService:
         Initialize PanSearchService.
         
         Args:
-            api_base: Optional custom API base URL
+            api_base: Optional custom API base URL (if not provided, reads from config)
             timeout: Request timeout in seconds
         """
-        self.api_base = (api_base or PANSOU_API_BASE).rstrip('/')
+        if api_base:
+            self.api_base = api_base.rstrip('/')
+        else:
+            self.api_base = get_pansou_api_url()
         self.timeout = timeout
     
     def search(self, keyword: str, cloud_types: List[str] = None, 

@@ -3,7 +3,7 @@ import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
 import { api } from '../services/api';
 // 确保 mockConfig 存在，如果不存在请创建一个空文件或根据需求调整
 import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
-import { Save, RefreshCw, Cookie, FolderInput, Gauge, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2 } from 'lucide-react';
+import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2 } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
 
@@ -350,81 +350,45 @@ export const CloudOrganizeView: React.FC = () => {
                      <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>123 云盘</button>
                   </div>
 
-                  {/* 115 Settings - 仅保留目录和QPS设置，登录已移至用户中心 */}
+                  {/* 115 Settings - 仅保留目录设置，登录和QPS已移至用户中心 */}
                   {activeTab === '115' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
-                        <div className="flex gap-8">
-                           <div className="flex-1">
-                              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">默认下载目录</label>
-                              <div className="flex gap-3">
-                                 <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
-                                    <FolderInput size={18} />
-                                    {config.cloud115.downloadDirName}
-                                    <span className="text-xs opacity-50 ml-auto font-mono">CID: {config.cloud115.downloadPath}</span>
-                                 </div>
-                                 <button
-                                    onClick={() => { setSelectorTarget('download'); setFileSelectorOpen(true); }}
-                                    className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
-                                 >
-                                    选择
-                                 </button>
+                        <div>
+                           <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">默认下载目录</label>
+                           <div className="flex gap-3">
+                              <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
+                                 <FolderInput size={18} />
+                                 {config.cloud115.downloadDirName}
+                                 <span className="text-xs opacity-50 ml-auto font-mono">CID: {config.cloud115.downloadPath}</span>
                               </div>
-                           </div>
-                           <div className="w-1/3">
-                              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5 gap-2">
-                                 <Gauge size={16} /> QPS 限制
-                              </label>
-                              <input
-                                 type="range" min="0.1" max="1.2" step="0.1"
-                                 value={config.cloud115.qps}
-                                 onChange={(e) => updateNested('cloud115', 'qps', parseFloat(e.target.value))}
-                                 className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-brand-600 mb-2"
-                              />
-                              <div className="flex justify-between text-xs text-slate-500 font-medium">
-                                 <span>0.1</span>
-                                 <span className="font-bold text-brand-600">{config.cloud115.qps} /s</span>
-                                 <span>1.2</span>
-                              </div>
+                              <button
+                                 onClick={() => { setSelectorTarget('download'); setFileSelectorOpen(true); }}
+                                 className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
+                              >
+                                 选择
+                              </button>
                            </div>
                         </div>
                      </div>
                   )}
 
-                  {/* 123 Settings - 仅保留目录和QPS设置，登录已移至用户中心 */}
+                  {/* 123 Settings - 仅保留目录设置，登录和QPS已移至用户中心 */}
                   {activeTab === '123' && (
                      <div className="space-y-6 animate-in fade-in duration-300">
-                        <div className="flex gap-8">
-                           <div className="flex-1">
-                              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">离线下载目录</label>
-                              <div className="flex gap-3">
-                                 <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
-                                    <FolderInput size={18} />
-                                    {config.cloud123.downloadDirName}
-                                    <span className="text-xs opacity-50 ml-auto font-mono">ID: {config.cloud123.downloadPath}</span>
-                                 </div>
-                                 <button
-                                    onClick={() => { setSelectorTarget('download123'); setFileSelectorOpen(true); }}
-                                    className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
-                                 >
-                                    选择
-                                 </button>
+                        <div>
+                           <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">离线下载目录</label>
+                           <div className="flex gap-3">
+                              <div className="flex-1 px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 text-sm flex items-center gap-2 backdrop-blur-sm shadow-inner">
+                                 <FolderInput size={18} />
+                                 {config.cloud123.downloadDirName}
+                                 <span className="text-xs opacity-50 ml-auto font-mono">ID: {config.cloud123.downloadPath}</span>
                               </div>
-                           </div>
-                           <div className="w-1/3">
-                              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5 gap-2">
-                                 <Gauge size={16} /> QPS 限制 (最大 2.0)
-                              </label>
-                              <input
-                                 type="range" min="0.1" max="2.0" step="0.1"
-                                 value={config.cloud123.qps || 1.0}
-                                 onChange={(e) => updateNested('cloud123', 'qps', parseFloat(e.target.value))}
-                                 className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-blue-600 mb-2"
-                              />
-                              <div className="flex justify-between text-xs text-slate-500 font-medium">
-                                 <span>0.1</span>
-                                 <span className="font-bold text-blue-600">{config.cloud123.qps || 1.0} /s</span>
-                                 <span>2.0</span>
-                              </div>
+                              <button
+                                 onClick={() => { setSelectorTarget('download123'); setFileSelectorOpen(true); }}
+                                 className="px-4 py-2.5 bg-white/50 dark:bg-slate-700/50 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-brand-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
+                              >
+                                 选择
+                              </button>
                            </div>
                         </div>
                      </div>
@@ -591,15 +555,6 @@ export const CloudOrganizeView: React.FC = () => {
 
                         {/* Global Renaming Settings */}
                         <div className="mb-8 grid grid-cols-1 gap-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
-                           <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">TMDB API 密钥</label>
-                              <SensitiveInput
-                                 value={config.tmdb.apiKey}
-                                 onChange={(e) => updateNested('tmdb', 'apiKey', e.target.value)}
-                                 className={inputClass}
-                              />
-                           </div>
-
                            <div className="flex items-center justify-between">
                               <label className="text-sm font-bold text-slate-600 dark:text-slate-400">强制赋予 TMDB ID (文件夹名附加 {`{tmdb-id}`})</label>
                               <input

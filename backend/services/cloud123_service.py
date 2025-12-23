@@ -47,6 +47,14 @@ class Cloud123Service:
         except ImportError:
             pass
 
+    def set_qps(self, qps: float):
+        """Set QPS limit dynamically."""
+        if qps > 0:
+            self._qps = float(qps)
+            logger.info(f'Cloud123Service QPS updated to {self._qps}')
+        else:
+            logger.warning(f'Invalid QPS value: {qps}, ignoring')
+
     def _wait_for_rate_limit(self):
         """Enforce QPS limit."""
         import time
@@ -385,7 +393,7 @@ class Cloud123Service:
                 'error': f'发生异常错误: {str(e)}'
             }
 
-    def get_share_files(self, share_code: str, access_code: str = None) -> Dict[str, Any]:
+    def get_share_files(self, share_code: str, access_code: str = None, file_id: str = None) -> Dict[str, Any]:
         """
         获取 123 云盘分享链接中的文件列表。
         使用 p123client 的 share_iterdir 函数来解析分享链接（无需登录）。
@@ -393,12 +401,17 @@ class Cloud123Service:
         Args:
             share_code: 分享码 (如 IpPUVv-K2Dj)
             access_code: 提取码 (如 JZMM)
+            file_id: 文件夹 ID (可选，用于浏览子目录)
         
         Returns:
             Dict with success flag and file list
         """
         try:
-            # 首先尝试使用 p123client.tool.share_iterdir
+            # 如果指定了 file_id，直接使用 REST API (因为 share_iterdir 可能不支持指定 ID)
+            if file_id and file_id != '0':
+                return self._get_share_files_api(share_code, access_code, file_id)
+
+            # 首先尝试使用 p123client.tool.share_iterdir (仅用于根目录)
             try:
                 from p123client.tool import share_iterdir
                 
@@ -439,43 +452,7 @@ class Cloud123Service:
                 logger.warning(f'share_iterdir 失败: {e}，回退到 API 方式')
             
             # 回退: 使用官方 API (需要登录)
-            share_info_payload = {
-                'shareKey': share_code,
-                'sharePwd': access_code or ''
-            }
-            
-            share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
-            
-            if not share_result.get('success'):
-                return {
-                    'success': False,
-                    'error': share_result.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
-                }
-            
-            share_data = share_result.get('data', {})
-            file_list = share_data.get('fileList', []) if isinstance(share_data, dict) else []
-            
-            if not file_list:
-                return {
-                    'success': False,
-                    'error': '分享中没有文件'
-                }
-            
-            # 格式化文件列表
-            formatted_files = []
-            for item in file_list:
-                formatted_files.append({
-                    'id': str(item.get('fileId', '')),
-                    'name': item.get('fileName', ''),
-                    'size': item.get('size', 0),
-                    'is_directory': item.get('type', 0) == 1,  # type=1 means directory
-                    'ext': item.get('etag', ''),
-                })
-            
-            return {
-                'success': True,
-                'data': formatted_files
-            }
+            return self._get_share_files_api(share_code, access_code, file_id or '0')
             
         except Exception as e:
             logger.error(f'获取 123 分享文件列表失败: {str(e)}')
@@ -484,8 +461,71 @@ class Cloud123Service:
                 'error': f'获取文件列表失败: {str(e)}'
             }
 
+    def _get_share_files_api(self, share_code: str, access_code: str = None, parent_id: str = '0') -> Dict[str, Any]:
+        """
+        Helper to get share files via REST API.
+        """
+        try:
+            # 如果是根目录 ('0' 或 None)，使用 /api/v1/share/info
+            if not parent_id or parent_id == '0':
+                share_info_payload = {
+                    'shareKey': share_code,
+                    'sharePwd': access_code or ''
+                }
+                share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
+                
+                if not share_result.get('success'):
+                    return {
+                        'success': False,
+                        'error': share_result.get('error', '无法获取分享信息')
+                    }
+                
+                data = share_result.get('data', {})
+                file_list = data.get('fileList', [])
+            else:
+                # 如果是子目录，尝试使用 /api/v1/share/file/list (根据经验推断的 API endpoint)
+                # 或者尝试再次使用 share/info 但带上 parentFileId (如果支持)
+                # 经过调研，123云盘 API 可能使用 /share/file/list
+                payload = {
+                    'shareKey': share_code,
+                    'sharePwd': access_code or '',
+                    'parentFileId': int(parent_id),
+                    'limit': 100,
+                    'page': 1
+                }
+                
+                # 尝试不同的 endpoints
+                # 1. /api/v1/share/file/list
+                result = self._make_api_request('POST', '/api/v1/share/file/list', json_data=payload)
+                
+                if not result.get('success'):
+                    return {
+                        'success': False,
+                        'error': result.get('error', '无法获取子目录')
+                    }
+                data = result.get('data', {})
+                file_list = data.get('fileList', [])
+
+            formatted_files = []
+            for item in file_list:
+                formatted_files.append({
+                    'id': str(item.get('fileId', '')),
+                    'name': item.get('fileName', ''),
+                    'size': item.get('size', 0),
+                    'is_directory': item.get('type', 0) == 1,
+                    'ext': item.get('etag', ''),
+                })
+            
+            return {
+                'success': True,
+                'data': formatted_files
+            }
+        except Exception as e:
+            logger.error(f"Rest API get_share_files error: {e}")
+            return {'success': False, 'error': str(e)}
+
     def save_share(self, share_code: str, access_code: str = None,
-                   save_path: str = '0') -> Dict[str, Any]:
+                   save_path: str = '0', file_ids: List[str] = None) -> Dict[str, Any]:
         """
         转存 123 云盘分享链接到指定目录。
         
@@ -493,48 +533,52 @@ class Cloud123Service:
             share_code: 分享码 (如 abc123-xyz)
             access_code: 提取码
             save_path: 保存目录 ID，默认根目录
+            file_ids: Optional list of file IDs to save. If None, saves all files.
         
         Returns:
             Dict with success flag and saved file info
         """
         try:
-            # 首先获取分享信息
-            share_info_payload = {
-                'shareKey': share_code,
-                'sharePwd': access_code or ''
-            }
+            target_file_ids = file_ids
             
-            share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
-            
-            if not share_result.get('success'):
-                return {
-                    'success': False,
-                    'error': share_result.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+            # If no file_ids provided, fetch all from share info
+            if not target_file_ids:
+                share_info_payload = {
+                    'shareKey': share_code,
+                    'sharePwd': access_code or ''
                 }
+                
+                share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
+                
+                if not share_result.get('success'):
+                    return {
+                        'success': False,
+                        'error': share_result.get('error', '无法获取分享信息，可能链接已失效或需要提取码')
+                    }
+                
+                share_data = share_result.get('data', {})
+                file_list = share_data.get('fileList', []) if isinstance(share_data, dict) else []
+                
+                if not file_list:
+                    return {
+                        'success': False,
+                        'error': '分享中没有文件'
+                    }
+                
+                # 获取所有文件 ID
+                target_file_ids = [item.get('fileId') for item in file_list if item.get('fileId')]
             
-            share_data = share_result.get('data', {})
-            file_list = share_data.get('fileList', []) if isinstance(share_data, dict) else []
-            
-            if not file_list:
+            if not target_file_ids:
                 return {
                     'success': False,
-                    'error': '分享中没有文件'
-                }
-            
-            # 获取所有文件 ID
-            file_ids = [item.get('fileId') for item in file_list if item.get('fileId')]
-            
-            if not file_ids:
-                return {
-                    'success': False,
-                    'error': '无法获取分享文件列表'
+                    'error': '没有可转存的文件'
                 }
             
             # 转存文件
             save_payload = {
                 'shareKey': share_code,
                 'sharePwd': access_code or '',
-                'fileIdList': file_ids,
+                'fileIdList': target_file_ids,
                 'parentFileId': int(save_path) if save_path != '0' else 0
             }
             
@@ -544,11 +588,11 @@ class Cloud123Service:
                 return {
                     'success': True,
                     'data': {
-                        'file_id': file_ids[0] if len(file_ids) == 1 else file_ids,
-                        'count': len(file_ids),
+                        'file_id': target_file_ids[0] if len(target_file_ids) == 1 else target_file_ids,
+                        'count': len(target_file_ids),
                         'save_path': save_path
                     },
-                    'message': f'成功转存 {len(file_ids)} 个文件'
+                    'message': f'成功转存 {len(target_file_ids)} 个文件'
                 }
             else:
                 return {

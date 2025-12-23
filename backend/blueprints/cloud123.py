@@ -20,6 +20,11 @@ def init_cloud123_blueprint(secret_store: SecretStore):
     return cloud123_bp
 
 
+def get_service() -> Cloud123Service:
+    """Get the initialized Cloud123Service instance."""
+    return _cloud123_service
+
+
 @cloud123_bp.route('/login/password', methods=['POST'])
 @require_auth
 def password_login():

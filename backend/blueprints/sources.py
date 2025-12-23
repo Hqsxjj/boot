@@ -1,54 +1,44 @@
 """
 来源管理 API - 管理用户添加的 TG 频道和网站来源
+使用数据库存储替代 JSON 文件
 """
-import os
-import json
 import uuid
 import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify
-from functools import wraps
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 sources_bp = Blueprint('sources', __name__)
 
-# 来源存储文件路径
-SOURCES_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'sources.json')
+# 全局数据库存储实例
+_db_source_store = None
 
-def ensure_data_dir():
-    """确保数据目录存在"""
-    data_dir = os.path.dirname(SOURCES_FILE)
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir, exist_ok=True)
 
-def load_sources():
-    """加载来源列表"""
-    ensure_data_dir()
-    if os.path.exists(SOURCES_FILE):
-        try:
-            with open(SOURCES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"加载来源文件失败: {e}")
-    return []
+def init_sources_blueprint(session_factory):
+    """初始化来源蓝图，设置数据库连接"""
+    global _db_source_store
+    from persistence.db_source_store import DbSourceStore
+    _db_source_store = DbSourceStore(session_factory)
+    return sources_bp
 
-def save_sources(sources):
-    """保存来源列表"""
-    ensure_data_dir()
-    try:
-        with open(SOURCES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(sources, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"保存来源文件失败: {e}")
-        return False
+
+def get_source_store():
+    """获取数据库存储实例"""
+    global _db_source_store
+    return _db_source_store
 
 
 @sources_bp.route('/api/sources', methods=['GET'])
 def get_sources():
     """获取所有来源列表"""
-    sources = load_sources()
+    store = get_source_store()
+    if store:
+        sources = store.get_sources()
+    else:
+        sources = []
+    
     return jsonify({
         'success': True,
         'data': sources
@@ -75,7 +65,6 @@ def add_source():
     
     # 验证链接格式
     if source_type == 'telegram':
-        # 支持 t.me/xxx 或 @xxx 格式
         if not (url.startswith('https://t.me/') or url.startswith('t.me/') or url.startswith('@')):
             return jsonify({'success': False, 'error': 'Telegram 链接格式无效，应为 https://t.me/xxx 或 @xxx'}), 400
     elif source_type == 'website':
@@ -85,7 +74,6 @@ def add_source():
     # 自动生成名称
     if not name:
         if source_type == 'telegram':
-            # 从链接中提取频道名
             if url.startswith('@'):
                 name = url
             elif 't.me/' in url:
@@ -93,59 +81,48 @@ def add_source():
             else:
                 name = url
         else:
-            # 从网址中提取域名
             try:
-                from urllib.parse import urlparse
                 parsed = urlparse(url)
                 name = parsed.netloc or url
             except:
                 name = url
     
-    sources = load_sources()
+    store = get_source_store()
+    if not store:
+        return jsonify({'success': False, 'error': '数据库未初始化'}), 500
     
-    # 检查是否已存在相同链接
-    for s in sources:
+    # 检查是否已存在
+    existing = store.get_sources()
+    for s in existing:
         if s.get('url') == url:
             return jsonify({'success': False, 'error': '该来源已存在'}), 400
     
-    new_source = {
-        'id': str(uuid.uuid4())[:8],
-        'type': source_type,
-        'url': url,
-        'name': name,
-        'enabled': True,
-        'created_at': datetime.now().isoformat()
-    }
-    
-    sources.append(new_source)
-    
-    if save_sources(sources):
+    try:
+        new_source = store.add_source(source_type, url, name)
         return jsonify({
             'success': True,
             'data': new_source,
             'message': '来源添加成功'
         })
-    else:
-        return jsonify({'success': False, 'error': '保存失败'}), 500
+    except Exception as e:
+        logger.error(f"添加来源失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @sources_bp.route('/api/sources/<source_id>', methods=['DELETE'])
 def delete_source(source_id):
     """删除来源"""
-    sources = load_sources()
+    store = get_source_store()
+    if not store:
+        return jsonify({'success': False, 'error': '数据库未初始化'}), 500
     
-    new_sources = [s for s in sources if s.get('id') != source_id]
-    
-    if len(new_sources) == len(sources):
-        return jsonify({'success': False, 'error': '来源不存在'}), 404
-    
-    if save_sources(new_sources):
+    if store.delete_source(source_id):
         return jsonify({
             'success': True,
             'message': '来源已删除'
         })
     else:
-        return jsonify({'success': False, 'error': '保存失败'}), 500
+        return jsonify({'success': False, 'error': '来源不存在'}), 404
 
 
 @sources_bp.route('/api/sources/<source_id>', methods=['PUT'])
@@ -156,25 +133,26 @@ def update_source(source_id):
     if not data:
         return jsonify({'success': False, 'error': '缺少数据'}), 400
     
-    sources = load_sources()
+    store = get_source_store()
+    if not store:
+        return jsonify({'success': False, 'error': '数据库未初始化'}), 500
     
-    for source in sources:
-        if source.get('id') == source_id:
-            if 'enabled' in data:
-                source['enabled'] = bool(data['enabled'])
-            if 'name' in data:
-                source['name'] = data['name'].strip()
-            
-            if save_sources(sources):
-                return jsonify({
-                    'success': True,
-                    'data': source,
-                    'message': '来源已更新'
-                })
-            else:
-                return jsonify({'success': False, 'error': '保存失败'}), 500
+    updates = {}
+    if 'enabled' in data:
+        updates['enabled'] = bool(data['enabled'])
+    if 'name' in data:
+        updates['name'] = data['name'].strip()
     
-    return jsonify({'success': False, 'error': '来源不存在'}), 404
+    result = store.update_source(source_id, **updates)
+    
+    if result:
+        return jsonify({
+            'success': True,
+            'data': result,
+            'message': '来源已更新'
+        })
+    else:
+        return jsonify({'success': False, 'error': '来源不存在'}), 404
 
 
 @sources_bp.route('/api/sources/crawl', methods=['POST'])
@@ -195,14 +173,16 @@ def crawl_single_source(source_id):
     """爬取单个来源"""
     try:
         from services.source_crawler_service import get_crawler_service
-        crawler = get_crawler_service()
         
-        sources = load_sources()
-        source = next((s for s in sources if s.get('id') == source_id), None)
+        store = get_source_store()
+        if not store:
+            return jsonify({'success': False, 'error': '数据库未初始化'}), 500
         
+        source = store.get_source(source_id)
         if not source:
             return jsonify({'success': False, 'error': '来源不存在'}), 404
         
+        crawler = get_crawler_service()
         result = crawler.crawl_source(source)
         return jsonify(result)
     except Exception as e:
@@ -214,11 +194,39 @@ def crawl_single_source(source_id):
 def get_crawl_results():
     """获取爬取结果"""
     try:
-        from services.source_crawler_service import get_crawler_service
+        store = get_source_store()
+        if not store:
+            return jsonify({'success': False, 'error': '数据库未初始化'}), 500
+        
         keyword = request.args.get('keyword', '')
-        crawler = get_crawler_service()
-        result = crawler.get_crawled_resources(keyword if keyword else None)
-        return jsonify(result)
+        
+        if keyword:
+            resources = store.search_crawled(keyword)
+        else:
+            resources = store.get_crawled_resources()
+        
+        return jsonify({
+            'success': True,
+            'data': resources
+        })
     except Exception as e:
         logger.error(f"获取爬取结果失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@sources_bp.route('/api/sources/stats', methods=['GET'])
+def get_crawl_stats():
+    """获取爬取统计"""
+    try:
+        store = get_source_store()
+        if not store:
+            return jsonify({'success': False, 'error': '数据库未初始化'}), 500
+        
+        stats = store.get_crawl_stats()
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+    except Exception as e:
+        logger.error(f"获取统计失败: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500

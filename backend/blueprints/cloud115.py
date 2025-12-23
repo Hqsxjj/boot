@@ -23,6 +23,11 @@ def init_cloud115_blueprint(secret_store: SecretStore):
     return cloud115_bp
 
 
+def get_service() -> Cloud115Service:
+    """Get the initialized Cloud115Service instance."""
+    return _cloud115_service
+
+
 @cloud115_bp.route('/login/qrcode', methods=['POST'])
 @require_auth
 def start_qr_login():

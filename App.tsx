@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { UserCenterView } from './views/UserCenterView';
-import { BotSettingsView } from './views/BotSettingsView';
 import { CloudOrganizeView } from './views/CloudOrganizeView';
 import { EmbyView } from './views/EmbyView';
 import { LogsView } from './views/LogsView';
 import { LoginView } from './views/LoginView';
 import { ResourceSearchView } from './views/ResourceSearchView';
+import { CoverGeneratorView } from './views/CoverGeneratorView';
 import { ViewState } from './types';
 import { api } from './services/api';
 import { checkAuth, logout } from './services/auth';
@@ -31,6 +31,7 @@ const PATH_MAP: Record<ViewState, string> = {
   [ViewState.CLOUD_ORGANIZE]: 'cloud-organize',
   [ViewState.EMBY_INTEGRATION]: 'emby',
   [ViewState.RESOURCE_SEARCH]: 'resource-search',
+  [ViewState.COVER_GENERATOR]: 'cover-generator',
   [ViewState.LOGS]: 'logs',
 };
 
@@ -153,10 +154,10 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case ViewState.USER_CENTER: return <UserCenterView />;
-      case ViewState.BOT_SETTINGS: return <BotSettingsView />;
       case ViewState.CLOUD_ORGANIZE: return <CloudOrganizeView />;
       case ViewState.EMBY_INTEGRATION: return <EmbyView />;
       case ViewState.RESOURCE_SEARCH: return <ResourceSearchView />;
+      case ViewState.COVER_GENERATOR: return <CoverGeneratorView />;
       case ViewState.LOGS: return <LogsView />;
       default: return <UserCenterView />;
     }
@@ -222,7 +223,6 @@ const App: React.FC = () => {
                     <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 px-2">功能菜单</div>
                     {[
                       { id: ViewState.USER_CENTER, label: '用户中心' },
-                      { id: ViewState.BOT_SETTINGS, label: '机器人设置' },
                       { id: ViewState.CLOUD_ORGANIZE, label: '网盘整理' },
                       { id: ViewState.RESOURCE_SEARCH, label: '资源搜索' },
                       { id: ViewState.EMBY_INTEGRATION, label: 'Emby 联动' },

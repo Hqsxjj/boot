@@ -85,9 +85,17 @@ export const ResourceSearchView: React.FC = () => {
     const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
     const [toast, setToast] = useState<string | null>(null);
     const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+    const [pansouEnabled, setPansouEnabled] = useState<boolean | null>(null);
     const [searchMessage, setSearchMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'search' | 'subscription' | 'sources'>('search');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');  // 视图模式：grid 或 list
+
+    // 分区搜索结果
+    const [searchSections, setSearchSections] = useState<{
+        pansou: Resource[];
+        ai: Resource[];
+        user_source: Resource[];
+    }>({ pansou: [], ai: [], user_source: [] });
 
     // 来源管理状态
     const [sources, setSources] = useState<Array<{ id: string; type: 'telegram' | 'website'; url: string; name: string; enabled: boolean; created_at: string }>>([]);
@@ -103,7 +111,7 @@ export const ResourceSearchView: React.FC = () => {
     const [shareFiles, setShareFiles] = useState<ShareFile[]>([]);
     const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
     const [isFileLoading, setIsFileLoading] = useState(false);
-    const [sharingResource, setSharingResource] = useState<{ shareCode: string; accessCode: string; resourceTitle: string } | null>(null);
+    const [sharingResource, setSharingResource] = useState<{ shareCode: string; accessCode: string; resourceTitle: string; cloudType: string } | null>(null);
 
     // Expandable Resource Cards State
     const [expandedResources, setExpandedResources] = useState<Set<string>>(new Set());
@@ -155,6 +163,7 @@ export const ResourceSearchView: React.FC = () => {
 
         setIsSearching(true);
         setSearchResults([]);
+        setSearchSections({ pansou: [], ai: [], user_source: [] });
         setSearchMessage(null);
 
         try {
@@ -170,6 +179,18 @@ export const ResourceSearchView: React.FC = () => {
                 });
                 setSearchResults(sortedResources);
                 setAiEnabled((response as any).ai_enabled);
+                setPansouEnabled((response as any).pansou_enabled);
+
+                // 保存分区结果
+                const sections = (response as any).sections;
+                if (sections) {
+                    setSearchSections({
+                        pansou: (sections.pansou || []).filter(hasValidShareLink),
+                        ai: (sections.ai || []).filter(hasValidShareLink),
+                        user_source: (sections.user_source || []).filter(hasValidShareLink)
+                    });
+                }
+
                 if ((response as any).message) {
                     setSearchMessage((response as any).message);
                 }
@@ -222,72 +243,150 @@ export const ResourceSearchView: React.FC = () => {
         setSelectedResource(null);
     };
 
-    const handlePreviewContent = async (resource: Resource) => {
-        const link = resource.share_link || resource.share_links?.[0]?.link;
-        if (!link) return;
-
-        // Simple parsing for 115 links - supports both 115.com and 115cdn.com
-        // Format: https://115.com/s/sw3xxxx?password=yyyy or https://115cdn.com/s/sw3xxxx?password=yyyy
-        const match = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-        if (!match) {
-            setToast('不支持的链接格式');
-            setTimeout(() => setToast(null), 3000);
-            return;
-        }
-
-        const shareCode = match[1];
-        let accessCode = '';
-        try {
-            const urlObj = new URL(link);
-            accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
-        } catch (e) {
-            // URL parse error, maybe partial url
-        }
-
-        setSharingResource({ shareCode, accessCode, resourceTitle: resource.title });
-        setShowFileModal(true);
+    // Load share files for Modal (supports browsing folders)
+    const loadModalShareFiles = async (cloudType: string, shareCode: string, accessCode: string, folderId: string) => {
         setIsFileLoading(true);
-        setShareFiles([]);
-        setSelectedFileIds(new Set());
+        if (folderId === '0' || folderId === '') {
+            setShareFiles([]);
+            setSelectedFileIds(new Set());
+        } else {
+            setShareFiles([]);
+            setSelectedFileIds(new Set());
+        }
 
         try {
-            const response = await api.get115ShareFiles(shareCode, accessCode);
-            if (response.success) {
-                setShareFiles(response.data || []);
-                // Default select all
-                const allIds = new Set((response.data || []).map(f => f.id));
-                setSelectedFileIds(allIds);
+            let res;
+            if (cloudType === '115') {
+                res = await api.get115ShareFiles(shareCode, accessCode, folderId);
+            } else if (cloudType === '123') {
+                res = await api.get123ShareFiles(shareCode, accessCode, folderId);
+            }
+
+            if (res?.success) {
+                setShareFiles(res.data || []);
             } else {
-                setToast(response.error || '获取文件列表失败');
-                setTimeout(() => setToast(null), 3000);
-                setShowFileModal(false);
+                setToast(res?.error || '获取文件列表失败');
+                setShareFiles([]);
             }
         } catch (e) {
             console.error(e);
             setToast('获取文件列表失败');
-            setTimeout(() => setToast(null), 3000);
-            setShowFileModal(false);
         } finally {
             setIsFileLoading(false);
         }
+    };
+
+    const handleModalFolderClick = (file: ShareFile) => {
+        if (!sharingResource) return;
+        if (!file.is_directory) return;
+
+        const { cloudType, shareCode, accessCode } = sharingResource;
+
+        // Update breadcrumbs
+        const key = `${cloudType}:${shareCode}`;
+        setResourceBreadcrumbs(prev => {
+            const current = prev[key] || [{ id: '0', name: '根目录' }];
+            const existingIndex = current.findIndex(c => c.id === file.id);
+            if (existingIndex >= 0) {
+                return { ...prev, [key]: current.slice(0, existingIndex + 1) };
+            }
+            return { ...prev, [key]: [...current, { id: file.id, name: file.name }] };
+        });
+
+        loadModalShareFiles(cloudType, shareCode, accessCode, file.id);
+    };
+
+    const handleModalBreadcrumbClick = (index: number) => {
+        if (!sharingResource) return;
+        const { cloudType, shareCode, accessCode } = sharingResource;
+        const key = `${cloudType}:${shareCode}`;
+
+        const currentBreadcrumbs = resourceBreadcrumbs[key] || [{ id: '0', name: '根目录' }];
+        const targetCrumb = currentBreadcrumbs[index];
+        if (!targetCrumb) return;
+
+        setResourceBreadcrumbs(prev => ({
+            ...prev,
+            [key]: currentBreadcrumbs.slice(0, index + 1)
+        }));
+
+        loadModalShareFiles(cloudType, shareCode, accessCode, targetCrumb.id);
+    };
+
+    const handlePreviewContent = async (resource: Resource) => {
+        let link = resource.share_link;
+        if (!link && resource.share_links && resource.share_links.length > 0) {
+            const l115 = resource.share_links.find(l => l.link && (l.link.includes('115.com') || l.link.includes('115cdn.com')));
+            const l123 = resource.share_links.find(l => l.link && (l.link.includes('123pan.com') || l.link.includes('123684.com')));
+            link = l115?.link || l123?.link || resource.share_links[0].link;
+        }
+
+        if (!link) {
+            setToast('未找到有效分享链接');
+            return;
+        }
+
+        let cloudType = '';
+        let shareCode = '';
+        let accessCode = '';
+
+        const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
+        const match123 = link.match(/123(?:pan|684)?\.com\/s\/([a-zA-Z0-9-]+)/i);
+
+        if (match115) {
+            cloudType = '115';
+            shareCode = match115[1];
+            try {
+                const urlObj = new URL(link);
+                accessCode = urlObj.searchParams.get('password') || urlObj.searchParams.get('pwd') || '';
+            } catch (e) { }
+        } else if (match123) {
+            cloudType = '123';
+            shareCode = match123[1];
+            try {
+                const urlObj = new URL(link);
+                accessCode = urlObj.searchParams.get('提取码') || '';
+            } catch (e) { }
+        } else {
+            setToast('不支持的链接格式 (仅支持 115 和 123云盘)');
+            return;
+        }
+
+        setSharingResource({ shareCode, accessCode, resourceTitle: resource.title, cloudType });
+        setShowFileModal(true);
+
+        const key = `${cloudType}:${shareCode}`;
+        setResourceBreadcrumbs(prev => ({ ...prev, [key]: [{ id: '0', name: '根目录' }] }));
+
+        loadModalShareFiles(cloudType, shareCode, accessCode, '0');
     };
 
     const handleSaveSelectedFiles = async () => {
         if (!sharingResource || selectedFileIds.size === 0) return;
 
         try {
-            const response = await api.save115Share(
-                sharingResource.shareCode,
-                sharingResource.accessCode,
-                undefined, // default cid
-                Array.from(selectedFileIds)
-            );
+            let response;
+            if (sharingResource.cloudType === '115') {
+                response = await api.save115Share(
+                    sharingResource.shareCode,
+                    sharingResource.accessCode,
+                    undefined, // default cid
+                    Array.from(selectedFileIds)
+                );
+            } else if (sharingResource.cloudType === '123') {
+                response = await api.save123Share(
+                    sharingResource.shareCode,
+                    sharingResource.accessCode,
+                    undefined, // default root
+                    Array.from(selectedFileIds)
+                );
+            }
 
-            if (response.success) {
+            if (response?.success) {
                 setToast(`成功转存 ${response.data.count} 个文件`);
                 setShowFileModal(false);
             } else {
-                setToast(response.error || '转存失败');
+                setToast(response?.error || '转存失败');
             }
             setTimeout(() => setToast(null), 3000);
         } catch (e) {
@@ -413,7 +512,7 @@ export const ResourceSearchView: React.FC = () => {
             if (cloudType === '115') {
                 response = await api.get115ShareFiles(shareCode, accessCode, cid);
             } else if (cloudType === '123') {
-                response = await api.get123ShareFiles(shareCode, accessCode);
+                response = await api.get123ShareFiles(shareCode, accessCode, cid);
             } else {
                 setToast('不支持的网盘类型');
                 setTimeout(() => setToast(null), 3000);
@@ -781,20 +880,30 @@ export const ResourceSearchView: React.FC = () => {
                             </button>
                         </form>
 
-                        {/* AI Status Hint */}
-                        {aiEnabled !== null && (
-                            <div className={`mt-4 flex items-center gap-2 text-xs ${aiEnabled ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                {aiEnabled ? (
-                                    <>
-                                        <CheckCircle2 size={14} />
-                                        AI 搜索已启用 - 使用您配置的 AI 模型进行智能搜索
-                                    </>
-                                ) : (
-                                    <>
-                                        <AlertCircle size={14} />
-                                        AI 未配置 - 请在「网盘整理」页面设置 AI 配置以启用智能搜索
-                                    </>
-                                )}
+                        {/* Search Sources Status Hint */}
+                        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+                            {pansouEnabled !== null && (
+                                <div className={`flex items-center gap-1 ${pansouEnabled ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`}>
+                                    {pansouEnabled ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                                    {pansouEnabled ? '盘搜 API 已配置' : '盘搜未配置'}
+                                </div>
+                            )}
+                            {aiEnabled !== null && (
+                                <div className={`flex items-center gap-1 ${aiEnabled ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`}>
+                                    {aiEnabled ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                                    {aiEnabled ? 'AI 搜索已启用' : 'AI 未配置'}
+                                </div>
+                            )}
+                            <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                                <Globe size={14} />
+                                频道来源
+                            </div>
+                        </div>
+
+                        {/* 提示：如果都没有配置 */}
+                        {pansouEnabled === false && aiEnabled === false && (
+                            <div className="mt-3 p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border-[0.5px] border-amber-200/50 dark:border-amber-800/50 text-sm text-amber-700 dark:text-amber-300">
+                                <strong>提示：</strong>请在「来源管理」中配置搜索接口或 AI，或添加频道来源以获取搜索结果
                             </div>
                         )}
 
@@ -806,8 +915,10 @@ export const ResourceSearchView: React.FC = () => {
                     </section>
 
                     {/* Search Results */}
+                    {/* Search Results - 分区展示 */}
                     {searchResults.length > 0 && (
-                        <section className="space-y-4">
+                        <section className="space-y-6">
+                            {/* 搜索结果标题和视图切换 */}
                             <div className="flex items-center justify-between">
                                 <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                                     <Search size={20} />
@@ -831,28 +942,110 @@ export const ResourceSearchView: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
-                            <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
-                                {searchResults.map((resource, index) => (
-                                    <ResourceCard
-                                        key={`search-${index}`}
-                                        resource={resource}
-                                        onClick={() => handleResourceClick(resource)}
-                                        onToggleExpand={toggleResourceExpand}
-                                        isExpanded={expandedResources.has(resource.id || resource.title)}
-                                        files={resourceFiles[resource.id || resource.title] || []}
-                                        isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
-                                        selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
-                                        onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
-                                        onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
-                                        onSaveFiles={() => handleSaveResourceFiles(resource)}
-                                        onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
-                                        breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
-                                        onFolderClick={(folder) => handleFolderClick(resource, folder)}
-                                        onBreadcrumbClick={(index) => navigateToBreadcrumb(resource, index)}
-                                        viewMode={viewMode}
-                                    />
-                                ))}
-                            </div>
+
+                            {/* 盘搜 API 结果 */}
+                            {searchSections.pansou.length > 0 && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold rounded-full">
+                                            盘搜 API
+                                        </div>
+                                        <span className="text-sm text-slate-500">{searchSections.pansou.length} 条结果</span>
+                                    </div>
+                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                        {searchSections.pansou.map((resource, index) => (
+                                            <ResourceCard
+                                                key={`pansou-${index}`}
+                                                resource={resource}
+                                                onClick={() => handleResourceClick(resource)}
+                                                onToggleExpand={toggleResourceExpand}
+                                                isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                files={resourceFiles[resource.id || resource.title] || []}
+                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                viewMode={viewMode}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* AI 搜索结果 */}
+                            {searchSections.ai.length > 0 && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                                            <Sparkles size={12} />
+                                            AI 搜索
+                                        </div>
+                                        <span className="text-sm text-slate-500">{searchSections.ai.length} 条结果</span>
+                                    </div>
+                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                        {searchSections.ai.map((resource, index) => (
+                                            <ResourceCard
+                                                key={`ai-${index}`}
+                                                resource={resource}
+                                                onClick={() => handleResourceClick(resource)}
+                                                onToggleExpand={toggleResourceExpand}
+                                                isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                files={resourceFiles[resource.id || resource.title] || []}
+                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                viewMode={viewMode}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 用户来源结果 */}
+                            {searchSections.user_source.length > 0 && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                                            <Globe size={12} />
+                                            频道来源
+                                        </div>
+                                        <span className="text-sm text-slate-500">{searchSections.user_source.length} 条结果</span>
+                                    </div>
+                                    <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" : "flex flex-col gap-3"}>
+                                        {searchSections.user_source.map((resource, index) => (
+                                            <ResourceCard
+                                                key={`source-${index}`}
+                                                resource={resource}
+                                                onClick={() => handleResourceClick(resource)}
+                                                onToggleExpand={toggleResourceExpand}
+                                                isExpanded={expandedResources.has(resource.id || resource.title)}
+                                                files={resourceFiles[resource.id || resource.title] || []}
+                                                isLoadingFiles={loadingResourceFiles.has(resource.id || resource.title)}
+                                                selectedFileIds={selectedResourceFiles[resource.id || resource.title] || new Set()}
+                                                onToggleFileSelection={(fileId) => toggleResourceFileSelection(resource.id || resource.title, fileId)}
+                                                onToggleSelectAll={() => toggleResourceSelectAll(resource.id || resource.title)}
+                                                onSaveFiles={() => handleSaveResourceFiles(resource)}
+                                                onSaveSingleFile={(fileId, fileName) => handleSaveSingleFile(resource, fileId, fileName)}
+                                                breadcrumbs={resourceBreadcrumbs[resource.id || resource.title] || []}
+                                                onFolderClick={(folder) => handleFolderClick(resource, folder)}
+                                                onBreadcrumbClick={(idx) => navigateToBreadcrumb(resource, idx)}
+                                                viewMode={viewMode}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </section>
                     )}
 
@@ -1042,9 +1235,15 @@ const SourceManager: React.FC<{
     const [isCrawling, setIsCrawling] = useState(false);
     const [crawlResult, setCrawlResult] = useState<{ total_resources?: number; last_crawl?: string } | null>(null);
 
+    // Pansou API 配置
+    const [pansouApiUrl, setPansouApiUrl] = useState('');
+    const [pansouDefaultUrl, setPansouDefaultUrl] = useState('');
+    const [isSavingPansou, setIsSavingPansou] = useState(false);
+
     useEffect(() => {
         loadSources();
         loadCrawlStatus();
+        loadPansouConfig();
     }, []);
 
     const loadSources = async () => {
@@ -1058,6 +1257,36 @@ const SourceManager: React.FC<{
             console.error(e);
         } finally {
             setIsLoadingSources(false);
+        }
+    };
+
+    const loadPansouConfig = async () => {
+        try {
+            const res = await api.getPansouConfig();
+            if (res.success && res.data) {
+                setPansouApiUrl(res.data.api_url || '');
+                setPansouDefaultUrl(res.data.default_url || '');
+            }
+        } catch (e) {
+            console.error('加载 Pansou 配置失败:', e);
+        }
+    };
+
+    const handleSavePansouConfig = async () => {
+        setIsSavingPansou(true);
+        try {
+            const res = await api.savePansouConfig(pansouApiUrl.trim());
+            if (res.success) {
+                setToast('搜索接口配置已保存');
+            } else {
+                setToast(res.error || '保存失败');
+            }
+            setTimeout(() => setToast(null), 3000);
+        } catch (e) {
+            setToast('保存失败');
+            setTimeout(() => setToast(null), 3000);
+        } finally {
+            setIsSavingPansou(false);
         }
     };
 
@@ -1265,6 +1494,34 @@ const SourceManager: React.FC<{
                         </div>
                     ))
                 )}
+            </div>
+
+            {/* Pansou API Configuration */}
+            <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-800/50 space-y-3">
+                <div className="flex items-center gap-2">
+                    <Settings size={16} className="text-purple-500" />
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">搜索接口配置</span>
+                </div>
+                <div className="flex gap-3">
+                    <input
+                        type="text"
+                        value={pansouApiUrl}
+                        onChange={(e) => setPansouApiUrl(e.target.value)}
+                        placeholder={pansouDefaultUrl || 'https://pan.jivon.de'}
+                        className={`${inputClass} flex-1`}
+                    />
+                    <button
+                        onClick={handleSavePansouConfig}
+                        disabled={isSavingPansou}
+                        className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {isSavingPansou ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        保存
+                    </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                    搜索资源时使用的 API 接口地址，留空则使用默认接口: {pansouDefaultUrl || 'https://pan.jivon.de'}
+                </p>
             </div>
 
             {/* Info */}

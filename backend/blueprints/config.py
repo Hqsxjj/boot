@@ -458,6 +458,34 @@ def update_config():
         # Sync AI credentials
         _sync_ai_credentials_from_config(final_config, config_bp.secret_store)
         
+        # [Sync QPS Settings]
+        try:
+            from services.organize_worker import get_organize_worker
+            from blueprints import cloud115, cloud123
+            
+            qps_115 = float(final_config.get('cloud115', {}).get('qps', 1.0))
+            qps_123 = float(final_config.get('cloud123', {}).get('qps', 1.0))
+            
+            # 1. Update Organize Worker
+            worker = get_organize_worker()
+            if worker:
+                worker.set_qps('115', qps_115)
+                worker.set_qps('123', qps_123)
+            
+            # 2. Update Direct Cloud Services
+            c115_svc = cloud115.get_service()
+            if c115_svc:
+                c115_svc.set_qps(qps_115)
+                
+            c123_svc = cloud123.get_service()
+            if c123_svc:
+                c123_svc.set_qps(qps_123)
+                
+        except Exception as qps_err:
+            # Don't fail the request if QPS update fails, but log it
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to sync QPS settings: {qps_err}")
+
         # Return updated config with session flags
         updated_config = config_bp.store.get_config()
         updated_config = _add_session_flags(updated_config, config_bp.secret_store)

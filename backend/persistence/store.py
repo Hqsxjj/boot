@@ -1,45 +1,43 @@
-import json
-import os
+# persistence/store.py
+# 重构后的 DataStore - 使用数据库存储替代文件存储
+
+import logging
 from typing import Dict, Any, Optional
 from threading import Lock
 from werkzeug.security import generate_password_hash
-from .config_store import ConfigStore
+
+logger = logging.getLogger(__name__)
 
 # Default admin password hash for 'password'
 DEFAULT_PASSWORD_HASH = generate_password_hash('password')
 
 
 class DataStore:
-    """Persistence layer for admin credentials and 2FA secrets. Config is managed by ConfigStore."""
+    """
+    持久化层 - 现在完全使用数据库存储
+    管理员凭证、2FA秘钥存储在 SecretStore
+    配置存储在 DbConfigStore
+    """
     
-    def __init__(self, data_path: str = None, config_yaml_path: str = None):
-        self.data_path = data_path or os.environ.get('DATA_PATH', '/data/appdata.json')
-        self._lock = Lock()
-        self._ensure_data_dir()
-        self._ensure_data_file()
+    def __init__(self, session_factory=None, secret_store=None):
+        """
+        初始化 DataStore
         
-        # Initialize YAML-backed config store
-        self.config_store = ConfigStore(yaml_path=config_yaml_path, json_path=self.data_path)
-    
-    def _ensure_data_dir(self):
-        """Create data directory if it doesn't exist."""
-        data_dir = os.path.dirname(self.data_path)
-        if data_dir and not os.path.exists(data_dir):
-            os.makedirs(data_dir, exist_ok=True)
-    
-    def _ensure_data_file(self):
-        """Create data file with default structure if it doesn't exist."""
-        if not os.path.exists(self.data_path):
-            default_data = {
-                'admin': {
-                    'username': 'admin',
-                    'password_hash': DEFAULT_PASSWORD_HASH,
-                    'two_factor_secret': None,
-                    'two_factor_enabled': False
-                },
-                'config': self._get_default_config()
-            }
-            self._write_data(default_data)
+        Args:
+            session_factory: SQLAlchemy session factory for appdata.db
+            secret_store: SecretStore instance for sensitive data
+        """
+        self._lock = Lock()
+        self.session_factory = session_factory
+        self.secret_store = secret_store
+        self._db_config_store = None
+        
+        # 如果有 session_factory，初始化数据库配置存储
+        if session_factory:
+            from .db_config_store import DbConfigStore
+            self._db_config_store = DbConfigStore(session_factory)
+        
+        logger.info('DataStore initialized with database backend')
     
     def _get_default_config(self) -> Dict[str, Any]:
         """Return default AppConfig structure."""
@@ -47,57 +45,60 @@ class DataStore:
             'telegram': {
                 'botToken': '',
                 'adminUserId': '',
-                'whitelistMode': False,
+                'whitelistMode': True,
                 'notificationChannelId': ''
             },
             'cloud115': {
                 'loginMethod': 'cookie',
                 'loginApp': 'web',
                 'cookies': '',
-                'userAgent': '',
-                'downloadPath': '',
-                'downloadDirName': '',
-                'autoDeleteMsg': False,
-                'qps': 1
+                'appId': '',
+                'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'downloadPath': '0',
+                'downloadDirName': '根目录',
+                'autoDeleteMsg': True,
+                'qps': 0.8
             },
             'cloud123': {
                 'enabled': False,
+                'loginMethod': 'oauth',
                 'clientId': '',
                 'clientSecret': '',
-                'downloadPath': '',
-                'downloadDirName': '',
-                'qps': 1
+                'passport': '',
+                'password': '',
+                'downloadPath': '0',
+                'downloadDirName': '根目录',
+                'qps': 1.0
             },
             'openList': {
                 'enabled': False,
-                'url': '',
-                'mountPath': '',
+                'url': 'http://localhost:5244',
+                'mountPath': '/d',
                 'username': '',
                 'password': ''
             },
             'proxy': {
                 'enabled': False,
                 'type': 'http',
-                'host': '',
-                'port': '',
-                'username': '',
-                'password': ''
+                'host': '127.0.0.1',
+                'port': '7890',
+                'noProxyHosts': '115.com,123pan.com,123pan.cn'
             },
             'tmdb': {
                 'apiKey': '',
-                'language': 'en-US',
+                'language': 'zh-CN',
                 'includeAdult': False
             },
             'emby': {
                 'enabled': False,
-                'serverUrl': '',
+                'serverUrl': 'http://localhost:8096',
                 'apiKey': '',
-                'refreshAfterOrganize': False,
+                'refreshAfterOrganize': True,
                 'notifications': {
-                    'enabled': False,
-                    'forwardToTelegram': False,
-                    'includePosters': False,
-                    'playbackReportingFreq': 'daily'
+                    'enabled': True,
+                    'forwardToTelegram': True,
+                    'includePosters': True,
+                    'playbackReportingFreq': 'weekly'
                 },
                 'missingEpisodes': {
                     'enabled': False,
@@ -106,108 +107,107 @@ class DataStore:
             },
             'strm': {
                 'enabled': False,
-                'outputDir': '',
-                'sourceCid115': '',
-                'urlPrefix115': '',
-                'sourceDir123': '',
-                'urlPrefix123': '',
-                'sourcePathOpenList': '',
-                'urlPrefixOpenList': '',
+                'outputDir': '/strm/bot',
+                'sourceCid115': '0',
+                'urlPrefix115': 'http://127.0.0.1:9527/d/115',
+                'sourceDir123': '/',
+                'urlPrefix123': 'http://127.0.0.1:9527/d/123',
+                'sourcePathOpenList': '/',
+                'urlPrefixOpenList': 'http://127.0.0.1:5244/d',
                 'webdav': {
                     'enabled': False,
-                    'port': '8080',
-                    'username': '',
-                    'password': '',
+                    'port': '5005',
+                    'username': 'admin',
+                    'password': 'password',
                     'readOnly': True
                 }
             },
             'organize': {
                 'enabled': False,
-                'sourceCid': '',
-                'sourceDirName': '',
-                'targetCid': '',
-                'targetDirName': '',
+                'sourceCid': '0',
+                'sourceDirName': '根目录',
+                'targetCid': '0',
+                'targetDirName': '根目录',
                 'ai': {
                     'enabled': False,
                     'provider': 'openai',
-                    'baseUrl': '',
+                    'baseUrl': 'https://api.openai.com/v1',
                     'apiKey': '',
-                    'model': ''
+                    'model': 'gpt-3.5-turbo'
                 },
                 'rename': {
-                    'enabled': False,
-                    'movieTemplate': '',
-                    'seriesTemplate': '',
-                    'addTmdbIdToFolder': False
+                    'enabled': True,
+                    'movieTemplate': '{{title}}{% if year %} ({{year}}){% endif %}',
+                    'seriesTemplate': '{{title}} - {{season_episode}}',
+                    'movieDirTemplate': '{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}',
+                    'seriesDirTemplate': '{% if year %}{{year}}{% else %}未知{% endif %}/{{title}}/Season {{season}}',
+                    'addTmdbIdToFolder': True
                 },
                 'movieRules': [],
                 'tvRules': []
             }
         }
     
-    def _read_data(self) -> Dict[str, Any]:
-        """Read data from file with thread safety."""
-        with self._lock:
-            try:
-                with open(self.data_path, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
-                return {
-                    'admin': {
-                        'username': 'admin',
-                        'password_hash': DEFAULT_PASSWORD_HASH,
-                        'two_factor_secret': None,
-                        'two_factor_enabled': False
-                    },
-                    'config': self._get_default_config()
-                }
-    
-    def _write_data(self, data: Dict[str, Any]):
-        """Write data to file with thread safety."""
-        with self._lock:
-            with open(self.data_path, 'w') as f:
-                json.dump(data, f, indent=2)
-    
     def get_admin_credentials(self) -> Dict[str, Any]:
-        """Get admin credentials."""
-        data = self._read_data()
-        return data.get('admin', {
+        """Get admin credentials from SecretStore."""
+        result = {
             'username': 'admin',
             'password_hash': DEFAULT_PASSWORD_HASH,
             'two_factor_secret': None,
             'two_factor_enabled': False
-        })
+        }
+        
+        if self.secret_store:
+            # 从 SecretStore 获取密码哈希
+            password_hash = self.secret_store.get_secret('admin_password_hash')
+            if password_hash:
+                result['password_hash'] = password_hash
+            
+            # 获取 2FA 秘钥
+            two_factor_secret = self.secret_store.get_secret('admin_2fa_secret')
+            if two_factor_secret:
+                result['two_factor_secret'] = two_factor_secret
+                result['two_factor_enabled'] = True
+        
+        return result
     
     def update_admin_password(self, password_hash: str):
-        """Update admin password hash."""
-        data = self._read_data()
-        if 'admin' not in data:
-            data['admin'] = {'username': 'admin'}
-        data['admin']['password_hash'] = password_hash
-        self._write_data(data)
+        """Update admin password hash in SecretStore."""
+        if self.secret_store:
+            self.secret_store.set_secret('admin_password_hash', password_hash)
+            logger.info('Admin password updated')
+        else:
+            logger.warning('SecretStore not available, password not saved')
     
     def get_two_factor_secret(self) -> Optional[str]:
-        """Get 2FA secret."""
-        data = self._read_data()
-        return data.get('admin', {}).get('two_factor_secret')
+        """Get 2FA secret from SecretStore."""
+        if self.secret_store:
+            return self.secret_store.get_secret('admin_2fa_secret')
+        return None
     
     def update_two_factor_secret(self, secret: str):
-        """Update 2FA secret."""
-        data = self._read_data()
-        if 'admin' not in data:
-            data['admin'] = {'username': 'admin'}
-        data['admin']['two_factor_secret'] = secret
-        data['admin']['two_factor_enabled'] = True
-        self._write_data(data)
+        """Update 2FA secret in SecretStore."""
+        if self.secret_store:
+            self.secret_store.set_secret('admin_2fa_secret', secret)
+            logger.info('2FA secret updated')
     
     def is_two_factor_enabled(self) -> bool:
         """Check if 2FA is enabled."""
-        data = self._read_data()
-        return data.get('admin', {}).get('two_factor_enabled', False)
+        secret = self.get_two_factor_secret()
+        return bool(secret)
+    
+    def disable_two_factor(self):
+        """Disable 2FA by removing the secret."""
+        if self.secret_store:
+            self.secret_store.delete_secret('admin_2fa_secret')
+            logger.info('2FA disabled')
     
     def get_config(self) -> Dict[str, Any]:
-        """Get full app config from YAML store."""
-        config = self.config_store.get_config()
+        """Get full app config from database."""
+        if self._db_config_store:
+            config = self._db_config_store.get_config()
+        else:
+            config = self._get_default_config()
         
         # Add 2FA secret to config if enabled
         if self.is_two_factor_enabled():
@@ -216,13 +216,21 @@ class DataStore:
         return config
     
     def update_config(self, config: Dict[str, Any]):
-        """Update app config in YAML store."""
-        # Extract 2FA secret if present and update separately in JSON
+        """Update app config in database."""
+        # Extract 2FA secret if present and update separately
         config_copy = config.copy()
         if 'twoFactorSecret' in config_copy:
             two_factor_secret = config_copy.pop('twoFactorSecret')
             if two_factor_secret:
                 self.update_two_factor_secret(two_factor_secret)
         
-        # Update config in YAML store
-        self.config_store.update_config(config_copy)
+        # Update config in database
+        if self._db_config_store:
+            self._db_config_store.update_config(config_copy)
+        else:
+            logger.warning('DbConfigStore not available, config not saved')
+    
+    def invalidate_cache(self):
+        """Invalidate config cache."""
+        if self._db_config_store:
+            self._db_config_store.invalidate_cache()

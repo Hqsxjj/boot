@@ -1,61 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { AppConfig } from '../types';
-import { api } from '../services/api';
+import React from 'react';
 import { CommandCard } from '../components/CommandCard';
-import { Bot, Save, RefreshCw, MessageSquare } from 'lucide-react';
-import { SensitiveInput } from '../components/SensitiveInput';
+import { MessageSquare } from 'lucide-react';
 
 export const BotSettingsView: React.FC = () => {
-  const [botConfig, setBotConfig] = useState<any | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchBotConfig();
-  }, []);
-
-  const fetchBotConfig = async () => {
-    setIsLoading(true);
-    try {
-      const config = await api.getBotConfig();
-      setBotConfig(config || {});
-    } catch (e) {
-      // 静默处理
-      // Set empty config to allow editing
-      setBotConfig({
-        botToken: '',
-        adminUserId: '',
-        notificationChannelId: '',
-        whitelistMode: false
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateConfig = (key: string, value: any) => {
-    setBotConfig(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  const handleSave = async () => {
-    if (!botConfig) return;
-    setIsSaving(true);
-    try {
-      await api.saveBotConfig(botConfig);
-      setToast('机器人配置已保存');
-    } catch (e) {
-      setToast('保存失败');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setToast(null), 3000);
-    }
-  };
-
   const commands = [
     { cmd: '/start', desc: '初始化机器人并检查 115 账号连接状态', example: '/start' },
     { cmd: '/magnet', desc: '添加磁力/Ed2k/HTTP 链接离线任务 (115)', example: '/magnet magnet:?xt=urn:btih:...' },
@@ -69,122 +17,33 @@ export const BotSettingsView: React.FC = () => {
     { cmd: '/tasks', desc: '查看当前正在进行的离线任务列表', example: '/tasks' },
   ];
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center text-slate-500 gap-2 bg-slate-50 dark:bg-slate-900">
-        <RefreshCw className="animate-spin" /> 正在加载配置...
-      </div>
-    );
-  }
-
   const glassCardClass = "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border-[0.5px] border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] ring-1 ring-white/50 dark:ring-white/5 inset";
-  const inputClass = "w-full pl-4 pr-10 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm backdrop-blur-sm shadow-inner";
-  const actionBtnClass = "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors";
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      {toast && (
-        <div className="fixed top-6 right-6 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 font-medium border-[0.5px] border-slate-700/50">
-          <RefreshCw size={18} className="animate-spin text-brand-400" />
-          {toast}
-        </div>
-      )}
-
       <div className="flex flex-col md:flex-row justify-between items-center pb-2 gap-4">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight drop-shadow-sm">机器人设置</h2>
+        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight drop-shadow-sm">机器人指令</h2>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-        {/* Telegram Config */}
-        <section className={`${glassCardClass} h-fit`}>
-          <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Bot size={18} className="text-blue-500" />
-              <h3 className="font-bold text-slate-700 dark:text-slate-200">核心参数</h3>
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={`${actionBtnClass} bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 disabled:opacity-50`}
-            >
-              {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-              保存设置
-            </button>
-          </div>
-          <div className="p-6 space-y-6">
-            <div>
-              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">
-                机器人令牌
-              </label>
-              <SensitiveInput
-                value={botConfig?.botToken || ''}
-                onChange={(e) => updateConfig('botToken', e.target.value)}
-                className={inputClass}
-                placeholder="123456:ABC-DEF..."
+      {/* Command Cheat Sheet - Full Width */}
+      <section className={`${glassCardClass} flex flex-col`}>
+        <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
+          <MessageSquare size={18} className="text-teal-500" />
+          <h3 className="font-bold text-slate-700 dark:text-slate-200">指令速查</h3>
+        </div>
+        <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {commands.map((c) => (
+              <CommandCard
+                key={c.cmd}
+                command={c.cmd}
+                description={c.desc}
+                example={c.example}
               />
-            </div>
-
-            <div>
-              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">
-                管理员 ID
-              </label>
-              <SensitiveInput
-                value={botConfig?.adminUserId || ''}
-                onChange={(e) => updateConfig('adminUserId', e.target.value)}
-                className={inputClass}
-                placeholder="123456789"
-              />
-            </div>
-
-            <div>
-              <label className="flex items-center text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">
-                通知频道 ID
-              </label>
-              <SensitiveInput
-                value={botConfig?.notificationChannelId || ''}
-                onChange={(e) => updateConfig('notificationChannelId', e.target.value)}
-                className={inputClass}
-                placeholder="-100123456789"
-              />
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              {/* Small Toggle for Whitelist */}
-              <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
-                <input
-                  id="whitelist"
-                  type="checkbox"
-                  className="peer sr-only"
-                  checked={botConfig?.whitelistMode || false}
-                  onChange={(e) => updateConfig('whitelistMode', e.target.checked)}
-                />
-                <label htmlFor="whitelist" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-slate-900 dark:peer-checked:bg-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-slate-900 after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
-              </div>
-              <label htmlFor="whitelist" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">开启白名单模式 (仅管理员可用)</label>
-            </div>
+            ))}
           </div>
-        </section>
-
-        {/* Command Cheat Sheet */}
-        <section className={`${glassCardClass} flex flex-col h-[500px] lg:h-auto`}>
-          <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
-            <MessageSquare size={18} className="text-teal-500" />
-            <h3 className="font-bold text-slate-700 dark:text-slate-200">指令速查</h3>
-          </div>
-          <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
-            <div className="grid grid-cols-1 gap-3">
-              {commands.map((c) => (
-                <CommandCard
-                  key={c.cmd}
-                  command={c.cmd}
-                  description={c.desc}
-                  example={c.example}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   );
 };

@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from middleware.auth import require_auth
 from services.emby_service import EmbyService
 from persistence.store import DataStore
+from models import MissingEpisode
+import logging
 
 emby_bp = Blueprint('emby', __name__, url_prefix='/api/emby')
 
@@ -17,6 +19,126 @@ def init_emby_blueprint(store: DataStore):
     _emby_service = EmbyService(store)
     emby_bp.store = store
     return emby_bp
+
+
+@emby_bp.route('/missing', methods=['GET'])
+@require_auth
+def get_missing_episodes():
+    """
+    Get all missing episodes records from database.
+    """
+    try:
+        session = _store.session_factory()
+        records = session.query(MissingEpisode).order_by(MissingEpisode.created_at.desc()).all()
+        data = [r.to_dict() for r in records]
+        session.close()
+        return jsonify({
+            'success': True,
+            'data': data
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+
+@emby_bp.route('/scan-missing/start', methods=['POST'])
+@require_auth
+def start_missing_scan_background():
+    """Start missing episode scan in background (doesn't block, survives page refresh)."""
+    import logging
+    from services.background_tasks import get_background_service
+    
+    logger = logging.getLogger(__name__)
+    bg_service = get_background_service()
+    
+    # Check if scan is already running
+    running = bg_service.get_running_tasks(task_type='missing_scan')
+    if running:
+        return jsonify({
+            'success': False,
+            'error': '缺集扫描正在进行中',
+            'task': running[0]
+        }), 200
+    
+    if not _emby_service:
+        return jsonify({
+            'success': False,
+            'error': 'Emby 服务未初始化'
+        }), 500
+    
+    # Create and run background task
+    task = bg_service.create_task('missing_scan', '缺集扫描')
+    
+    def scan_job(task):
+        """Background job for missing episode scan."""
+        # 1. Clear existing records in DB at start
+        session = _store.session_factory()
+        try:
+            session.query(MissingEpisode).delete()
+            session.commit()
+            logger.info("已清空旧的缺集记录")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"清空缺集记录失败: {e}")
+        finally:
+            session.close()
+
+        series_list = _emby_service.get_series_list()
+        if not series_list.get('success'):
+            raise Exception(series_list.get('error', '获取剧集列表失败'))
+        
+        series = series_list.get('data', [])
+        total = len(series)
+        all_missing = []
+        
+        for i, s in enumerate(series):
+            bg_service.update_progress(task, i + 1, total, s.get('name', s.get('id')))
+            
+            try:
+                result = _emby_service.scan_single_series(s.get('id'))
+                if result.get('success') and result.get('data'):
+                    items = result['data']
+                    all_missing.extend(items)
+                    
+                    # 2. Save new records to DB immediately
+                    session = _store.session_factory()
+                    try:
+                        for item in items:
+                            # item format: {id, name, season, totalEp, localEp, missing, poster}
+                            record = MissingEpisode(
+                                id=item['id'],
+                                series_id=s.get('id'), # Original Emby Series ID
+                                series_name=item['name'],
+                                season_number=item['season'],
+                                total_episodes=item['totalEp'],
+                                local_episodes=item['localEp'],
+                                missing_items=item['missing'],
+                                poster_path=item['poster']
+                            )
+                            session.merge(record)
+                        session.commit()
+                        logger.info(f"已保存 {s.get('name')} 的 {len(items)} 条缺集记录")
+                    except Exception as db_err:
+                        session.rollback()
+                        logger.error(f"保存缺集记录失败: {db_err}")
+                    finally:
+                        session.close()
+                        
+            except Exception as e:
+                logger.warning(f"扫描 {s.get('name')} 失败: {e}")
+        
+        return {'missing': all_missing, 'total_series': total}
+    
+    bg_service.run_task(task, scan_job)
+    
+    return jsonify({
+        'success': True,
+        'message': '扫描已在后台启动',
+        'task': task.to_dict()
+    }), 200
 
 
 @emby_bp.route('/test-connection', methods=['POST'])
@@ -116,63 +238,7 @@ def scan_missing_episodes():
         }), 500
 
 
-@emby_bp.route('/scan-missing/start', methods=['POST'])
-@require_auth
-def start_missing_scan_background():
-    """Start missing episode scan in background (doesn't block, survives page refresh)."""
-    import logging
-    from services.background_tasks import get_background_service
-    
-    logger = logging.getLogger(__name__)
-    bg_service = get_background_service()
-    
-    # Check if scan is already running
-    running = bg_service.get_running_tasks(task_type='missing_scan')
-    if running:
-        return jsonify({
-            'success': False,
-            'error': '缺集扫描正在进行中',
-            'task': running[0]
-        }), 200
-    
-    if not _emby_service:
-        return jsonify({
-            'success': False,
-            'error': 'Emby 服务未初始化'
-        }), 500
-    
-    # Create and run background task
-    task = bg_service.create_task('missing_scan', '缺集扫描')
-    
-    def scan_job(task):
-        """Background job for missing episode scan."""
-        series_list = _emby_service.get_series_list()
-        if not series_list.get('success'):
-            raise Exception(series_list.get('error', '获取剧集列表失败'))
-        
-        series = series_list.get('data', [])
-        total = len(series)
-        all_missing = []
-        
-        for i, s in enumerate(series):
-            bg_service.update_progress(task, i + 1, total, s.get('name', s.get('id')))
-            
-            try:
-                result = _emby_service.scan_single_series(s.get('id'))
-                if result.get('success') and result.get('data'):
-                    all_missing.extend(result['data'])
-            except Exception as e:
-                logger.warning(f"扫描 {s.get('name')} 失败: {e}")
-        
-        return {'missing': all_missing, 'total_series': total}
-    
-    bg_service.run_task(task, scan_job)
-    
-    return jsonify({
-        'success': True,
-        'message': '扫描已在后台启动',
-        'task': task.to_dict()
-    }), 200
+
 
 
 @emby_bp.route('/bg-tasks/status', methods=['GET'])

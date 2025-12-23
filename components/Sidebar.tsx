@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ViewState } from '../types';
-import { UserCog, Bot, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react';
+import { UserCog, CloudCog, Tv, Terminal, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Palette } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface SidebarProps {
@@ -25,10 +25,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems = [
     { id: ViewState.USER_CENTER, label: '用户中心', icon: UserCog },
-    { id: ViewState.BOT_SETTINGS, label: '机器人设置', icon: Bot },
     { id: ViewState.CLOUD_ORGANIZE, label: '网盘整理', icon: CloudCog },
     { id: ViewState.RESOURCE_SEARCH, label: '资源搜索', icon: Sparkles },
     { id: ViewState.EMBY_INTEGRATION, label: 'Emby 联动', icon: Tv },
+    { id: ViewState.COVER_GENERATOR, label: '封面工坊', icon: Palette },
     { id: ViewState.LOGS, label: '运行日志', icon: Terminal },
   ];
 

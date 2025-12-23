@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
-import { Save, RefreshCw, Clapperboard, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2, Image, Download, Palette } from 'lucide-react';
-import { SensitiveInput } from '../components/SensitiveInput';
+import { Save, RefreshCw, BarChart3, Clock, Zap, Bell, Copy, FileWarning, Search, CheckCircle2, Image, Download, Palette } from 'lucide-react';
 
 // === 定义默认配置 (防止后端连不上时页面白屏) ===
 const DEFAULT_CONFIG: AppConfig = {
@@ -26,15 +25,25 @@ export const EmbyView: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
-
-    // 连接状态
-    const [connectionStatus, setConnectionStatus] = useState<{
-        success: boolean | null;
-        latency: number;
-        msg?: string;
-    }>({ success: null, latency: 0 });
-
     const [missingData, setMissingData] = useState<any[]>([]);
+
+    // 轮询获取缺集数据 (3秒一次，实现实时更新)
+    useEffect(() => {
+        const fetchMissingData = async () => {
+            try {
+                const res = await api.getMissingEpisodes();
+                if (res.success && res.data) {
+                    setMissingData(res.data);
+                }
+            } catch (err) {
+                console.error("Fetch missing data failed:", err);
+            }
+        };
+
+        fetchMissingData(); // Initial fetch
+        const interval = setInterval(fetchMissingData, 3000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Cover Generator State
     const [coverLibraries, setCoverLibraries] = useState<Array<{ id: string; name: string; type: string }>>([]);
@@ -69,10 +78,8 @@ export const EmbyView: React.FC = () => {
                 const data = await api.getConfig();
                 if (data?.emby) {
                     setConfig(data);
-                    // 如果获取到了配置，并行测试连接和加载媒体库 (不阻塞)
+                    // 如果获取到了配置，加载媒体库 (不阻塞)
                     if (data.emby.serverUrl && data.emby.apiKey) {
-                        // 并行执行，不等待结果
-                        testConnectionOnly();
                         loadCoverData();
                     }
                 } else {
@@ -86,38 +93,6 @@ export const EmbyView: React.FC = () => {
 
         initConfig();
     }, []);
-
-    // 仅测试连接 (不保存配置，用于初始化)
-    const testConnectionOnly = async () => {
-        try {
-            const result = await api.testEmbyConnection();
-            setConnectionStatus({
-                success: result.data.success,
-                latency: result.data.latency,
-                msg: result.data.msg
-            });
-        } catch (e) {
-            setConnectionStatus({ success: false, latency: 0, msg: "网络错误" });
-        }
-    };
-
-    // 测试 Emby 连接 (保存配置后测试，用于手动保存)
-    const checkConnection = async (cfg: AppConfig = config!) => {
-        if (!cfg?.emby?.serverUrl) return;
-        try {
-            // 先保存当前配置
-            await api.saveConfig(cfg);
-
-            const result = await api.testEmbyConnection();
-            setConnectionStatus({
-                success: result.data.success,
-                latency: result.data.latency,
-                msg: result.data.msg
-            });
-        } catch (e) {
-            setConnectionStatus({ success: false, latency: 0, msg: "网络错误" });
-        }
-    };
 
     // 批量生成并替换封面 (后台任务，刷新页面不中断)
     const handleBatchApply = async () => {
@@ -177,7 +152,6 @@ export const EmbyView: React.FC = () => {
         try {
             await api.saveConfig(config);
             setToast('配置已保存');
-            checkConnection(); // 保存后重新测试连接
             setTimeout(() => setToast(null), 3000);
         } catch (e: any) {
             const errorMsg = e.response?.data?.error || e.message || '保存失败';
@@ -253,10 +227,6 @@ export const EmbyView: React.FC = () => {
                 missingEpisodes: { ...prev.emby.missingEpisodes, [key]: value }
             }
         }) : null);
-    };
-
-    const fillLocalIp = () => {
-        updateNested('emby', 'serverUrl', `http://${window.location.hostname}:8096`);
     };
 
     const copyWebhook = async () => {
@@ -465,79 +435,6 @@ export const EmbyView: React.FC = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
 
-                {/* Server Connection */}
-                <section className={`${glassCardClass} overflow-hidden h-fit`}>
-                    <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 dark:text-green-400 shadow-inner">
-                                <Clapperboard size={20} />
-                            </div>
-                            <h3 className="font-bold text-slate-700 dark:text-slate-200">服务器连接</h3>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            {/* 连接状态指示器 */}
-                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border-[0.5px] ${connectionStatus.success === true ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800' :
-                                connectionStatus.success === false ? 'bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-800' :
-                                    'bg-slate-100/50 border-slate-200 dark:bg-slate-800/50 dark:border-slate-700'
-                                }`}>
-                                <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.success === true ? 'bg-green-500 animate-pulse' :
-                                    connectionStatus.success === false ? 'bg-red-500' : 'bg-slate-400'
-                                    }`}></div>
-                                <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">
-                                    {connectionStatus.success === null ? '未连接' :
-                                        connectionStatus.success ? `${connectionStatus.latency}ms` : 'Error'}
-                                </span>
-                            </div>
-
-                            <button
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className={`${actionBtnClass} bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40 disabled:opacity-50`}
-                            >
-                                {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
-                                保存
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="p-6 space-y-5 transition-all duration-300">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-xs font-bold text-slate-500 uppercase">服务器地址</label>
-                                <button onClick={fillLocalIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1 font-medium"><Zap size={12} /> 自动填入</button>
-                            </div>
-                            <input
-                                type="text"
-                                value={config.emby.serverUrl}
-                                onChange={(e) => updateNested('emby', 'serverUrl', e.target.value)}
-                                placeholder="http://192.168.1.5:8096"
-                                className={inputClass}
-                                onBlur={() => checkConnection()} // 失去焦点时测试连接
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">API 密钥 (API Key)</label>
-                            <SensitiveInput
-                                value={config.emby.apiKey}
-                                onChange={(e) => updateNested('emby', 'apiKey', e.target.value)}
-                                className={inputClass}
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2">
-                            <input
-                                type="checkbox"
-                                id="refreshAfterOrganize"
-                                checked={config.emby.refreshAfterOrganize}
-                                onChange={(e) => updateNested('emby', 'refreshAfterOrganize', e.target.checked)}
-                                className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
-                            />
-                            <label htmlFor="refreshAfterOrganize" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">整理完成后延迟 3 秒刷新海报墙</label>
-                        </div>
-                    </div>
-                </section>
-
                 {/* Notifications & Reporting */}
                 <section className={`${glassCardClass} overflow-hidden h-fit`}>
                     <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
@@ -583,6 +480,20 @@ export const EmbyView: React.FC = () => {
                                         onChange={(e) => updateNotifications('forwardToTelegram', e.target.checked)}
                                     />
                                     <label htmlFor="fwdTg" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-sky-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-white after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors border-[0.5px] border-transparent hover:border-slate-200/50 dark:hover:border-slate-700/30">
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">整理完成后自动刷新海报墙</span>
+                                <div className="relative inline-block w-9 h-5 transition duration-200 ease-in-out rounded-full cursor-pointer">
+                                    <input
+                                        id="refreshAfterOrganize"
+                                        type="checkbox"
+                                        className="peer sr-only"
+                                        checked={config.emby.refreshAfterOrganize || false}
+                                        onChange={(e) => updateNested('emby', 'refreshAfterOrganize', e.target.checked)}
+                                    />
+                                    <label htmlFor="refreshAfterOrganize" className="block h-5 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full cursor-pointer peer-checked:bg-sky-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white dark:after:bg-white after:w-4 after:h-4 after:rounded-full after:shadow-sm after:transition-all peer-checked:after:translate-x-full"></label>
                                 </div>
                             </div>
 

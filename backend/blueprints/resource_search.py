@@ -286,19 +286,20 @@ def search_resources():
     """
     Search for cloud drive share links.
     
-    优先使用盘搜 API (pan.jivon.de)，AI 大模型作为辅助。
-    这样没有代理的用户也可以搜索资源。
+    搜索策略：
+    1. 如果用户配置了盘搜 API URL，则使用盘搜 API
+    2. 如果配置了 AI，则使用 AI 搜索
+    3. 如果添加了频道来源，则搜索来源中的资源
+    4. 三者都有则全部搜索，分区返回结果
     
     Request body:
     {
-        "query": "电影/电视剧名称",
-        "use_ai": false  // 可选，是否同时使用 AI 辅助搜索
+        "query": "电影/电视剧名称"
     }
     """
     try:
         data = request.get_json() or {}
         query = data.get('query', '').strip()
-        use_ai = data.get('use_ai', False)
         
         if not query:
             return jsonify({
@@ -306,62 +307,132 @@ def search_resources():
                 'error': '请输入搜索关键词'
             }), 400
         
-        results = []
-        search_source = 'none'
-        error_message = None
-        
-        # 1. 首先尝试盘搜 API (不需要代理) - 只搜索 115 和 123 网盘
-        try:
-            pan_service = get_pan_search_service()
-            # 只搜索 115 和 123 网盘资源
-            pan_result = pan_service.search(query, cloud_types=['115', '123'])
-            
-            if pan_result.get('success') and pan_result.get('data'):
-                results = pan_result.get('data', [])
-                search_source = 'pansou'
-                logger.info(f"盘搜 API (115/123) 搜索成功，返回 {len(results)} 个结果")
-        except Exception as e:
-            logger.warning(f"盘搜 API 搜索失败: {e}")
-            error_message = f"盘搜服务暂时不可用: {str(e)}"
-        
-        # 2. 如果盘搜没有结果或用户要求，尝试 AI 辅助搜索
+        # 分区结果
+        pansou_results = []
         ai_results = []
-        ai_enabled = False
+        source_results = []
         
-        if use_ai or (len(results) == 0):
-            ai_config = _get_ai_config()
-            if ai_config:
-                ai_enabled = True
+        # 记录错误信息
+        errors = []
+        
+        # 1. 检查是否配置了盘搜 API URL
+        pansou_enabled = False
+        try:
+            from app import get_db_session
+            from services.secret_store import SecretStore
+            from services.pan_search_service import PANSOU_API_KEY
+            
+            store = SecretStore(get_db_session)
+            pansou_url = store.get_secret(PANSOU_API_KEY)
+            
+            if pansou_url and pansou_url.strip():
+                pansou_enabled = True
                 try:
-                    ai_result = _call_ai_search(query, ai_config)
-                    if ai_result.get('success') and ai_result.get('data'):
-                        ai_results = ai_result.get('data', [])
-                        if search_source == 'none':
-                            search_source = 'ai'
-                        else:
-                            search_source = 'pansou+ai'
-                        logger.info(f"AI 搜索成功，返回 {len(ai_results)} 个结果")
+                    pan_service = get_pan_search_service()
+                    pan_result = pan_service.search(query, cloud_types=['115', '123'])
+                    
+                    if pan_result.get('success') and pan_result.get('data'):
+                        pansou_results = pan_result.get('data', [])
+                        # 标记来源
+                        for r in pansou_results:
+                            r['_source_type'] = 'pansou'
+                        logger.info(f"盘搜 API 搜索成功，返回 {len(pansou_results)} 个结果")
                 except Exception as e:
-                    logger.warning(f"AI 搜索失败: {e}")
+                    logger.warning(f"盘搜 API 搜索失败: {e}")
+                    errors.append(f"盘搜服务: {str(e)}")
+        except Exception as e:
+            logger.warning(f"检查盘搜配置失败: {e}")
         
-        # 3. 合并结果 (盘搜结果优先)
-        all_results = results + ai_results
+        # 2. 检查并使用 AI 搜索
+        ai_enabled = False
+        ai_config = _get_ai_config()
+        if ai_config:
+            ai_enabled = True
+            try:
+                ai_result = _call_ai_search(query, ai_config)
+                if ai_result.get('success') and ai_result.get('data'):
+                    ai_results = ai_result.get('data', [])
+                    # 标记来源
+                    for r in ai_results:
+                        r['_source_type'] = 'ai'
+                    logger.info(f"AI 搜索成功，返回 {len(ai_results)} 个结果")
+                elif ai_result.get('error'):
+                    errors.append(f"AI 搜索: {ai_result.get('error')}")
+            except Exception as e:
+                logger.warning(f"AI 搜索失败: {e}")
+                errors.append(f"AI 搜索: {str(e)}")
         
-        # 4. 如果都没有结果，返回友好提示
-        if not all_results:
+        # 3. 搜索用户添加的频道/来源
+        try:
+            from services.source_crawler_service import get_crawler_service
+            crawler = get_crawler_service()
+            crawled = crawler.search_in_crawled(query)
+            if crawled:
+                source_results = crawled
+                # 标记来源
+                for r in source_results:
+                    r['_source_type'] = 'user_source'
+                logger.info(f"从用户来源中找到 {len(source_results)} 个匹配资源")
+        except Exception as e:
+            logger.warning(f"搜索用户来源失败: {e}")
+        
+        # 4. 构建分区响应
+        has_any_source = pansou_enabled or ai_enabled or len(source_results) > 0
+        
+        # 合并所有结果用于兼容旧前端
+        all_results = pansou_results + ai_results + source_results
+        
+        # 确定搜索来源描述
+        sources_used = []
+        if pansou_results:
+            sources_used.append('pansou')
+        if ai_results:
+            sources_used.append('ai')
+        if source_results:
+            sources_used.append('user_source')
+        
+        search_source = '+'.join(sources_used) if sources_used else 'none'
+        
+        # 如果没有配置任何搜索源
+        if not has_any_source:
             return jsonify({
                 'success': True,
                 'data': [],
-                'message': error_message or f"未找到 '{query}' 相关资源，请尝试其他关键词",
+                'sections': {},
+                'message': '请先配置搜索接口或 AI，或添加频道来源',
+                'source': 'none',
+                'ai_enabled': False,
+                'pansou_enabled': False
+            })
+        
+        # 如果没有搜索到任何结果
+        if not all_results:
+            error_msg = '；'.join(errors) if errors else f"未找到 '{query}' 相关资源"
+            return jsonify({
+                'success': True,
+                'data': [],
+                'sections': {
+                    'pansou': [],
+                    'ai': [],
+                    'user_source': []
+                },
+                'message': error_msg,
                 'source': search_source,
-                'ai_enabled': ai_enabled
+                'ai_enabled': ai_enabled,
+                'pansou_enabled': pansou_enabled
             })
         
         return jsonify({
             'success': True,
             'data': all_results,
+            'sections': {
+                'pansou': pansou_results,
+                'ai': ai_results,
+                'user_source': source_results
+            },
             'source': search_source,
             'ai_enabled': ai_enabled,
+            'pansou_enabled': pansou_enabled,
             'total': len(all_results)
         })
         
@@ -503,3 +574,63 @@ def search_123_resources():
     pan_service = get_pan_search_service()
     result = pan_service.search_123(keyword)
     return jsonify(result)
+
+
+@resource_search_bp.route('/pan/config', methods=['GET'])
+@require_auth
+def get_pansou_config():
+    """Get Pansou API configuration."""
+    try:
+        from app import get_db_session
+        from services.secret_store import SecretStore
+        from services.pan_search_service import PANSOU_API_KEY, DEFAULT_PANSOU_API_BASE
+        
+        store = SecretStore(get_db_session)
+        url = store.get_secret(PANSOU_API_KEY)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'api_url': url or '',
+                'default_url': DEFAULT_PANSOU_API_BASE
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取 Pansou 配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@resource_search_bp.route('/pan/config', methods=['POST'])
+@require_auth
+def save_pansou_config():
+    """Save Pansou API configuration."""
+    try:
+        from app import get_db_session
+        from services.secret_store import SecretStore
+        from services.pan_search_service import PANSOU_API_KEY, get_pan_search_service
+        
+        data = request.get_json() or {}
+        api_url = data.get('api_url', '').strip()
+        
+        store = SecretStore(get_db_session)
+        
+        if api_url:
+            store.set_secret(PANSOU_API_KEY, api_url)
+            logger.info(f"Pansou API URL 已更新: {api_url}")
+        else:
+            # 如果为空，则删除配置，使用默认值
+            store.delete_secret(PANSOU_API_KEY)
+            logger.info("Pansou API URL 已重置为默认值")
+        
+        # 重置全局服务实例，使其重新读取配置
+        import services.pan_search_service as pan_module
+        pan_module._pan_search_service = None
+        
+        return jsonify({
+            'success': True,
+            'message': '配置已保存'
+        })
+    except Exception as e:
+        logger.error(f"保存 Pansou 配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+

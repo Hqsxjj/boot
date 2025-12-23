@@ -109,10 +109,6 @@ def create_app(config=None):
             'error': '缺少认证令牌'
         }), 401
     
-    # Initialize data store
-    data_path = os.environ.get('DATA_PATH', '/data/appdata.json')
-    store = DataStore(data_path)
-    
     # Initialize logger
     logger = get_app_logger()
     logger.info('正在启动应用初始化...')
@@ -123,7 +119,18 @@ def create_app(config=None):
     appdata_session_factory = get_session_factory(appdata_engine)
     secret_store = SecretStore(secrets_session_factory)
     
+    # Initialize data store with database backend
+    store = DataStore(session_factory=appdata_session_factory, secret_store=secret_store)
+    
     logger.info('数据库初始化完成: secrets.db (加密), appdata.db (常规数据)')
+    
+    # Auto-migrate from files to database if needed
+    data_dir = os.environ.get('DATA_DIR', '/data')
+    config_yaml = os.path.join(data_dir, 'config.yml')
+    if os.path.exists(config_yaml):
+        logger.info('检测到旧配置文件，正在自动迁移到数据库...')
+        from persistence.migrate import run_all_migrations
+        run_all_migrations(appdata_session_factory, secret_store, data_dir)
     
     # Store in app context
     app.secret_store = secret_store
@@ -201,8 +208,14 @@ def create_app(config=None):
     wallpaper_bp.store = store
     app.register_blueprint(wallpaper_bp)
     
-    # Initialize Sources Blueprint (来源管理)
+    # Initialize Sources Blueprint with database (来源管理)
+    from blueprints.sources import init_sources_blueprint
+    init_sources_blueprint(appdata_session_factory)
     app.register_blueprint(sources_bp)
+    
+    # Initialize Crawler Service with database
+    from services.source_crawler_service import init_crawler_service
+    init_crawler_service(appdata_session_factory)
 
     # Initialize Proxy Blueprint
     app.register_blueprint(proxy_bp)
@@ -214,10 +227,9 @@ def create_app(config=None):
     init_organize_blueprint(store, tmdb_service, cloud115_service, cloud123_service)
     app.register_blueprint(organize_bp)
 
-    # Initialize Subscription Service
-    data_dir = os.path.dirname(data_path)
+    # Initialize Subscription Service with database
     pan_search_service = get_pan_search_service()
-    subscription_service = SubscriptionService(data_dir, pan_search_service, cloud115_service, cloud123_service)
+    subscription_service = SubscriptionService(appdata_session_factory, pan_search_service, cloud115_service, cloud123_service)
     init_subscription_service(subscription_service)
     app.register_blueprint(subscription_bp)
 

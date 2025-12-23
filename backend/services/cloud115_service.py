@@ -39,15 +39,18 @@ class Cloud115Service:
         except ImportError:
             pass
 
+    def set_qps(self, qps: float):
+        """Set QPS limit dynamically."""
+        if qps > 0:
+            self._qps = float(qps)
+            logger.info(f'Cloud115Service QPS updated to {self._qps}')
+        else:
+            logger.warning(f'Invalid QPS value: {qps}, ignoring')
+
     def _update_qps(self):
         """Update QPS from secret store/config."""
-        try:
-            # Try to get from config store if available, or use default
-            # For now we default to 2 requests per second (0.5s interval)
-            # You can make this configurable via secret_store if needed
-            self._qps = 2.0 
-        except Exception as e:
-            logger.debug(f'从配置更新 QPS 失败: {e}')
+        # This will be updated externally via set_qps
+        pass
 
     def _wait_for_rate_limit(self):
         """Enforce QPS limit."""
