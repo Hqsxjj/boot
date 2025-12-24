@@ -190,7 +190,7 @@ const DEFAULT_CONFIG: AppConfig = {
     }
 } as any;
 
-type GeneratorMode = 'classic' | 'studio_stack' | 'studio_grid';
+type GeneratorMode = 'classic' | 'studio_stack' | 'studio_grid' | 'stack_backend';
 
 export const EmbyView: React.FC = () => {
     const [config, setConfig] = useState<AppConfig | null>(null);
@@ -247,6 +247,36 @@ export const EmbyView: React.FC = () => {
     const [sPosterX, setSPosterX] = useState(72);
     const [gridIntensity, setGridIntensity] = useState(80);
     const [cycleIndex, setCycleIndex] = useState(0);
+
+    // === Stack Backend Generator States ===
+    const [stackCardScale, setStackCardScale] = useState(1.0);
+    const [stackPerspective, setStackPerspective] = useState(1.0);
+    const [stackZSpacing, setStackZSpacing] = useState(1.0);
+    const [stackXStart, setStackXStart] = useState(220);
+    const [stackXSpacing, setStackXSpacing] = useState(55);
+    const [stackOpacityDecay, setStackOpacityDecay] = useState(0.18);
+    const [stackScaleDecay, setStackScaleDecay] = useState(0.12);
+    const [stackCornerRadius, setStackCornerRadius] = useState(12);
+    const [stackTitleSize, setStackTitleSize] = useState(28);
+    const [stackFps, setStackFps] = useState(25);
+    const [stackFrames, setStackFrames] = useState(50);
+    const [stackPreview, setStackPreview] = useState<string | null>(null);
+    const [isStackGenerating, setIsStackGenerating] = useState(false);
+
+    // === Wall Backend Generator States (流体墙幕后端) ===
+    const [wallUseBackend, setWallUseBackend] = useState(false);  // 渲染方式开关
+    const [wallMode, setWallMode] = useState<'scroll' | 'tilt'>('tilt');  // 动画模式
+    const [wallSaturation, setWallSaturation] = useState(1.4);
+    const [wallBrightness, setWallBrightness] = useState(0.4);
+    const [wallTiltAngle, setWallTiltAngle] = useState(15);
+    const [wallTiltMove, setWallTiltMove] = useState(40);
+    const [wallPosterWidth, setWallPosterWidth] = useState(100);
+    const [wallPosterHeight, setWallPosterHeight] = useState(150);
+    const [wallFps, setWallFps] = useState(10);
+    const [wallFrames, setWallFrames] = useState(40);
+    const [wallAccentColor, setWallAccentColor] = useState('#00A28A');
+    const [wallPreview, setWallPreview] = useState<string | null>(null);
+    const [isWallGenerating, setIsWallGenerating] = useState(false);
 
     const activeStudioTextColor = studioOverrideColor || studioTheme.textColor;
 
@@ -456,6 +486,89 @@ export const EmbyView: React.FC = () => {
             }
         } catch (e) { showToast('生成失败', true); }
         finally { setIsGenerating(false); }
+    };
+
+    // Stack Backend Generator (透视堆叠 - 后端渲染)
+    const handleGenerateStackBackend = async () => {
+        if (!currentPreviewLib) return showToast('请先预览一个媒体库');
+        setIsStackGenerating(true);
+        try {
+            const coverConfig = {
+                title: coverTitle,
+                subtitle: coverSubtitle,
+                theme: selectedTheme,
+                totalFrames: stackFrames,
+                fps: stackFps,
+                sort: selectedSort,
+                fontPath: selectedFontPath,
+                cardScale: stackCardScale,
+                perspectiveIntensity: stackPerspective,
+                zSpacing: stackZSpacing,
+                xStart: stackXStart,
+                xSpacing: stackXSpacing,
+                opacityDecay: stackOpacityDecay,
+                scaleDecay: stackScaleDecay,
+                cornerRadius: stackCornerRadius,
+                titleSize: stackTitleSize,
+            };
+            const result = await api.generateStackCover({
+                libraryId: currentPreviewLib,
+                config: coverConfig,
+                uploadToEmby: false  // 先预览
+            });
+            if (result.success) {
+                setStackPreview(result.data.image);
+                showToast('透视堆叠预览生成成功');
+            } else {
+                showToast(result.error || '生成失败', true);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('生成失败', true);
+        } finally {
+            setIsStackGenerating(false);
+        }
+    };
+
+    // Wall Backend Generator (流体墙幕 - 后端渲染)
+    const handleGenerateWallBackend = async () => {
+        if (!currentPreviewLib) return showToast('请先预览一个媒体库');
+        setIsWallGenerating(true);
+        try {
+            const coverConfig = {
+                title: coverTitle,
+                subtitle: coverSubtitle,
+                theme: selectedTheme,
+                mode: wallMode,
+                totalFrames: wallFrames,
+                fps: wallFps,
+                sort: selectedSort,
+                fontPath: selectedFontPath,
+                saturation: wallSaturation,
+                brightness: wallBrightness,
+                tiltAngle: wallTiltAngle,
+                tiltMove: wallTiltMove,
+                posterWidth: wallPosterWidth,
+                posterHeight: wallPosterHeight,
+                accentColor: wallAccentColor,
+            };
+            const result = await api.generateWallCover({
+                libraryId: currentPreviewLib,
+                config: coverConfig,
+                uploadToEmby: false
+            });
+            if (result.success) {
+                setWallPreview(result.data.image);
+                showToast(`流体墙幕预览生成成功 (${result.data.mode}模式)`);
+            } else {
+                showToast(result.error || '生成失败', true);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('生成失败', true);
+        } finally {
+            setIsWallGenerating(false);
+        }
     };
 
     // 批量上传到选中的媒体库
@@ -798,6 +911,12 @@ export const EmbyView: React.FC = () => {
                             >
                                 流体墙幕
                             </button>
+                            <button
+                                onClick={() => setGeneratorMode('stack_backend')}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${generatorMode === 'stack_backend' ? 'bg-white dark:bg-slate-800 shadow text-purple-600' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                            >
+                                透视堆叠
+                            </button>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -805,12 +924,20 @@ export const EmbyView: React.FC = () => {
                                 <RefreshCw size={12} className={isLoadingLibraries ? 'animate-spin' : ''} /> 刷新库
                             </button>
                             <button
-                                onClick={generatorMode === 'classic' ? handleGenerateClassic : handleGenerateStudio}
-                                disabled={isGenerating}
-                                className={`${actionBtnClass} bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20`}
+                                onClick={
+                                    generatorMode === 'classic' ? handleGenerateClassic
+                                        : generatorMode === 'stack_backend' ? handleGenerateStackBackend
+                                            : (generatorMode === 'studio_grid' && wallUseBackend) ? handleGenerateWallBackend
+                                                : handleGenerateStudio
+                                }
+                                disabled={isGenerating || isStackGenerating || isWallGenerating}
+                                className={`${actionBtnClass} ${(generatorMode === 'studio_grid' && wallUseBackend) ? 'bg-teal-500 hover:bg-teal-600 shadow-teal-500/20' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/20'} text-white shadow-md`}
                             >
-                                {isGenerating ? <Loader2 className="animate-spin" size={14} /> : <CloudUpload size={14} />}
-                                {generatorMode === 'classic' ? '生成并上传' : '渲染并同步'}
+                                {(isGenerating || isStackGenerating || isWallGenerating) ? <Loader2 className="animate-spin" size={14} /> : <CloudUpload size={14} />}
+                                {generatorMode === 'classic' ? '生成并上传'
+                                    : generatorMode === 'stack_backend' ? '生成预览'
+                                        : (generatorMode === 'studio_grid' && wallUseBackend) ? '后端生成'
+                                            : '渲染并同步'}
                             </button>
                         </div>
                     </div>
@@ -978,6 +1105,59 @@ export const EmbyView: React.FC = () => {
                                             </div>
                                         </div>
                                     </>
+                                ) : generatorMode === 'stack_backend' ? (
+                                    <>
+                                        {/* Stack Backend Controls (透视堆叠) */}
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-purple-500 uppercase flex gap-1"><Palette size={12} /> 主题背景 (透视堆叠)</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {coverThemes.map(t => (
+                                                    <button key={t.index} onClick={() => setSelectedTheme(t.index)} className={`w-6 h-6 rounded-full border ${selectedTheme === t.index ? 'ring-2 ring-purple-500' : ''}`} style={{ background: `linear-gradient(45deg, ${t.colors[0]}, ${t.colors[1]})` }} title={t.name} />
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>卡片缩放</span><span>{stackCardScale.toFixed(1)}x</span></div>
+                                                <input type="range" min="0.5" max="1.5" step="0.1" value={stackCardScale} onChange={e => setStackCardScale(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>透视强度</span><span>{stackPerspective.toFixed(1)}</span></div>
+                                                <input type="range" min="0" max="2" step="0.1" value={stackPerspective} onChange={e => setStackPerspective(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>层叠紧密度</span><span>{stackZSpacing.toFixed(1)}</span></div>
+                                                <input type="range" min="0.5" max="2" step="0.1" value={stackZSpacing} onChange={e => setStackZSpacing(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>X 起始位置</span><span>{stackXStart}</span></div>
+                                                <input type="range" min="100" max="350" value={stackXStart} onChange={e => setStackXStart(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>X 间距</span><span>{stackXSpacing}</span></div>
+                                                <input type="range" min="20" max="100" value={stackXSpacing} onChange={e => setStackXSpacing(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>圆角半径</span><span>{stackCornerRadius}px</span></div>
+                                                <input type="range" min="0" max="30" value={stackCornerRadius} onChange={e => setStackCornerRadius(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>标题字号</span><span>{stackTitleSize}</span></div>
+                                                <input type="range" min="12" max="48" value={stackTitleSize} onChange={e => setStackTitleSize(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                            </div>
+                                            <div className="flex gap-4 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                                <div className="flex-1">
+                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>帧数</span><span>{stackFrames}</span></div>
+                                                    <input type="range" min="20" max="100" value={stackFrames} onChange={e => setStackFrames(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>FPS</span><span>{stackFps}</span></div>
+                                                    <input type="range" min="10" max="30" value={stackFps} onChange={e => setStackFps(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
                                 ) : (
                                     <>
                                         {/* Studio Controls */}
@@ -1035,10 +1215,80 @@ export const EmbyView: React.FC = () => {
                                                     </div>
                                                 </>
                                             ) : (
-                                                <div>
-                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>墙幕透明度</span><span>{gridIntensity}%</span></div>
-                                                    <input type="range" min="10" max="100" value={gridIntensity} onChange={e => setGridIntensity(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
-                                                </div>
+                                                <>
+                                                    {/* 渲染方式切换 */}
+                                                    <div className="flex items-center justify-between pb-2 border-b border-slate-200/50 dark:border-slate-700/50">
+                                                        <span className="text-xs font-bold text-slate-500">渲染方式</span>
+                                                        <div className="flex bg-slate-200 dark:bg-slate-700 rounded-lg p-0.5">
+                                                            <button onClick={() => setWallUseBackend(false)} className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${!wallUseBackend ? 'bg-white text-amber-600 shadow' : 'text-slate-500'}`}>前端预览</button>
+                                                            <button onClick={() => setWallUseBackend(true)} className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${wallUseBackend ? 'bg-white text-teal-600 shadow' : 'text-slate-500'}`}>后端生成</button>
+                                                        </div>
+                                                    </div>
+
+                                                    {!wallUseBackend ? (
+                                                        /* 前端渲染参数 */
+                                                        <div>
+                                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>墙幕透明度</span><span>{gridIntensity}%</span></div>
+                                                            <input type="range" min="10" max="100" value={gridIntensity} onChange={e => setGridIntensity(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500 studio-range" />
+                                                        </div>
+                                                    ) : (
+                                                        /* 后端渲染参数 */
+                                                        <div className="space-y-3">
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => setWallMode('tilt')} className={`flex-1 py-1 text-[10px] border rounded transition-all ${wallMode === 'tilt' ? 'bg-teal-500 text-white border-teal-500' : 'bg-slate-100 dark:bg-slate-800'}`}>倾斜模式</button>
+                                                                <button onClick={() => setWallMode('scroll')} className={`flex-1 py-1 text-[10px] border rounded transition-all ${wallMode === 'scroll' ? 'bg-teal-500 text-white border-teal-500' : 'bg-slate-100 dark:bg-slate-800'}`}>滚动模式</button>
+                                                            </div>
+
+                                                            {wallMode === 'tilt' ? (
+                                                                <>
+                                                                    <div>
+                                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>倾斜角度</span><span>{wallTiltAngle}°</span></div>
+                                                                        <input type="range" min="0" max="30" value={wallTiltAngle} onChange={e => setWallTiltAngle(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>背景亮度</span><span>{(wallBrightness * 100).toFixed(0)}%</span></div>
+                                                                        <input type="range" min="0.1" max="1" step="0.05" value={wallBrightness} onChange={e => setWallBrightness(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>移动范围</span><span>{wallTiltMove}px</span></div>
+                                                                        <input type="range" min="10" max="80" value={wallTiltMove} onChange={e => setWallTiltMove(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>胶囊颜色</span></div>
+                                                                        <input type="color" value={wallAccentColor} onChange={e => setWallAccentColor(e.target.value)} className="w-full h-6 rounded cursor-pointer" />
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div>
+                                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>饱和度</span><span>{wallSaturation.toFixed(1)}x</span></div>
+                                                                    <input type="range" min="0.5" max="2.5" step="0.1" value={wallSaturation} onChange={e => setWallSaturation(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex gap-2 pt-2 border-t border-slate-200/50">
+                                                                <div className="flex-1">
+                                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>海报宽</span><span>{wallPosterWidth}</span></div>
+                                                                    <input type="range" min="60" max="150" value={wallPosterWidth} onChange={e => setWallPosterWidth(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>高</span><span>{wallPosterHeight}</span></div>
+                                                                    <input type="range" min="90" max="200" value={wallPosterHeight} onChange={e => setWallPosterHeight(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex gap-2">
+                                                                <div className="flex-1">
+                                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>帧数</span><span>{wallFrames}</span></div>
+                                                                    <input type="range" min="20" max="80" value={wallFrames} onChange={e => setWallFrames(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>FPS</span><span>{wallFps}</span></div>
+                                                                    <input type="range" min="5" max="20" value={wallFps} onChange={e => setWallFps(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                             {/* Use Library Backdrop Toggle for Studio */}
                                             <div className="flex items-center gap-2 pt-2">
@@ -1136,18 +1386,18 @@ export const EmbyView: React.FC = () => {
                                 <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200/50 dark:border-slate-700/50">
                                     <div className="grid grid-cols-2 gap-2 mt-auto">
                                         <button
-                                            onClick={generatorMode === 'classic' ? handleGenerateClassic : handleGenerateStudio}
-                                            disabled={isGenerating || (generatorMode === 'classic' && !currentPreviewLib)}
-                                            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${isGenerating ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10'}`}
+                                            onClick={generatorMode === 'classic' ? handleGenerateClassic : generatorMode === 'stack_backend' ? handleGenerateStackBackend : handleGenerateStudio}
+                                            disabled={isGenerating || isStackGenerating || ((generatorMode === 'classic' || generatorMode === 'stack_backend') && !currentPreviewLib)}
+                                            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${(isGenerating || isStackGenerating) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : generatorMode === 'stack_backend' ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-600/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10'}`}
                                         >
-                                            {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
-                                            {generatorMode === 'classic' ? '生成预览' : '生成并上传'}
+                                            {(isGenerating || isStackGenerating) ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                                            {generatorMode === 'classic' ? '生成预览' : generatorMode === 'stack_backend' ? '生成动画' : '生成并上传'}
                                         </button>
 
-                                        {generatorMode === 'classic' && (
+                                        {(generatorMode === 'classic' || generatorMode === 'stack_backend') && (
                                             <button
                                                 onClick={handleBatchUpload}
-                                                disabled={isGenerating || isUploading}
+                                                disabled={isGenerating || isUploading || isStackGenerating}
                                                 className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${isUploading ? 'bg-amber-100 text-amber-500 animate-pulse' : 'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-500/20'}`}
                                             >
                                                 {isUploading ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />}
@@ -1175,8 +1425,45 @@ export const EmbyView: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
+                                    ) : generatorMode === 'stack_backend' ? (
+                                        <div className="aspect-video bg-gradient-to-br from-slate-900 to-purple-900 flex items-center justify-center relative">
+                                            {isStackGenerating ? (
+                                                <div className="text-purple-300 text-sm font-mono flex flex-col items-center gap-3">
+                                                    <Loader2 size={48} className="animate-spin opacity-50" />
+                                                    <span>正在生成透视堆叠动画...</span>
+                                                    <span className="text-xs opacity-50">帧数: {stackFrames}, FPS: {stackFps}</span>
+                                                </div>
+                                            ) : stackPreview ? (
+                                                <img src={stackPreview} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="text-purple-300 text-sm font-mono flex flex-col items-center gap-2">
+                                                    <Image size={48} className="opacity-20" />
+                                                    <span>点击"生成预览"查看效果</span>
+                                                    <span className="text-xs opacity-50">透视堆叠 · 后端渲染</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (generatorMode === 'studio_grid' && wallUseBackend) ? (
+                                        /* Wall Backend Preview */
+                                        <div className="aspect-video bg-gradient-to-br from-slate-900 to-teal-900 flex items-center justify-center relative">
+                                            {isWallGenerating ? (
+                                                <div className="text-teal-300 text-sm font-mono flex flex-col items-center gap-3">
+                                                    <Loader2 size={48} className="animate-spin opacity-50" />
+                                                    <span>正在生成流体墙幕动画...</span>
+                                                    <span className="text-xs opacity-50">{wallMode === 'tilt' ? '倾斜模式' : '滚动模式'} · 帧数: {wallFrames}</span>
+                                                </div>
+                                            ) : wallPreview ? (
+                                                <img src={wallPreview} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="text-teal-300 text-sm font-mono flex flex-col items-center gap-2">
+                                                    <Image size={48} className="opacity-20" />
+                                                    <span>点击"后端生成"查看效果</span>
+                                                    <span className="text-xs opacity-50">流体墙幕 · 后端渲染</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
-                                        /* Studio Preview */
+                                        /* Studio Preview (前端渲染) */
                                         <div id="studio-canvas">
                                             <CoverCanvas
                                                 theme={studioTheme}

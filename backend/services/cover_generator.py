@@ -668,17 +668,21 @@ class CoverGenerator:
         title: str = "电影收藏",
         subtitle: str = "MOVIE COLLECTION",
         theme_index: int = 0,
-        frame_count: int = 20,
-        duration_ms: int = 150,
+        frame_count: int = 15,
+        duration_ms: int = 100,
         **kwargs
     ) -> bytes:
         """
         优化后的动态 APNG 封面生成
-        直接渲染为目标规格 (400x225) 以提升性能和兼容性
+        整合优势：
+        1. 使用 apng 库组装（更可靠）
+        2. 动态背景流光效果
+        3. 直接渲染为目标规格 (400x225)
         """
         output_width = 400
         output_height = 225
         
+        # 静态图片处理（少于2张海报时）
         if len(posters) < 2:
             static_img = self.generate_cover(posters, title, subtitle, theme_index, output_width, output_height, **kwargs)
             static_img = static_img.convert("RGBA")
@@ -686,30 +690,62 @@ class CoverGenerator:
             static_img.save(buffer, format="PNG")
             return buffer.getvalue()
         
-        frames = []
+        frames_bytes = []
         num_posters = len(posters)
+        
+        logger.info(f"正在生成动画帧... 共 {frame_count} 帧")
         
         # 渲染每一帧
         for frame_idx in range(frame_count):
-            # 海报轮换
+            # 海报轮换动画
             offset = frame_idx % num_posters
             rotated_posters = posters[offset:] + posters[:offset]
             
-            # 直接按目标分辨率渲染，极大地提高速度
+            # 动态主题色偏移（每帧略微变化背景色调）
+            # 这会让背景产生微妙的流光效果
+            dynamic_theme = theme_index
+            if theme_index >= 0:
+                # 轻微改变主题，产生色彩变化
+                # 每5帧切换到下一个主题的变体
+                dynamic_theme = (theme_index + (frame_idx // 5)) % len(THEMES)
+            
+            # 直接按目标分辨率渲染
             frame = self.generate_cover(
                 rotated_posters,
                 title,
                 subtitle,
-                theme_index,
+                dynamic_theme,
                 output_width,
                 output_height,
                 **kwargs
             )
             
-            # PIL 保存 APNG 需要 RGBA
-            frames.append(frame.convert("RGBA"))
+            # 保存为 PNG 字节
+            frame_rgba = frame.convert("RGBA")
+            buf = io.BytesIO()
+            frame_rgba.save(buf, format='PNG')
+            frames_bytes.append(buf.getvalue())
         
-        # 保存为 APNG
+        logger.info("正在合成 APNG...")
+        
+        # 尝试使用 apng 库（更可靠的 APNG 生成）
+        try:
+            from apng import APNG
+            anim = APNG.from_bytes(frames_bytes, delay=duration_ms)
+            apng_buffer = io.BytesIO()
+            anim.save(apng_buffer)
+            logger.info(f"APNG 生成成功（使用 apng 库），大小: {len(apng_buffer.getvalue())} bytes")
+            return apng_buffer.getvalue()
+        except ImportError:
+            logger.warning("apng 库未安装，回退到 PIL 方式")
+        except Exception as e:
+            logger.warning(f"apng 库生成失败: {e}，回退到 PIL 方式")
+        
+        # 回退：使用 PIL 的 save_all 方式
+        frames = []
+        for fb in frames_bytes:
+            frames.append(Image.open(io.BytesIO(fb)))
+        
         buffer = io.BytesIO()
         frames[0].save(
             buffer,
@@ -721,7 +757,557 @@ class CoverGenerator:
             optimize=True
         )
         
+        logger.info(f"APNG 生成成功（使用 PIL），大小: {len(buffer.getvalue())} bytes")
         return buffer.getvalue()
+    
+    def _apply_perspective(self, img: Image.Image) -> Image.Image:
+        """应用透视变形，模拟3D倾斜感"""
+        return self._apply_perspective_with_intensity(img, 1.0)
+    
+    def _apply_perspective_with_intensity(self, img: Image.Image, intensity: float = 1.0) -> Image.Image:
+        """应用透视变形，可调强度
+        
+        Args:
+            img: 输入图片
+            intensity: 透视强度 (0=无变形, 1=默认, 2=强变形)
+        """
+        import numpy as np
+        
+        if intensity <= 0:
+            return img
+        
+        w, h = img.size
+        # 源点：左上，右上，右下，左下
+        src_pts = [(0, 0), (w, 0), (w, h), (0, h)]
+        
+        # 根据强度计算透视程度
+        x_shrink = 0.15 * intensity  # 水平缩进比例
+        y_shrink = 0.08 * intensity  # 垂直缩进比例
+        
+        # 目标点：模拟左侧向远处（Z轴）深缩，右侧保持较大
+        dst_pts = [
+            (int(w * x_shrink), int(h * y_shrink)),      # 左上缩进
+            (w, 0),                                       # 右上不动
+            (w, h),                                       # 右下不动
+            (int(w * x_shrink), int(h * (1 - y_shrink))) # 左下缩进
+        ]
+        
+        # 计算变换矩阵
+        def find_coeffs(pa, pb):
+            matrix = []
+            for p1, p2 in zip(pa, pb):
+                matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0] * p1[0], -p2[0] * p1[1]])
+                matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1] * p1[0], -p2[1] * p1[1]])
+            A = np.matrix(matrix, dtype=float)
+            B = np.array(pb).reshape(8)
+            res = np.dot(np.linalg.inv(A), B)
+            return np.array(res).reshape(8)
+        
+        coeffs = find_coeffs(dst_pts, src_pts)
+        return img.transform((w, h), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BICUBIC)
+    
+    def generate_stack_animated_cover(
+        self,
+        posters: List[Image.Image],
+        title: str = "电影收藏",
+        subtitle: str = "MOVIE COLLECTION",
+        theme_index: int = 0,
+        total_frames: int = 50,
+        fps: int = 25,
+        output_size: Tuple[int, int] = (400, 225),
+        font_path: str = None,
+        # === 新增可调参数 ===
+        card_scale: float = 1.0,           # 卡片缩放 (0.5-1.5)
+        perspective_intensity: float = 1.0, # 透视强度 (0-2)
+        z_spacing: float = 1.0,            # Z轴间距系数 (0.5-2)
+        x_start: int = 220,                # X轴起始位置
+        x_spacing: int = 55,               # X轴间距
+        opacity_decay: float = 0.18,       # 透明度衰减 (每层)
+        scale_decay: float = 0.12,         # 缩放衰减 (每层)
+        bg_color_hex: str = None,          # 自定义背景色 (#RRGGBB)
+        title_size: int = 28,              # 主标题字号
+        subtitle_size: int = 12,           # 副标题字号
+        title_x: int = 15,                 # 文字X位置
+        title_y_offset: int = 55,          # 文字距底部偏移
+        corner_radius: int = 12            # 卡片圆角半径
+    ) -> bytes:
+        """
+        生成动态堆叠封面（透视3D效果）
+        
+        Args:
+            posters: 海报图片列表
+            title: 主标题
+            subtitle: 副标题
+            theme_index: 主题索引
+            total_frames: 总帧数（默认50帧，约2秒）
+            fps: 帧率（默认25FPS）
+            output_size: 输出尺寸 (宽, 高)
+            font_path: 自定义字体路径
+            card_scale: 卡片整体缩放 (0.5-1.5)
+            perspective_intensity: 透视变形强度 (0=无透视, 1=默认, 2=强透视)
+            z_spacing: Z轴层叠紧密度 (1=默认)
+            x_start: 最前面卡片的X位置
+            x_spacing: 卡片间的X轴间距
+            opacity_decay: 每层透明度衰减值
+            scale_decay: 每层缩放衰减值
+            bg_color_hex: 自定义背景色 (#RRGGBB)
+            title_size: 主标题字号
+            subtitle_size: 副标题字号
+            title_x: 文字X位置
+            title_y_offset: 文字距底部偏移
+            corner_radius: 卡片圆角半径
+            
+        Returns:
+            APNG 二进制数据
+        """
+        if len(posters) < 2:
+            logger.warning("海报数量不足，无法生成动态堆叠")
+            static_img = Image.new("RGBA", output_size, (15, 12, 25, 255))
+            buf = io.BytesIO()
+            static_img.save(buf, format='PNG')
+            return buf.getvalue()
+        
+        logger.info(f"开始生成动态堆叠封面... 帧数: {total_frames}, FPS: {fps}")
+        
+        # 背景颜色
+        if bg_color_hex:
+            bg_color = self._hex_to_rgb(bg_color_hex) + (255,)
+        elif theme_index >= 0 and theme_index < len(THEMES):
+            bg_hex = THEMES[theme_index]["colors"][0]
+            bg_color = self._hex_to_rgb(bg_hex) + (255,)
+        else:
+            bg_color = (15, 12, 25, 255)
+        
+        # 预处理海报：统一大小、圆角、透视
+        base_card_width, base_card_height = 160, 240
+        card_width = int(base_card_width * card_scale)
+        card_height = int(base_card_height * card_scale)
+        processed_posters = []
+        
+        for p in posters[:7]:  # 最多使用7张
+            try:
+                p = p.convert("RGBA")
+                p = p.resize((card_width, card_height), Image.Resampling.LANCZOS)
+                
+                # 添加圆角
+                mask = Image.new('L', p.size, 0)
+                ImageDraw.Draw(mask).rounded_rectangle((0, 0, p.width, p.height), corner_radius, fill=255)
+                p.putalpha(mask)
+                
+                # 应用透视变形（根据强度）
+                if perspective_intensity > 0:
+                    p = self._apply_perspective_with_intensity(p, perspective_intensity)
+                processed_posters.append(p)
+            except Exception as e:
+                logger.warning(f"处理海报失败: {e}")
+                continue
+        
+        if len(processed_posters) < 2:
+            logger.warning("有效海报数量不足")
+            static_img = Image.new("RGBA", output_size, bg_color)
+            buf = io.BytesIO()
+            static_img.save(buf, format='PNG')
+            return buf.getvalue()
+        
+        frames_bytes = []
+        num_posters = len(processed_posters)
+        
+        # 准备字体
+        m_font = None
+        s_font = None
+        font_candidates = [
+            font_path,
+            "C:\\Windows\\Fonts\\msyhbd.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+        
+        for f_path in font_candidates:
+            if not f_path:
+                continue
+            try:
+                m_font = ImageFont.truetype(f_path, title_size)
+                s_font = ImageFont.truetype(f_path, subtitle_size)
+                break
+            except Exception:
+                continue
+        
+        if m_font is None:
+            m_font = ImageFont.load_default()
+            s_font = ImageFont.load_default()
+        
+        # 生成每一帧
+        for f in range(total_frames):
+            # 创建背景画布
+            canvas = Image.new("RGBA", output_size, bg_color)
+            progress = f / total_frames
+            
+            # 绘制海报（从后往前绘制，越后面的越靠前）
+            for i in range(num_posters - 1, -1, -1):
+                pos = (i - progress) % num_posters
+                
+                # 计算 Z 轴效果：越往后（pos越大）越小、越靠左、越透明
+                z_factor = 1.0 - (pos * scale_decay * z_spacing)
+                opacity = 1.0 - (pos * opacity_decay * z_spacing)
+                x_pos = int(x_start - pos * x_spacing * z_spacing)  # X轴位置
+                
+                # 复制并缩放
+                img = processed_posters[i].copy()
+                nw, nh = int(img.width * z_factor), int(img.height * z_factor)
+                if nw < 10 or nh < 10:
+                    continue
+                img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+                
+                # 透明度处理
+                alpha = img.getchannel('A')
+                alpha = ImageEnhance.Brightness(alpha).enhance(max(0.1, opacity))
+                img.putalpha(alpha)
+                
+                # 计算 Y 位置（居中）
+                y_pos = (output_size[1] - nh) // 2
+                
+                # 创建临时层并粘贴
+                temp = Image.new("RGBA", output_size, (0, 0, 0, 0))
+                temp.paste(img, (x_pos, y_pos))
+                canvas = Image.alpha_composite(canvas, temp)
+            
+            # 添加文字
+            draw = ImageDraw.Draw(canvas)
+            
+            # 主标题 (使用参数化位置)
+            text_x = title_x
+            text_y = output_size[1] - title_y_offset
+            
+            # 文字阴影
+            draw.text((text_x + 1, text_y + 1), title, font=m_font, fill=(0, 0, 0, 150))
+            draw.text((text_x, text_y), title, font=m_font, fill=(255, 255, 255, 255))
+            
+            # 副标题
+            if subtitle:
+                sub_y = text_y + 32
+                draw.text((text_x + 1, sub_y + 1), subtitle, font=s_font, fill=(0, 0, 0, 100))
+                draw.text((text_x, sub_y), subtitle, font=s_font, fill=(180, 180, 180, 220))
+            
+            # 保存帧
+            buf = io.BytesIO()
+            canvas.save(buf, format='PNG')
+            frames_bytes.append(buf.getvalue())
+        
+        logger.info(f"帧渲染完成，正在合成 APNG...")
+        
+        # 计算帧间隔 (毫秒)
+        duration_ms = int(1000 / fps)
+        
+        # 尝试使用 apng 库
+        try:
+            from apng import APNG
+            anim = APNG.from_bytes(frames_bytes, delay=duration_ms)
+            apng_buffer = io.BytesIO()
+            anim.save(apng_buffer)
+            logger.info(f"动态堆叠 APNG 生成成功（apng库），大小: {len(apng_buffer.getvalue())} bytes")
+            return apng_buffer.getvalue()
+        except ImportError:
+            logger.warning("apng 库未安装，回退到 PIL 方式")
+        except Exception as e:
+            logger.warning(f"apng 库生成失败: {e}，回退到 PIL 方式")
+        
+        # 回退：使用 PIL
+        frames = []
+        for fb in frames_bytes:
+            frames.append(Image.open(io.BytesIO(fb)))
+        
+        buffer = io.BytesIO()
+        frames[0].save(
+            buffer,
+            format="PNG",
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True
+        )
+        
+        logger.info(f"动态堆叠 APNG 生成成功（PIL），大小: {len(buffer.getvalue())} bytes")
+        return buffer.getvalue()
+    
+    def generate_wall_animated_cover(
+        self,
+        posters: List[Image.Image],
+        title: str = "电影收藏",
+        subtitle: str = "MOVIE COLLECTION",
+        theme_index: int = 0,
+        mode: str = 'tilt',  # 'scroll' 或 'tilt'
+        total_frames: int = 40,
+        fps: int = 10,
+        output_size: Tuple[int, int] = (400, 225),
+        font_path: str = None,
+        # 可调参数
+        saturation: float = 1.4,        # 饱和度 (scroll模式)
+        brightness: float = 0.4,        # 亮度 (tilt模式)
+        tilt_angle: float = 15,         # 倾斜角度
+        scroll_range_x: int = 200,      # X滚动范围
+        scroll_range_y: int = 500,      # Y滚动范围 (scroll模式)
+        tilt_move: int = 40,            # 移动范围 (tilt模式)
+        poster_width: int = 100,        # 海报宽度
+        poster_height: int = 150,       # 海报高度
+        grid_gap_x: int = 5,            # 网格X间距
+        grid_gap_y: int = 5,            # 网格Y间距
+        accent_color: Tuple[int, int, int] = (0, 162, 138),  # 胶囊颜色
+        title_size: int = 30,
+        subtitle_size: int = 14,
+        bg_color_hex: str = None
+    ) -> bytes:
+        """
+        生成流体墙幕封面（海报墙网格动画）
+        
+        Args:
+            posters: 海报图片列表
+            title: 主标题
+            subtitle: 副标题
+            theme_index: 主题索引
+            mode: 模式 'scroll'(全屏滚动) 或 'tilt'(倾斜带文字)
+            total_frames: 总帧数
+            fps: 帧率
+            output_size: 输出尺寸
+            font_path: 字体路径
+            saturation: 饱和度
+            brightness: 亮度（tilt模式下背景变暗）
+            tilt_angle: 倾斜角度
+            scroll_range_x: 滚动范围X
+            scroll_range_y: 滚动范围Y
+            tilt_move: 倾斜模式移动范围
+            poster_width: 海报宽度
+            poster_height: 海报高度
+            grid_gap_x: 网格X间距
+            grid_gap_y: 网格Y间距
+            accent_color: 副标题胶囊背景色
+            title_size: 主标题字号
+            subtitle_size: 副标题字号
+            bg_color_hex: 自定义背景色
+            
+        Returns:
+            APNG 二进制数据
+        """
+        if len(posters) < 4:
+            logger.warning("海报数量不足，无法生成流体墙幕")
+            static_img = Image.new("RGBA", output_size, (15, 15, 15, 255))
+            buf = io.BytesIO()
+            static_img.save(buf, format='PNG')
+            return buf.getvalue()
+        
+        logger.info(f"开始生成流体墙幕封面... 模式: {mode}, 帧数: {total_frames}")
+        
+        # 背景颜色
+        if bg_color_hex:
+            bg_color = self._hex_to_rgb(bg_color_hex) + (255,)
+        elif theme_index >= 0 and theme_index < len(THEMES):
+            bg_hex = THEMES[theme_index]["colors"][0]
+            bg_color = self._hex_to_rgb(bg_hex) + (255,)
+        else:
+            bg_color = (15, 15, 15, 255)
+        
+        # 预处理海报：统一大小
+        processed_posters = []
+        for p in posters:
+            try:
+                p = p.convert("RGBA")
+                p = p.resize((poster_width, poster_height), Image.Resampling.LANCZOS)
+                processed_posters.append(p)
+            except Exception as e:
+                logger.warning(f"处理海报失败: {e}")
+                continue
+        
+        if len(processed_posters) < 4:
+            logger.warning("有效海报数量不足")
+            static_img = Image.new("RGBA", output_size, bg_color)
+            buf = io.BytesIO()
+            static_img.save(buf, format='PNG')
+            return buf.getvalue()
+        
+        # 计算网格尺寸
+        cell_w = poster_width + grid_gap_x
+        cell_h = poster_height + grid_gap_y
+        
+        # 根据模式生成不同的动画
+        if mode == 'scroll':
+            frames_bytes = self._generate_scroll_frames(
+                processed_posters, output_size, total_frames,
+                cell_w, cell_h, bg_color, saturation, scroll_range_x, scroll_range_y
+            )
+        else:  # tilt 模式
+            frames_bytes = self._generate_tilt_frames(
+                processed_posters, output_size, total_frames,
+                cell_w, cell_h, bg_color, brightness, tilt_angle, tilt_move,
+                title, subtitle, font_path, title_size, subtitle_size, accent_color
+            )
+        
+        logger.info(f"帧渲染完成，正在合成 APNG...")
+        
+        # 计算帧间隔 (毫秒)
+        duration_ms = int(1000 / fps)
+        
+        # 尝试使用 apng 库
+        try:
+            from apng import APNG
+            anim = APNG.from_bytes(frames_bytes, delay=duration_ms)
+            apng_buffer = io.BytesIO()
+            anim.save(apng_buffer)
+            logger.info(f"流体墙幕 APNG 生成成功（apng库），大小: {len(apng_buffer.getvalue())} bytes")
+            return apng_buffer.getvalue()
+        except ImportError:
+            logger.warning("apng 库未安装，回退到 PIL 方式")
+        except Exception as e:
+            logger.warning(f"apng 库生成失败: {e}，回退到 PIL 方式")
+        
+        # 回退：使用 PIL
+        frames = []
+        for fb in frames_bytes:
+            frames.append(Image.open(io.BytesIO(fb)))
+        
+        buffer = io.BytesIO()
+        frames[0].save(
+            buffer,
+            format="PNG",
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True
+        )
+        
+        logger.info(f"流体墙幕 APNG 生成成功（PIL），大小: {len(buffer.getvalue())} bytes")
+        return buffer.getvalue()
+    
+    def _generate_scroll_frames(
+        self, posters, output_size, total_frames,
+        cell_w, cell_h, bg_color, saturation, scroll_range_x, scroll_range_y
+    ) -> List[bytes]:
+        """生成滚动模式帧"""
+        # 创建大画布（6x6 网格）
+        canvas_w = 6 * cell_w + scroll_range_x
+        canvas_h = 6 * cell_h + scroll_range_y
+        canvas = Image.new('RGBA', (canvas_w, canvas_h), bg_color)
+        
+        # 铺设海报网格
+        for i in range(8):
+            for j in range(8):
+                idx = (i * 8 + j) % len(posters)
+                canvas.paste(posters[idx], (j * cell_w, i * cell_h))
+        
+        # 调整饱和度
+        canvas = ImageEnhance.Color(canvas).enhance(saturation)
+        
+        frames_bytes = []
+        for f in range(total_frames):
+            progress = f / total_frames
+            off_x = int(scroll_range_x * progress)
+            off_y = int(scroll_range_y * progress)
+            
+            # 裁剪
+            frame = canvas.crop((off_x, off_y, off_x + output_size[0], off_y + output_size[1]))
+            
+            buf = io.BytesIO()
+            frame.save(buf, format='PNG')
+            frames_bytes.append(buf.getvalue())
+        
+        return frames_bytes
+    
+    def _generate_tilt_frames(
+        self, posters, output_size, total_frames,
+        cell_w, cell_h, bg_color, brightness, tilt_angle, tilt_move,
+        title, subtitle, font_path, title_size, subtitle_size, accent_color
+    ) -> List[bytes]:
+        """生成倾斜UI模式帧"""
+        # 创建更大的画布用于旋转
+        canvas_size = 900
+        canvas = Image.new('RGBA', (canvas_size, canvas_size), bg_color)
+        
+        # 铺设海报网格（交错排列）
+        for i in range(8):
+            for j in range(9):
+                idx = (i * 9 + j) % len(posters)
+                x_offset = j * cell_w + (25 if i % 2 == 0 else 0)
+                canvas.paste(posters[idx], (x_offset, i * cell_h))
+        
+        # 旋转
+        canvas = canvas.rotate(tilt_angle, resample=Image.Resampling.BICUBIC, expand=False)
+        
+        # 压暗
+        canvas = ImageEnhance.Brightness(canvas).enhance(brightness)
+        
+        # 准备字体
+        m_font = None
+        s_font = None
+        font_candidates = [
+            font_path,
+            "C:\\Windows\\Fonts\\msyhbd.ttc",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+        
+        for f_path in font_candidates:
+            if not f_path:
+                continue
+            try:
+                m_font = ImageFont.truetype(f_path, title_size)
+                s_font = ImageFont.truetype(f_path, subtitle_size)
+                break
+            except Exception:
+                continue
+        
+        if m_font is None:
+            m_font = ImageFont.load_default()
+            s_font = ImageFont.load_default()
+        
+        frames_bytes = []
+        crop_start_x = 200
+        crop_start_y = 200
+        
+        for f in range(total_frames):
+            progress = f / total_frames
+            move = int(tilt_move * progress)
+            
+            # 裁剪移动的区域
+            x1 = crop_start_x + move
+            y1 = crop_start_y + move
+            x2 = x1 + output_size[0]
+            y2 = y1 + output_size[1]
+            
+            frame = canvas.crop((x1, y1, x2, y2)).convert("RGBA")
+            
+            # 绘制 UI
+            draw = ImageDraw.Draw(frame)
+            cx = output_size[0] // 2
+            cy = output_size[1] // 2
+            
+            # 主标题
+            draw.text((cx + 1, cy - 19), title, fill=(0, 0, 0, 150), anchor="mm", font=m_font)
+            draw.text((cx, cy - 20), title, fill="white", anchor="mm", font=m_font)
+            
+            # 副标题胶囊
+            if subtitle:
+                try:
+                    tw = draw.textlength(subtitle, font=s_font)
+                except:
+                    tw = len(subtitle) * subtitle_size * 0.6
+                
+                pill_x1 = cx - tw / 2 - 10
+                pill_y1 = cy + 15
+                pill_x2 = cx + tw / 2 + 10
+                pill_y2 = cy + 38
+                
+                draw.rounded_rectangle(
+                    [pill_x1, pill_y1, pill_x2, pill_y2],
+                    radius=4,
+                    fill=accent_color + (255,)
+                )
+                draw.text((cx, cy + 26), subtitle, fill="white", anchor="mm", font=s_font)
+            
+            buf = io.BytesIO()
+            frame.save(buf, format='PNG')
+            frames_bytes.append(buf.getvalue())
+        
+        return frames_bytes
     
     def upload_cover(self, library_id: str, image_data: bytes, content_type: str = "image/png") -> bool:
         """
@@ -740,25 +1326,27 @@ class CoverGenerator:
             return False
         
         # 修正 Content-Type 格式 (Emby 需要 Image/jpeg 或 Image/png 格式)
-        # 参考：https://github.com/MediaBrowser/Emby/wiki/Images
         if content_type == "image/png":
-            emby_content_type = "Image/png"
+            emby_content_type = "image/png"
         elif content_type == "image/gif":
-            emby_content_type = "Image/gif"
+            emby_content_type = "image/gif"
         elif content_type == "image/jpeg":
-            emby_content_type = "Image/jpeg"
+            emby_content_type = "image/jpeg"
         else:
-            emby_content_type = "Image/png"
+            emby_content_type = "image/png"
         
-        # 尝试两种 URL 格式 (有些 Emby 安装需要 /emby 前缀，有些不需要)
+        # 尝试多种 URL 格式 (有些 Emby 安装需要 /emby 前缀，有些不需要)
         base_url = self.emby_url.rstrip('/')
         url_patterns = [
+            f"{base_url}/emby/Items/{library_id}/Images/Primary",  # 带 /emby 前缀（优先）
             f"{base_url}/Items/{library_id}/Images/Primary",  # 不带 /emby 前缀
-            f"{base_url}/emby/Items/{library_id}/Images/Primary",  # 带 /emby 前缀
         ]
         
-        params = {"api_key": self.api_key}
-        headers = {"Content-Type": emby_content_type}
+        # 使用 X-Emby-Token header（更标准的认证方式）
+        headers = {
+            "Content-Type": emby_content_type,
+            "X-Emby-Token": self.api_key
+        }
         
         logger.info(f"正在上传封面, 大小: {len(image_data)} bytes, 类型: {emby_content_type}")
         
@@ -767,7 +1355,7 @@ class CoverGenerator:
                 logger.info(f"尝试上传到: {url}")
                 
                 # Emby API 接受 binary body
-                resp = self._make_request('POST', url, params=params, headers=headers, data=image_data, timeout=60)
+                resp = self._make_request('POST', url, headers=headers, data=image_data, timeout=60)
                 
                 # Emby 可能返回 200, 201, 或 204 表示成功
                 if resp.status_code in [200, 201, 204]:

@@ -1170,6 +1170,271 @@ def generate_cover():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@emby_bp.route('/cover/generate-stack', methods=['POST'])
+@require_auth
+def generate_stack_cover():
+    """生成动态堆叠封面图（透视3D效果）"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+            
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        data = request.get_json() or {}
+        cover_config = data.get('config', {})
+        
+        library_id = data.get('libraryId')
+        title = cover_config.get('title') or data.get('title', '电影收藏')
+        subtitle = cover_config.get('subtitle') or data.get('subtitle', 'MOVIE COLLECTION')
+        theme_index = cover_config.get('theme') or data.get('themeIndex', 0)
+        total_frames = cover_config.get('totalFrames') or data.get('totalFrames', 50)
+        fps = cover_config.get('fps') or data.get('fps', 25)
+        poster_count = int(data.get('posterCount', 5))
+        poster_count = max(3, min(7, poster_count))
+        sort_by = cover_config.get('sort') or data.get('sort')
+        font_path = cover_config.get('fontPath') or data.get('fontPath')
+        upload_to_emby = data.get('uploadToEmby', False)
+        
+        # === 新增可调参数 ===
+        card_scale = float(cover_config.get('cardScale', 1.0))
+        perspective_intensity = float(cover_config.get('perspectiveIntensity', 1.0))
+        z_spacing = float(cover_config.get('zSpacing', 1.0))
+        x_start = int(cover_config.get('xStart', 220))
+        x_spacing = int(cover_config.get('xSpacing', 55))
+        opacity_decay = float(cover_config.get('opacityDecay', 0.18))
+        scale_decay = float(cover_config.get('scaleDecay', 0.12))
+        bg_color_hex = cover_config.get('bgColor')
+        title_size = int(cover_config.get('titleSize', 28))
+        subtitle_size = int(cover_config.get('subtitleSize', 12))
+        title_x = int(cover_config.get('titleX', 15))
+        title_y_offset = int(cover_config.get('titleYOffset', 55))
+        corner_radius = int(cover_config.get('cornerRadius', 12))
+        
+        generator = get_cover_generator()
+        
+        if emby_url and api_key:
+            proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+            generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
+        
+        # 获取海报
+        posters = []
+        if library_id:
+            posters = generator.get_library_posters(library_id, limit=poster_count, sort_by=sort_by)
+        
+        if not posters:
+            return jsonify({'success': False, 'error': '未能获取海报图片'}), 400
+        
+        # 创建预览缓存目录
+        import os
+        data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+        data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+        cache_dir = os.path.join(data_dir, 'covers', 'stack_preview')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 清理标题用于文件名
+        safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip() or 'stack_cover'
+        local_file_path = os.path.join(cache_dir, f"{safe_title}.png")
+        
+        # 生成动态堆叠封面 (传递所有可调参数)
+        apng_data = generator.generate_stack_animated_cover(
+            posters=posters,
+            title=title,
+            subtitle=subtitle,
+            theme_index=theme_index,
+            total_frames=total_frames,
+            fps=fps,
+            output_size=(400, 225),
+            font_path=font_path,
+            card_scale=card_scale,
+            perspective_intensity=perspective_intensity,
+            z_spacing=z_spacing,
+            x_start=x_start,
+            x_spacing=x_spacing,
+            opacity_decay=opacity_decay,
+            scale_decay=scale_decay,
+            bg_color_hex=bg_color_hex,
+            title_size=title_size,
+            subtitle_size=subtitle_size,
+            title_x=title_x,
+            title_y_offset=title_y_offset,
+            corner_radius=corner_radius
+        )
+        
+        # 保存到本地缓存
+        with open(local_file_path, 'wb') as f:
+            f.write(apng_data)
+        
+        result_b64 = generator.bytes_to_base64(apng_data, "image/png")
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"动态堆叠封面已保存到本地: {local_file_path}")
+        
+        # 如果要上传到 Emby
+        upload_success = False
+        if upload_to_emby and library_id:
+            upload_success = generator.upload_cover(library_id, apng_data, "image/png")
+            if upload_success:
+                logger.info(f"动态堆叠封面已上传到 Emby: {library_id}")
+            else:
+                logger.warning(f"动态堆叠封面上传失败: {library_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'image': result_b64,
+                'format': 'apng',
+                'localPath': local_file_path,
+                'uploaded': upload_success
+            }
+        }), 200
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(f"生成动态堆叠封面失败: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@emby_bp.route('/cover/generate-wall', methods=['POST'])
+@require_auth
+def generate_wall_cover():
+    """生成流体墙幕封面图（海报墙网格动画）"""
+    try:
+        if not _store:
+            return jsonify({'success': False, 'error': '服务未初始化'}), 500
+            
+        config = _store.get_config()
+        emby_config = config.get('emby', {})
+        emby_url = emby_config.get('serverUrl', '')
+        api_key = emby_config.get('apiKey', '')
+        
+        data = request.get_json() or {}
+        cover_config = data.get('config', {})
+        
+        library_id = data.get('libraryId')
+        title = cover_config.get('title') or data.get('title', '电影收藏')
+        subtitle = cover_config.get('subtitle') or data.get('subtitle', 'MOVIE COLLECTION')
+        theme_index = cover_config.get('theme') or data.get('themeIndex', 0)
+        mode = cover_config.get('mode') or data.get('mode', 'tilt')  # 'scroll' 或 'tilt'
+        total_frames = cover_config.get('totalFrames') or data.get('totalFrames', 40)
+        fps = cover_config.get('fps') or data.get('fps', 10)
+        poster_count = int(data.get('posterCount', 20))
+        poster_count = max(10, min(30, poster_count))
+        sort_by = cover_config.get('sort') or data.get('sort')
+        font_path = cover_config.get('fontPath') or data.get('fontPath')
+        upload_to_emby = data.get('uploadToEmby', False)
+        
+        # 可调参数
+        saturation = float(cover_config.get('saturation', 1.4))
+        brightness = float(cover_config.get('brightness', 0.4))
+        tilt_angle = float(cover_config.get('tiltAngle', 15))
+        scroll_range_x = int(cover_config.get('scrollRangeX', 200))
+        scroll_range_y = int(cover_config.get('scrollRangeY', 500))
+        tilt_move = int(cover_config.get('tiltMove', 40))
+        poster_width = int(cover_config.get('posterWidth', 100))
+        poster_height = int(cover_config.get('posterHeight', 150))
+        grid_gap_x = int(cover_config.get('gridGapX', 5))
+        grid_gap_y = int(cover_config.get('gridGapY', 5))
+        title_size = int(cover_config.get('titleSize', 30))
+        subtitle_size = int(cover_config.get('subtitleSize', 14))
+        
+        # 胶囊颜色
+        accent_hex = cover_config.get('accentColor', '#00A28A')
+        try:
+            accent_color = tuple(int(accent_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        except:
+            accent_color = (0, 162, 138)
+        
+        generator = get_cover_generator()
+        
+        if emby_url and api_key:
+            proxy_conf = _emby_service._get_proxy_config() if _emby_service else None
+            generator.set_emby_config(emby_url, api_key, proxies=proxy_conf)
+        
+        # 获取海报
+        posters = []
+        if library_id:
+            posters = generator.get_library_posters(library_id, limit=poster_count, sort_by=sort_by)
+        
+        if not posters or len(posters) < 4:
+            return jsonify({'success': False, 'error': '未能获取足够的海报图片（至少需要4张）'}), 400
+        
+        # 创建预览缓存目录
+        import os
+        data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+        data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+        cache_dir = os.path.join(data_dir, 'covers', 'wall_preview')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 清理标题用于文件名
+        safe_title = "".join(c if c.isalnum() or c in (' ', '-', '_', '.') else '_' for c in title).strip() or 'wall_cover'
+        local_file_path = os.path.join(cache_dir, f"{safe_title}.png")
+        
+        # 生成流体墙幕封面
+        apng_data = generator.generate_wall_animated_cover(
+            posters=posters,
+            title=title,
+            subtitle=subtitle,
+            theme_index=theme_index,
+            mode=mode,
+            total_frames=total_frames,
+            fps=fps,
+            output_size=(400, 225),
+            font_path=font_path,
+            saturation=saturation,
+            brightness=brightness,
+            tilt_angle=tilt_angle,
+            scroll_range_x=scroll_range_x,
+            scroll_range_y=scroll_range_y,
+            tilt_move=tilt_move,
+            poster_width=poster_width,
+            poster_height=poster_height,
+            grid_gap_x=grid_gap_x,
+            grid_gap_y=grid_gap_y,
+            accent_color=accent_color,
+            title_size=title_size,
+            subtitle_size=subtitle_size
+        )
+        
+        # 保存到本地缓存
+        with open(local_file_path, 'wb') as f:
+            f.write(apng_data)
+        
+        result_b64 = generator.bytes_to_base64(apng_data, "image/png")
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"流体墙幕封面已保存到本地: {local_file_path}")
+        
+        # 如果要上传到 Emby
+        upload_success = False
+        if upload_to_emby and library_id:
+            upload_success = generator.upload_cover(library_id, apng_data, "image/png")
+            if upload_success:
+                logger.info(f"流体墙幕封面已上传到 Emby: {library_id}")
+            else:
+                logger.warning(f"流体墙幕封面上传失败: {library_id}")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'image': result_b64,
+                'format': 'apng',
+                'mode': mode,
+                'localPath': local_file_path,
+                'uploaded': upload_success
+            }
+        }), 200
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(f"生成流体墙幕封面失败: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @emby_bp.route('/cover/batch/start', methods=['POST'])
 @require_auth
 def start_cover_batch_background():

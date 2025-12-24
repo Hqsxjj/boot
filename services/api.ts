@@ -650,6 +650,24 @@ export const api = {
     return res.data;
   },
 
+  generateStackCover: async (options: {
+    libraryId?: string;
+    config: any;
+    uploadToEmby?: boolean;
+  }) => {
+    const res = await apiClient.post<ApiResponse<{ image: string; format: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-stack', options);
+    return res.data;
+  },
+
+  generateWallCover: async (options: {
+    libraryId?: string;
+    config: any;
+    uploadToEmby?: boolean;
+  }) => {
+    const res = await apiClient.post<ApiResponse<{ image: string; format: string; mode: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-wall', options);
+    return res.data;
+  },
+
   batchApplyCovers: async (libraryIds: string[], config: any) => {
     const res = await apiClient.post<ApiResponse<any>>('/emby/apply_covers', {
       library_ids: libraryIds,

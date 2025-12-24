@@ -18,6 +18,8 @@ python-dotenv
 httpx[http2]
 qrcode
 Pillow>=9.1.0
+apng>=0.3.4
+numpy>=1.21.0
 beautifulsoup4
 lxml
 openai>=1.0.0
