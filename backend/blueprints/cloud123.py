@@ -487,6 +487,7 @@ def get_share_files():
         
         share_code = data.get('shareCode') or data.get('share_code')
         access_code = data.get('accessCode') or data.get('access_code') or ''
+        file_id = data.get('file_id') or data.get('cid') or None
         
         if not share_code:
             return jsonify({
@@ -494,7 +495,7 @@ def get_share_files():
                 'error': '分享码不能为空'
             }), 400
         
-        result = _cloud123_service.get_share_files(share_code, access_code)
+        result = _cloud123_service.get_share_files(share_code, access_code, file_id)
         
         if result.get('success'):
             return jsonify(result), 200
