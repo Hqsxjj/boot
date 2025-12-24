@@ -1,3 +1,4 @@
+// Boot v1.0.1 - 2024-12-24 sync test
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { UserCenterView } from './views/UserCenterView';
