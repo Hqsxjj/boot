@@ -300,8 +300,6 @@ export const EmbyView: React.FC = () => {
         }
     }, [studioPosters.length, generatorMode]);
 
-    // Update Studio Layout Mode derived from Tab
-    const studioLayoutMode = generatorMode === 'studio_grid' ? 'grid' : 'stack';
 
     // Helper Functions
     const showToast = (msg: string, isError = false) => {
@@ -1056,8 +1054,7 @@ export const EmbyView: React.FC = () => {
                                                 />
                                                 <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">使用横幅背景 (演示)</span>
                                             </div>
-                                        </>
-                                    )}
+                                        </div>
 
                                         {/* --- NEW: Preset & Scheduler Controls --- */}
                                         <div className="pt-4 border-t border-slate-200/50 dark:border-slate-700/50 space-y-4">
@@ -1129,7 +1126,8 @@ export const EmbyView: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
+                                    </>
+                                )}
 
                                 {/* Action Buttons at bottom of Controls Pane */}
                                 <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200/50 dark:border-slate-700/50">
@@ -1202,6 +1200,7 @@ export const EmbyView: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
                 </section>
             </div>
         </div>

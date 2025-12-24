@@ -1,0 +1,5 @@
+﻿views/EmbyView.tsx(817,22): error TS17008: JSX element 'div' has no corresponding closing tag.
+views/EmbyView.tsx(1059,43): error TS1003: Identifier expected.
+views/EmbyView.tsx(1060,38): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+views/EmbyView.tsx(1132,39): error TS17015: Expected corresponding closing tag for JSX fragment.
+views/EmbyView.tsx(1132,42): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
