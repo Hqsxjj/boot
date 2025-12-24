@@ -3,7 +3,7 @@ import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
 import { api } from '../services/api';
 // 确保 mockConfig 存在，如果不存在请创建一个空文件或根据需求调整
 import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
-import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, AlertCircle, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2, FileText } from 'lucide-react';
+import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2, FileText } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
 import { OrganizeLogs } from '../components/OrganizeLogs';
@@ -73,7 +73,7 @@ export const CloudOrganizeView: React.FC = () => {
    const [isSaving, setIsSaving] = useState(false);
    const [toast, setToast] = useState<string | null>(null);
 
-   const [activeTab, setActiveTab] = useState<'115' | '123' | 'openlist'>('115');
+   const [activeTab, setActiveTab] = useState<'115' | '123'>('115');
    const [activeRuleTab, setActiveRuleTab] = useState<'movie' | 'tv'>('movie');
    const [fileSelectorOpen, setFileSelectorOpen] = useState(false);
    const [selectorTarget, setSelectorTarget] = useState<'download' | 'download123' | 'source115' | 'target115' | 'source123' | 'target123' | null>(null);
@@ -349,9 +349,7 @@ export const CloudOrganizeView: React.FC = () => {
       else if (selectorTarget === 'target123') { updateOrganize('targetCid123', cid); updateOrganize('targetDirName123', name); }
    };
 
-   const fillOpenListIp = () => {
-      updateNested('openList', 'url', `http://${window.location.hostname}:5244`);
-   };
+
 
    const insertTag = (tag: string, target: 'movie' | 'series') => {
       if (!config) return;
@@ -414,16 +412,14 @@ export const CloudOrganizeView: React.FC = () => {
                         {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Save size={12} />}
                         保存配置
                      </button>
-                     {activeTab !== 'openlist' && (
-                        <button
-                           onClick={handleRunOrganize}
-                           disabled={isRunningWorkflow}
-                           className={`${actionBtnClass} bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-500/20`}
-                        >
-                           {isRunningWorkflow ? <Loader2 className="animate-spin" size={12} /> : <Zap size={12} />}
-                           立即整理
-                        </button>
-                     )}
+                     <button
+                        onClick={handleRunOrganize}
+                        disabled={isRunningWorkflow}
+                        className={`${actionBtnClass} bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-500/20`}
+                     >
+                        {isRunningWorkflow ? <Loader2 className="animate-spin" size={12} /> : <Zap size={12} />}
+                        立即整理
+                     </button>
                   </div>
                </div>
                <div className="p-6">
@@ -434,9 +430,6 @@ export const CloudOrganizeView: React.FC = () => {
                      </button>
                      <button onClick={() => setActiveTab('123')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === '123' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                         <LayoutList size={16} /> 123 云盘
-                     </button>
-                     <button onClick={() => setActiveTab('openlist')} className={`pb-3 px-2 font-bold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'openlist' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                        <Globe size={16} /> OpenList
                      </button>
                   </div>
 
@@ -463,19 +456,6 @@ export const CloudOrganizeView: React.FC = () => {
                                  </div>
                                  <button onClick={() => { setSelectorTarget('target115'); setFileSelectorOpen(true); }} className="px-4 py-3 bg-white dark:bg-slate-700 border-[0.5px] border-slate-300/50 dark:border-slate-600/50 hover:border-green-500 rounded-lg text-sm font-medium shadow-sm transition-all">选择</button>
                               </div>
-                           </div>
-                        </div>
-
-                        {/* 115 Connection (Minimized) */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-800">
-                           <div className="flex items-center justify-between">
-                              <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">115 登录状态: <span className="text-green-600 dark:text-green-400">已连接 (通过全局设置)</span></span>
-                              <button
-                                 onClick={() => window.location.hash = '#user-center'}
-                                 className="text-xs text-brand-600 hover:underline"
-                              >
-                                 管理 115 凭证
-                              </button>
                            </div>
                         </div>
                      </div>
@@ -540,276 +520,232 @@ export const CloudOrganizeView: React.FC = () => {
                         </div>
                      </div>
                   )}
-
-                  {activeTab === 'openlist' && (
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
-                        <div className="md:col-span-2 bg-cyan-50/50 dark:bg-cyan-900/20 p-4 rounded-xl border-[0.5px] border-cyan-100 dark:border-cyan-800 flex items-start gap-3 backdrop-blur-sm">
-                           <AlertCircle size={20} className="text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-                           <div className="text-sm text-cyan-800 dark:text-cyan-200">
-                              <strong>重要提示：</strong> OpenList 仅用于媒体库挂载。网盘整理功能目前仅支持 115 和 123。
-                           </div>
-                        </div>
-
-                        <div className="md:col-span-2">
-                           <div className="flex justify-between items-center mb-2">
-                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400">服务器地址</label>
-                              <button onClick={fillOpenListIp} className="text-xs text-brand-600 hover:text-brand-500 flex items-center gap-1 font-medium"><Zap size={12} /> 自动填入</button>
-                           </div>
-                           <input
-                              type="text"
-                              value={config.openList.url}
-                              onChange={(e) => updateNested('openList', 'url', e.target.value)}
-                              placeholder="http://192.168.1.5:5244"
-                              className={inputClass}
-                           />
-                        </div>
-                        <div>
-                           <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">用户名</label>
-                           <input
-                              type="text"
-                              value={config.openList.username}
-                              onChange={(e) => updateNested('openList', 'username', e.target.value)}
-                              className={inputClass}
-                           />
-                        </div>
-                        <div>
-                           <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">密码</label>
-                           <SensitiveInput
-                              value={config.openList.password || ''}
-                              onChange={(e) => updateNested('openList', 'password', e.target.value)}
-                              className={inputClass}
-                           />
-                        </div>
-                     </div>
-                  )}
                </div>
             </section>
 
-            {/* Shared Rule Engine - Only visible when not in OpenList tab */}
-            {activeTab !== 'openlist' && (
-               <section className={`${glassCardClass} xl:col-span-2 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                  <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
-                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400 shadow-inner">
-                           <Film size={20} />
-                        </div>
-                        <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">分类与重命名规则 (TMDB 共享)</h3>
+            {/* Shared Rule Engine */}
+            <section className={`${glassCardClass} xl:col-span-2 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+               <div className="px-6 py-4 border-b-[0.5px] border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+                  <div className="flex items-center gap-3">
+                     <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400 shadow-inner">
+                        <Film size={20} />
                      </div>
+                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-base">分类与重命名规则 (TMDB 共享)</h3>
                   </div>
+               </div>
 
-                  <div className="p-6 space-y-8">
-                     <div className="transition-all duration-300">
-                        {/* AI Config */}
-                        <div className="mb-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
-                           <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-2">
-                                 <BrainCircuit size={20} className="text-pink-500" />
-                                 <h4 className="font-bold text-slate-700 dark:text-slate-200">AI 智能重命名 (大模型辅助)</h4>
-                              </div>
-                              <input
-                                 type="checkbox"
-                                 checked={config.organize.ai.enabled}
-                                 onChange={(e) => updateAiConfig('enabled', e.target.checked)}
-                                 className="w-5 h-5 rounded text-pink-600 focus:ring-pink-500"
-                              />
+               <div className="p-6 space-y-8">
+                  <div className="transition-all duration-300">
+                     {/* AI Config */}
+                     <div className="mb-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
+                        <div className="flex items-center justify-between mb-4">
+                           <div className="flex items-center gap-2">
+                              <BrainCircuit size={20} className="text-pink-500" />
+                              <h4 className="font-bold text-slate-700 dark:text-slate-200">AI 智能重命名 (大模型辅助)</h4>
                            </div>
-                           {config.organize.ai.enabled && (
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-pink-50/50 dark:bg-pink-900/10 p-5 rounded-xl border-[0.5px] border-pink-100 dark:border-pink-900/50 backdrop-blur-sm">
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">服务商</label>
-                                    <select
-                                       value={config.organize.ai.provider}
-                                       onChange={(e) => updateAiConfig('provider', e.target.value)}
-                                       className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm backdrop-blur-sm"
-                                    >
-                                       <option value="openai">ChatGPT (OpenAI)</option>
-                                       <option value="gemini">Google Gemini 🆓</option>
-                                       <option value="deepseek">DeepSeek 深度求索</option>
-                                       <option value="zhipu">智谱 GLM 🆓</option>
-                                       <option value="moonshot">月之暗面 (Kimi)</option>
-                                       <option value="groq">Groq (极速推理) 🆓</option>
-                                       <option value="qwen">通义千问 (阿里)</option>
-                                       <option value="siliconflow">SiliconFlow 硅基流动 🆓</option>
-                                       <option value="openrouter">OpenRouter 🆓</option>
-                                       <option value="custom">自定义 (OpenAI 兼容)</option>
-                                    </select>
-                                 </div>
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">API Key</label>
-                                    <SensitiveInput
-                                       value={config.organize.ai.apiKey}
-                                       onChange={(e) => updateAiConfig('apiKey', e.target.value)}
-                                       className={inputClass}
-                                    />
-                                 </div>
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Base URL (可选)</label>
-                                    <input
-                                       type="text"
-                                       value={config.organize.ai.baseUrl}
-                                       onChange={(e) => updateAiConfig('baseUrl', e.target.value)}
-                                       placeholder={AI_PRESETS[config.organize.ai.provider]?.baseUrl || 'https://api.openai.com/v1'}
-                                       className={inputClass}
-                                    />
-                                 </div>
-                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">模型名称</label>
-                                    <input
-                                       type="text"
-                                       value={config.organize.ai.model}
-                                       onChange={(e) => updateAiConfig('model', e.target.value)}
-                                       placeholder={AI_PRESETS[config.organize.ai.provider]?.model || 'gpt-4o-mini'}
-                                       className={inputClass}
-                                    />
-                                 </div>
+                           <input
+                              type="checkbox"
+                              checked={config.organize.ai.enabled}
+                              onChange={(e) => updateAiConfig('enabled', e.target.checked)}
+                              className="w-5 h-5 rounded text-pink-600 focus:ring-pink-500"
+                           />
+                        </div>
+                        {config.organize.ai.enabled && (
+                           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-pink-50/50 dark:bg-pink-900/10 p-5 rounded-xl border-[0.5px] border-pink-100 dark:border-pink-900/50 backdrop-blur-sm">
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">服务商</label>
+                                 <select
+                                    value={config.organize.ai.provider}
+                                    onChange={(e) => updateAiConfig('provider', e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-lg border-[0.5px] border-slate-300/50 dark:border-slate-600/50 bg-white/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-100 text-sm backdrop-blur-sm"
+                                 >
+                                    <option value="openai">ChatGPT (OpenAI)</option>
+                                    <option value="gemini">Google Gemini 🆓</option>
+                                    <option value="deepseek">DeepSeek 深度求索</option>
+                                    <option value="zhipu">智谱 GLM 🆓</option>
+                                    <option value="moonshot">月之暗面 (Kimi)</option>
+                                    <option value="groq">Groq (极速推理) 🆓</option>
+                                    <option value="qwen">通义千问 (阿里)</option>
+                                    <option value="siliconflow">SiliconFlow 硅基流动 🆓</option>
+                                    <option value="openrouter">OpenRouter 🆓</option>
+                                    <option value="custom">自定义 (OpenAI 兼容)</option>
+                                 </select>
                               </div>
-                           )}
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">API Key</label>
+                                 <SensitiveInput
+                                    value={config.organize.ai.apiKey}
+                                    onChange={(e) => updateAiConfig('apiKey', e.target.value)}
+                                    className={inputClass}
+                                 />
+                              </div>
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Base URL (可选)</label>
+                                 <input
+                                    type="text"
+                                    value={config.organize.ai.baseUrl}
+                                    onChange={(e) => updateAiConfig('baseUrl', e.target.value)}
+                                    placeholder={AI_PRESETS[config.organize.ai.provider]?.baseUrl || 'https://api.openai.com/v1'}
+                                    className={inputClass}
+                                 />
+                              </div>
+                              <div>
+                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">模型名称</label>
+                                 <input
+                                    type="text"
+                                    value={config.organize.ai.model}
+                                    onChange={(e) => updateAiConfig('model', e.target.value)}
+                                    placeholder={AI_PRESETS[config.organize.ai.provider]?.model || 'gpt-4o-mini'}
+                                    className={inputClass}
+                                 />
+                              </div>
+                           </div>
+                        )}
+                     </div>
+
+                     {/* Global Renaming Settings */}
+                     <div className="mb-8 grid grid-cols-1 gap-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
+                        <div className="flex items-center justify-between">
+                           <label className="text-sm font-bold text-slate-600 dark:text-slate-400">强制赋予 TMDB ID (文件夹名附加 {`{tmdb-id}`})</label>
+                           <input
+                              type="checkbox"
+                              checked={config.organize.rename.addTmdbIdToFolder}
+                              onChange={(e) => updateRenameRule('addTmdbIdToFolder', e.target.checked)}
+                              className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                           />
                         </div>
 
-                        {/* Global Renaming Settings */}
-                        <div className="mb-8 grid grid-cols-1 gap-8 border-b-[0.5px] border-slate-100 dark:border-slate-700/50 pb-8">
-                           <div className="flex items-center justify-between">
-                              <label className="text-sm font-bold text-slate-600 dark:text-slate-400">强制赋予 TMDB ID (文件夹名附加 {`{tmdb-id}`})</label>
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                           <label className="text-sm font-bold text-slate-600 dark:text-slate-400">重命名模板配置</label>
+                           <button
+                              onClick={handleRestoreRenameTemplates}
+                              className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                           >
+                              <RotateCcw size={12} /> 恢复预设模板
+                           </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                           {/* Movie Template Builder */}
+                           <div className="space-y-4">
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-wide">电影重命名规则</label>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                 {RENAME_TAGS.map(tag => (
+                                    <button key={tag.value} onClick={() => insertTag(tag.value, 'movie')} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-indigo-100 hover:text-indigo-600 transition-colors font-medium">
+                                       {tag.label}
+                                    </button>
+                                 ))}
+                              </div>
                               <input
-                                 type="checkbox"
-                                 checked={config.organize.rename.addTmdbIdToFolder}
-                                 onChange={(e) => updateRenameRule('addTmdbIdToFolder', e.target.checked)}
-                                 className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                 type="text"
+                                 value={config.organize.rename.movieTemplate}
+                                 onChange={(e) => updateRenameRule('movieTemplate', e.target.value)}
+                                 className={inputClass}
                               />
                            </div>
 
-                           <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-800/50">
-                              <label className="text-sm font-bold text-slate-600 dark:text-slate-400">重命名模板配置</label>
+                           {/* Series Template Builder */}
+                           <div className="space-y-4">
+                              <label className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-wide">剧集重命名规则</label>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                 {RENAME_TAGS.map(tag => (
+                                    <button key={tag.value} onClick={() => insertTag(tag.value, 'series')} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-indigo-100 hover:text-indigo-600 transition-colors font-medium">
+                                       {tag.label}
+                                    </button>
+                                 ))}
+                              </div>
+                              <input
+                                 type="text"
+                                 value={config.organize.rename.seriesTemplate}
+                                 onChange={(e) => updateRenameRule('seriesTemplate', e.target.value)}
+                                 className={inputClass}
+                              />
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Modules / Rules System */}
+                     <div>
+                        <div className="flex items-center justify-between mb-6">
+                           <div className="flex gap-3 bg-slate-100/50 dark:bg-slate-900/50 p-1 rounded-lg backdrop-blur-sm border-[0.5px] border-slate-200/50">
                               <button
-                                 onClick={handleRestoreRenameTemplates}
-                                 className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                                 onClick={() => { setActiveRuleTab('movie'); setEditingRuleId(null); }}
+                                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeRuleTab === 'movie' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}
                               >
-                                 <RotateCcw size={12} /> 恢复预设模板
+                                 <Film size={16} /> 电影模块
+                              </button>
+                              <button
+                                 onClick={() => { setActiveRuleTab('tv'); setEditingRuleId(null); }}
+                                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeRuleTab === 'tv' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}
+                              >
+                                 <Tv size={16} /> 剧集模块
                               </button>
                            </div>
-
-                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                              {/* Movie Template Builder */}
-                              <div className="space-y-4">
-                                 <label className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-wide">电影重命名规则</label>
-                                 <div className="flex flex-wrap gap-2 mb-2">
-                                    {RENAME_TAGS.map(tag => (
-                                       <button key={tag.value} onClick={() => insertTag(tag.value, 'movie')} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-indigo-100 hover:text-indigo-600 transition-colors font-medium">
-                                          {tag.label}
-                                       </button>
-                                    ))}
-                                 </div>
-                                 <input
-                                    type="text"
-                                    value={config.organize.rename.movieTemplate}
-                                    onChange={(e) => updateRenameRule('movieTemplate', e.target.value)}
-                                    className={inputClass}
-                                 />
-                              </div>
-
-                              {/* Series Template Builder */}
-                              <div className="space-y-4">
-                                 <label className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-wide">剧集重命名规则</label>
-                                 <div className="flex flex-wrap gap-2 mb-2">
-                                    {RENAME_TAGS.map(tag => (
-                                       <button key={tag.value} onClick={() => insertTag(tag.value, 'series')} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded-lg hover:bg-indigo-100 hover:text-indigo-600 transition-colors font-medium">
-                                          {tag.label}
-                                       </button>
-                                    ))}
-                                 </div>
-                                 <input
-                                    type="text"
-                                    value={config.organize.rename.seriesTemplate}
-                                    onChange={(e) => updateRenameRule('seriesTemplate', e.target.value)}
-                                    className={inputClass}
-                                 />
-                              </div>
+                           <div className="flex gap-3">
+                              <button
+                                 onClick={handleRestorePresets}
+                                 className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg flex items-center gap-2 transition-colors"
+                              >
+                                 <RotateCcw size={14} /> 恢复预设
+                              </button>
+                              <button
+                                 onClick={handleAddRule}
+                                 className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 border-[0.5px] border-white/20"
+                              >
+                                 <Plus size={16} /> 添加模块
+                              </button>
                            </div>
                         </div>
 
-                        {/* Modules / Rules System */}
-                        <div>
-                           <div className="flex items-center justify-between mb-6">
-                              <div className="flex gap-3 bg-slate-100/50 dark:bg-slate-900/50 p-1 rounded-lg backdrop-blur-sm border-[0.5px] border-slate-200/50">
-                                 <button
-                                    onClick={() => { setActiveRuleTab('movie'); setEditingRuleId(null); }}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeRuleTab === 'movie' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}
-                                 >
-                                    <Film size={16} /> 电影模块
-                                 </button>
-                                 <button
-                                    onClick={() => { setActiveRuleTab('tv'); setEditingRuleId(null); }}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeRuleTab === 'tv' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}
-                                 >
-                                    <Tv size={16} /> 剧集模块
-                                 </button>
-                              </div>
-                              <div className="flex gap-3">
-                                 <button
-                                    onClick={handleRestorePresets}
-                                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg flex items-center gap-2 transition-colors"
-                                 >
-                                    <RotateCcw size={14} /> 恢复预设
-                                 </button>
-                                 <button
-                                    onClick={handleAddRule}
-                                    className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 border-[0.5px] border-white/20"
-                                 >
-                                    <Plus size={16} /> 添加模块
-                                 </button>
-                              </div>
-                           </div>
-
-                           {/* Modules Grid */}
-                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                              {getActiveRules().map((rule) => (
-                                 <div key={rule.id} className="bg-slate-50/60 dark:bg-slate-900/30 border-[0.5px] border-slate-200 dark:border-slate-700/50 rounded-xl p-5 group hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors relative hover:shadow-lg backdrop-blur-sm">
-                                    <div className="flex justify-between items-start mb-3">
-                                       <h4 className="font-bold text-slate-700 dark:text-slate-200 text-sm">{rule.name}</h4>
-                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <button onClick={() => handleEditRule(rule)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit size={16} /></button>
-                                          <button onClick={() => handleDeleteRule(rule.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 size={16} /></button>
-                                       </div>
-                                    </div>
-
-                                    {/* Summary Chips */}
-                                    <div className="space-y-2">
-                                       {/* Genre Summary */}
-                                       <div className="flex items-center gap-2 text-xs">
-                                          <LayoutList size={14} className="text-slate-400" />
-                                          <span className="text-slate-600 dark:text-slate-400 truncate">
-                                             {rule.conditions.genre_ids
-                                                ? GENRES.filter(g => rule.conditions.genre_ids?.split(',').includes(g.id)).map(g => g.name.split(' ')[0]).join(', ')
-                                                : '全部类型'}
-                                          </span>
-                                       </div>
-                                       {/* Region Summary */}
-                                       <div className="flex items-center gap-2 text-xs">
-                                          <Globe size={14} className="text-slate-400" />
-                                          <span className="text-slate-600 dark:text-slate-400 truncate">
-                                             {rule.conditions.origin_country
-                                                ? (rule.conditions.origin_country.startsWith('!') ? '排除: ' : '') + COUNTRIES.filter(c => rule.conditions.origin_country?.replace('!', '').split(',').includes(c.id)).map(c => c.name.split(' ')[0]).join(', ')
-                                                : '全部地区'}
-                                          </span>
-                                       </div>
-                                       {/* Language Summary */}
-                                       <div className="flex items-center gap-2 text-xs">
-                                          <Type size={14} className="text-slate-400" />
-                                          <span className="text-slate-600 dark:text-slate-400 truncate">
-                                             {rule.conditions.original_language
-                                                ? (rule.conditions.original_language.startsWith('!') ? '排除: ' : '') + LANGUAGES.filter(l => rule.conditions.original_language?.replace('!', '').split(',').includes(l.id)).map(l => l.name.split(' ')[0]).join(', ')
-                                                : '全部语言'}
-                                          </span>
-                                       </div>
+                        {/* Modules Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                           {getActiveRules().map((rule) => (
+                              <div key={rule.id} className="bg-slate-50/60 dark:bg-slate-900/30 border-[0.5px] border-slate-200 dark:border-slate-700/50 rounded-xl p-5 group hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors relative hover:shadow-lg backdrop-blur-sm">
+                                 <div className="flex justify-between items-start mb-3">
+                                    <h4 className="font-bold text-slate-700 dark:text-slate-200 text-sm">{rule.name}</h4>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <button onClick={() => handleEditRule(rule)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit size={16} /></button>
+                                       <button onClick={() => handleDeleteRule(rule.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 size={16} /></button>
                                     </div>
                                  </div>
-                              ))}
-                           </div>
+
+                                 {/* Summary Chips */}
+                                 <div className="space-y-2">
+                                    {/* Genre Summary */}
+                                    <div className="flex items-center gap-2 text-xs">
+                                       <LayoutList size={14} className="text-slate-400" />
+                                       <span className="text-slate-600 dark:text-slate-400 truncate">
+                                          {rule.conditions.genre_ids
+                                             ? GENRES.filter(g => rule.conditions.genre_ids?.split(',').includes(g.id)).map(g => g.name.split(' ')[0]).join(', ')
+                                             : '全部类型'}
+                                       </span>
+                                    </div>
+                                    {/* Region Summary */}
+                                    <div className="flex items-center gap-2 text-xs">
+                                       <Globe size={14} className="text-slate-400" />
+                                       <span className="text-slate-600 dark:text-slate-400 truncate">
+                                          {rule.conditions.origin_country
+                                             ? (rule.conditions.origin_country.startsWith('!') ? '排除: ' : '') + COUNTRIES.filter(c => rule.conditions.origin_country?.replace('!', '').split(',').includes(c.id)).map(c => c.name.split(' ')[0]).join(', ')
+                                             : '全部地区'}
+                                       </span>
+                                    </div>
+                                    {/* Language Summary */}
+                                    <div className="flex items-center gap-2 text-xs">
+                                       <Type size={14} className="text-slate-400" />
+                                       <span className="text-slate-600 dark:text-slate-400 truncate">
+                                          {rule.conditions.original_language
+                                             ? (rule.conditions.original_language.startsWith('!') ? '排除: ' : '') + LANGUAGES.filter(l => rule.conditions.original_language?.replace('!', '').split(',').includes(l.id)).map(l => l.name.split(' ')[0]).join(', ')
+                                             : '全部语言'}
+                                       </span>
+                                    </div>
+                                 </div>
+                              </div>
+                           ))}
                         </div>
                      </div>
                   </div>
-               </section>
-            )}
+               </div>
+            </section>
          </div>
 
          {/* Edit Rule Modal */}

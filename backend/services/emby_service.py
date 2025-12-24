@@ -392,8 +392,12 @@ class EmbyService:
 
     def scan_missing_episodes(self) -> Dict[str, Any]:
         """
-        扫描 Emby 中的电视剧缺集情况，与 TMDB 数据比对。
+        扫描 Emby 中的电视剧缺集情况。
+        使用 Emby 的 Virtual 状态判断缺集，无需 TMDB 对比。
         """
+        from collections import defaultdict
+        from datetime import datetime
+        
         task_log = TaskLogger('Emby')
         task_log.start('扫描缺集')
 
@@ -404,126 +408,100 @@ class EmbyService:
         if not server_url or not api_key:
             task_log.failure('Emby未配置')
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
-        
-        full_config = self.store.get_config()
-        tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
-        tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
-        
-        DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
-        if not tmdb_api_key:
-            tmdb_api_key = DEFAULT_TMDB_API_KEY
-            task_log.info('使用内置默认 TMDB API Key')
-        
-        task_log.info(f'开始扫描，TMDB 语言: {tmdb_lang}')
-        
-        missing_data = []
 
         try:
-            # 1. 获取 Emby 中所有电视剧
-            series_response = self._make_request(
+            # 一次性获取所有剧集
+            task_log.info('正在获取所有剧集信息...')
+            response = self._make_request(
                 'GET',
                 f'{server_url}/emby/Items',
                 params={
                     'api_key': api_key,
-                    'IncludeItemTypes': 'Series',
                     'Recursive': 'true',
-                    'Fields': 'ProviderIds,Overview',
-                    'SortBy': 'SortName',
-                    'SortOrder': 'Ascending'
+                    'IncludeItemTypes': 'Episode',
+                    'Fields': 'SeriesName,SeriesId,ParentIndexNumber,PremiereDate,LocationType',
                 },
-                timeout=30
+                timeout=60
             )
             
-            if series_response.status_code != 200:
-                return {'success': False, 'data': [], 'error': f'Emby请求失败: {series_response.status_code}'}
+            if response.status_code != 200:
+                task_log.failure(f'Emby请求失败: {response.status_code}')
+                return {'success': False, 'data': [], 'error': f'Emby请求失败: {response.status_code}'}
             
-            series_list = series_response.json().get('Items', [])
+            all_episodes = response.json().get('Items', [])
+            task_log.info(f'获取到 {len(all_episodes)} 个剧集')
             
-            for series in series_list:
-                series_id = series.get('Id')
-                series_name = series.get('Name', '未知')
-                tmdb_id = series.get('ProviderIds', {}).get('Tmdb')
-                poster_path = None
+            now = datetime.now().isoformat()
+            
+            # 使用字典存储统计数据: stats[(剧名, 剧ID, 季)] = {owned, missing, upcoming, poster}
+            stats = defaultdict(lambda: {"owned": 0, "missing": 0, "upcoming": 0, "series_id": None})
+            
+            for ep in all_episodes:
+                series_name = ep.get('SeriesName', '未知剧集')
+                series_id = ep.get('SeriesId')
+                season_num = ep.get('ParentIndexNumber', 0)
                 
-                if series.get('ImageTags', {}).get('Primary'):
-                    poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
-                
-                # 2. 获取该剧的所有季
-                seasons_response = self._make_request(
-                    'GET',
-                    f'{server_url}/emby/Shows/{series_id}/Seasons',
-                    params={'api_key': api_key, 'Fields': 'ProviderIds'},
-                    timeout=15
-                )
-                
-                if seasons_response.status_code != 200:
+                # 跳过特别篇 (第0季)
+                if season_num == 0:
                     continue
-                    
-                seasons = seasons_response.json().get('Items', [])
                 
-                for season in seasons:
-                    season_id = season.get('Id')
-                    season_number = season.get('IndexNumber', 0)
-                    
-                    if season_number == 0:
-                        continue
-                    
-                    # 3. 获取该季的所有集
-                    episodes_response = self._make_request(
-                        'GET',
-                        f'{server_url}/emby/Shows/{series_id}/Episodes',
-                        params={
-                            'api_key': api_key,
-                            'SeasonId': season_id,
-                            'Fields': 'ProviderIds'
-                        },
-                        timeout=15
-                    )
-                    
-                    if episodes_response.status_code != 200:
-                        continue
-                    
-                    emby_episodes = episodes_response.json().get('Items', [])
-                    local_episode_numbers = set(ep.get('IndexNumber') for ep in emby_episodes if ep.get('IndexNumber'))
-                    local_ep_count = len(local_episode_numbers)
-                    
-                    # 4. 查询 TMDB 获取该季总集数
-                    total_ep_count = local_ep_count
-                    missing_episodes = []
-                    
-                    if tmdb_api_key and tmdb_id:
-                        tmdb_data = self._fetch_tmdb_season_robust(tmdb_id, season_number, tmdb_api_key, tmdb_lang)
-                        
-                        if tmdb_data:
-                            tmdb_episodes = tmdb_data.get('episodes', [])
-                            total_ep_count = len(tmdb_episodes)
-                            all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
-                            missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
-                            
-                            if not poster_path and tmdb_data.get('poster_path'):
-                                poster_path = f"https://image.tmdb.org/t/p/w200{tmdb_data['poster_path']}"
-                    
-                    if missing_episodes:
-                        missing_data.append({
-                            'id': f"{series_id}_{season_number}",
-                            'name': series_name,
-                            'season': season_number,
-                            'totalEp': total_ep_count,
-                            'localEp': local_ep_count,
-                            'missing': ', '.join(f'E{ep:02d}' for ep in missing_episodes),
-                            'poster': poster_path
-                        })
+                key = (series_name, series_id, season_num)
+                
+                is_virtual = ep.get('LocationType') == 'Virtual'
+                premiere_date = ep.get('PremiereDate', '9999')
+                
+                # 确保 series_id 被记录
+                if stats[key]["series_id"] is None:
+                    stats[key]["series_id"] = series_id
+                
+                if not is_virtual:
+                    stats[key]["owned"] += 1
+                else:
+                    if premiere_date < now:
+                        stats[key]["missing"] += 1
+                    else:
+                        stats[key]["upcoming"] += 1
             
-            task_log.success(f'发现 {len(missing_data)} 个缺集系列')
+            # 格式化为前端需要的格式
+            missing_data = []
+            for (series_name, series_id, season_num), counts in stats.items():
+                # 只添加有缺集的记录
+                if counts["missing"] > 0:
+                    # 获取海报
+                    poster_path = None
+                    if series_id:
+                        poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
+                    
+                    missing_data.append({
+                        'id': f"{series_id}_{season_num}",
+                        'name': series_name,
+                        'season': season_num,
+                        'totalEp': counts["owned"] + counts["missing"] + counts["upcoming"],
+                        'localEp': counts["owned"],
+                        'missingCount': counts["missing"],
+                        'upcomingCount': counts["upcoming"],
+                        'poster': poster_path
+                    })
+            
+            # 按剧名和季数排序
+            missing_data.sort(key=lambda x: (x['name'], x['season']))
+            
+            task_log.success(f'发现 {len(missing_data)} 个缺集季')
             return {'success': True, 'data': missing_data}
+            
         except Exception as e:
             task_log.failure(str(e))
+            logger.error(f"扫描缺集失败: {e}")
             return {'success': False, 'data': [], 'error': str(e)}
 
     def scan_single_series(self, series_id: str) -> Dict[str, Any]:
         """
-        扫描单个电视剧的缺集情况
+        扫描单个电视剧的缺集情况。
+        使用 Emby 的 Virtual 状态判断缺集。
         """
+        from collections import defaultdict
+        from datetime import datetime
+        
         config = self._get_config()
         server_url = config.get('serverUrl', '').rstrip('/')
         api_key = config.get('apiKey', '').strip()
@@ -531,21 +509,12 @@ class EmbyService:
         if not server_url or not api_key:
             return {'success': False, 'data': [], 'error': 'Emby未配置'}
         
-        full_config = self.store.get_config()
-        tmdb_api_key = full_config.get('tmdb', {}).get('apiKey', '').strip()
-        tmdb_lang = full_config.get('tmdb', {}).get('language', 'zh-CN')
-        
-        DEFAULT_TMDB_API_KEY = '3d1cb94d909aab088231f5af899dffdc'
-        if not tmdb_api_key:
-            tmdb_api_key = DEFAULT_TMDB_API_KEY
-            
-        missing_data = []
-        
         try:
+            # 获取剧集基本信息（用于获取剧名和海报）
             series_response = self._make_request(
                 'GET',
                 f'{server_url}/emby/Items/{series_id}',
-                params={'api_key': api_key, 'Fields': 'ProviderIds'},
+                params={'api_key': api_key},
                 timeout=15
             )
             
@@ -554,65 +523,64 @@ class EmbyService:
             
             series = series_response.json()
             series_name = series.get('Name', '未知')
-            tmdb_id = series.get('ProviderIds', {}).get('Tmdb')
             poster_path = None
             
             if series.get('ImageTags', {}).get('Primary'):
                 poster_path = f"{server_url}/emby/Items/{series_id}/Images/Primary?api_key={api_key}&maxWidth=200"
             
-            seasons_response = self._make_request(
+            # 一次性获取该剧所有剧集
+            response = self._make_request(
                 'GET',
-                f'{server_url}/emby/Shows/{series_id}/Seasons',
-                params={'api_key': api_key, 'Fields': 'ProviderIds'},
-                timeout=15
+                f'{server_url}/emby/Items',
+                params={
+                    'api_key': api_key,
+                    'Recursive': 'true',
+                    'IncludeItemTypes': 'Episode',
+                    'ParentId': series_id,
+                    'Fields': 'ParentIndexNumber,PremiereDate,LocationType',
+                },
+                timeout=30
             )
             
-            if seasons_response.status_code != 200:
-                return {'success': True, 'data': []}
+            if response.status_code != 200:
+                return {'success': False, 'data': [], 'error': f'获取剧集信息失败: {response.status_code}'}
             
-            seasons = seasons_response.json().get('Items', [])
+            all_episodes = response.json().get('Items', [])
+            now = datetime.now().isoformat()
             
-            for season in seasons:
-                season_id = season.get('Id')
-                season_number = season.get('IndexNumber', 0)
+            # 统计各季数据
+            stats = defaultdict(lambda: {"owned": 0, "missing": 0, "upcoming": 0})
+            
+            for ep in all_episodes:
+                season_num = ep.get('ParentIndexNumber', 0)
                 
-                if season_number == 0:
+                # 跳过特别篇 (第0季)
+                if season_num == 0:
                     continue
                 
-                episodes_response = self._make_request(
-                    'GET',
-                    f'{server_url}/emby/Shows/{series_id}/Episodes',
-                    params={'api_key': api_key, 'SeasonId': season_id, 'Fields': 'ProviderIds'},
-                    timeout=15
-                )
+                is_virtual = ep.get('LocationType') == 'Virtual'
+                premiere_date = ep.get('PremiereDate', '9999')
                 
-                if episodes_response.status_code != 200:
-                    continue
-                
-                emby_episodes = episodes_response.json().get('Items', [])
-                local_episode_numbers = set(ep.get('IndexNumber') for ep in emby_episodes if ep.get('IndexNumber'))
-                local_ep_count = len(local_episode_numbers)
-                
-                total_ep_count = local_ep_count
-                missing_episodes = []
-                
-                if tmdb_api_key and tmdb_id:
-                    tmdb_data = self._fetch_tmdb_season_robust(tmdb_id, season_number, tmdb_api_key, tmdb_lang)
-                    
-                    if tmdb_data:
-                        tmdb_episodes = tmdb_data.get('episodes', [])
-                        total_ep_count = len(tmdb_episodes)
-                        all_ep_numbers = set(ep.get('episode_number') for ep in tmdb_episodes if ep.get('episode_number'))
-                        missing_episodes = sorted(all_ep_numbers - local_episode_numbers)
-                
-                if missing_episodes:
+                if not is_virtual:
+                    stats[season_num]["owned"] += 1
+                else:
+                    if premiere_date < now:
+                        stats[season_num]["missing"] += 1
+                    else:
+                        stats[season_num]["upcoming"] += 1
+            
+            # 格式化结果
+            missing_data = []
+            for season_num, counts in sorted(stats.items()):
+                if counts["missing"] > 0:
                     missing_data.append({
-                        'id': f"{series_id}_{season_number}",
+                        'id': f"{series_id}_{season_num}",
                         'name': series_name,
-                        'season': season_number,
-                        'totalEp': total_ep_count,
-                        'localEp': local_ep_count,
-                        'missing': ', '.join(f'E{ep:02d}' for ep in missing_episodes),
+                        'season': season_num,
+                        'totalEp': counts["owned"] + counts["missing"] + counts["upcoming"],
+                        'localEp': counts["owned"],
+                        'missingCount': counts["missing"],
+                        'upcomingCount': counts["upcoming"],
                         'poster': poster_path
                     })
             

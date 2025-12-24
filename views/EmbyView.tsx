@@ -759,7 +759,10 @@ export const EmbyView: React.FC = () => {
                             {missingData.length > 0 ? (
                                 <ul className="space-y-2">
                                     {missingData.map(m => (
-                                        <li key={m.id} className="flex justify-between"><span>{m.name}</span> <span className="text-red-500 font-bold">缺 {m.missing} 集</span></li>
+                                        <li key={m.id} className="flex justify-between items-center">
+                                            <span className="truncate">{m.name} <span className="text-slate-400 text-xs">S{m.season}</span></span>
+                                            <span className="text-red-500 font-bold shrink-0 ml-2">缺 {m.missingCount || m.missing} 集</span>
+                                        </li>
                                     ))}
                                 </ul>
                             ) : <div className="text-center py-4">暂无缺集数据</div>}
