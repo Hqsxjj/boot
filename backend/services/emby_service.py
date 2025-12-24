@@ -2,7 +2,7 @@ import requests
 import time
 import urllib3
 from persistence.store import DataStore
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from utils.logger import TaskLogger, get_task_logger
 
 # 使用应用日志器，确保日志写入文件
