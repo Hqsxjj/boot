@@ -190,27 +190,66 @@ class CoverGenerator:
             if limit > 10:
                 random.shuffle(items)
             
+            # --- 本地缓存下载流程 ---
+            import shutil
+            import uuid
+            
+            # 创建临时会话目录
+            session_id = str(uuid.uuid4())[:8]
+            temp_dir = os.path.join(os.environ.get('TEMP', './temp'), 'emby_posters', session_id)
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            
+            downloaded_files = []
+            count = 0
+            
+            logger.info(f"开始下载海报到本地缓存: {temp_dir}")
+            
             for item in items:
-                if len(posters) >= limit:
+                if count >= limit:
                     break
                     
                 item_id = item.get("Id")
                 if not item_id:
                     continue
                     
-                # 获取海报图片
-                # maxWidth=600 对于预览来说已经足够清晰且兼顾性能
-                img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
-                img_params = {"api_key": self.api_key, "maxWidth": 600}
-                
                 try:
-                    img_resp = self._make_request('GET', img_url, params=img_params)
-                    if img_resp.status_code == 200:
-                        img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
-                        posters.append(img)
-                except Exception as e:
-                    logger.warning(f"获取海报失败: {item_id} - {e}")
+                    # 优化下载参数
+                    img_url = f"{self.emby_url}/emby/Items/{item_id}/Images/Primary"
+                    # maxWidth=400 平衡质量与速度
+                    dl_params = {"api_key": self.api_key, "maxWidth": 400, "quality": 80}
                     
+                    # 使用 requests Stream 下载
+                    # 注意：这里我们直接用 requests，如果是用 self._make_request 可能无法 stream
+                    # 但为了简单和兼容，我们这里直接 requests.get
+                    with requests.get(img_url, params=dl_params, stream=True, timeout=15, proxies=self.proxies) as r:
+                        if r.status_code == 200:
+                            file_path = os.path.join(temp_dir, f"{item_id}.jpg")
+                            with open(file_path, 'wb') as f:
+                                shutil.copyfileobj(r.raw, f)
+                            downloaded_files.append(file_path)
+                            count += 1
+                except Exception as e:
+                    logger.warning(f"下载海报失败 {item_id}: {e}")
+                    continue
+            
+            # 加载并自动清理
+            posters = []
+            for p_path in downloaded_files:
+                try:
+                    with Image.open(p_path) as img:
+                        # 必须深拷贝到内存
+                        posters.append(img.convert("RGBA").copy())
+                except Exception as e:
+                    logger.warning(f"读取缓存海报失败 {p_path}: {e}")
+            
+            # 清理临时文件
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                logger.info("本地临时海报已清理")
+            except Exception as e:
+                logger.warning(f"清理临时文件失败: {e}")
+                
             return posters
         except Exception as e:
             logger.error(f"获取媒体库海报失败: {e}")

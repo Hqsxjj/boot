@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { api } from '../services/api';
 import {
@@ -198,6 +198,7 @@ export const EmbyView: React.FC = () => {
     const [isScanning, setIsScanning] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [missingData, setMissingData] = useState<any[]>([]);
+    const [scanStatus, setScanStatus] = useState<{ running: boolean; message?: string; percent?: number }>({ running: false });
 
     const [generatorMode, setGeneratorMode] = useState<GeneratorMode>('classic');
     const studioLayoutMode = generatorMode === 'studio_grid' ? 'grid' : 'stack';
@@ -265,6 +266,7 @@ export const EmbyView: React.FC = () => {
 
     // === Wall Backend Generator States (流体墙幕后端) ===
     const [wallUseBackend, setWallUseBackend] = useState(false);  // 渲染方式开关
+    const [wallUploadToEmby, setWallUploadToEmby] = useState(false); // 是否上传到 Emby
     const [wallMode, setWallMode] = useState<'scroll' | 'tilt'>('tilt');  // 动画模式
     const [wallSaturation, setWallSaturation] = useState(1.4);
     const [wallBrightness, setWallBrightness] = useState(0.4);
@@ -311,12 +313,32 @@ export const EmbyView: React.FC = () => {
         };
         init();
 
-        const fetchMissingData = async () => {
+        const syncData = async () => {
+            // 1. 获取已存数据
             const res = await api.getMissingEpisodes();
             if (res.success && res.data) setMissingData(res.data);
+
+            // 2. 获取运行状态
+            try {
+                const statusRes = await api.getMissingScanStatus();
+                if (statusRes.success && statusRes.data) {
+                    const s = statusRes.data;
+                    setScanStatus({
+                        running: s.running,
+                        message: s.task?.message,
+                        percent: s.task ? Math.round((s.task.current / s.task.total) * 100) : 0
+                    });
+
+                    // 如果正在运行，确保 isScanning 为 true
+                    if (s.running && !isScanning) setIsScanning(true);
+
+                    // 如果运行结束且之前是 scanning，则关闭
+                    if (!s.running && isScanning) setIsScanning(false);
+                }
+            } catch (e) { console.error('Status fetch error', e); }
         };
-        fetchMissingData();
-        const interval = setInterval(fetchMissingData, 3000);
+        syncData();
+        const interval = setInterval(syncData, 3000);
         return () => clearInterval(interval);
     }, []);
 
@@ -371,11 +393,14 @@ export const EmbyView: React.FC = () => {
             const result = await api.startMissingScanBackground();
             if (!result.success && !result.error?.includes('正在进行中')) {
                 showToast(result.error || '失败', true);
+                setIsScanning(false);
             } else {
                 showToast('扫描已在后台启动');
             }
-        } catch (e) { showToast('扫描失败', true); }
-        finally { setIsScanning(false); }
+        } catch (e) {
+            showToast('扫描失败', true);
+            setIsScanning(false);
+        }
     };
 
     // === Logic for Cover Generators ===
@@ -517,7 +542,7 @@ export const EmbyView: React.FC = () => {
                 uploadToEmby: false  // 先预览
             });
             if (result.success) {
-                setStackPreview(result.data.image);
+                setStackPreview(result.data.previewUrl || result.data.image);
                 showToast('透视堆叠预览生成成功');
             } else {
                 showToast(result.error || '生成失败', true);
@@ -555,11 +580,11 @@ export const EmbyView: React.FC = () => {
             const result = await api.generateWallCover({
                 libraryId: currentPreviewLib,
                 config: coverConfig,
-                uploadToEmby: false
+                uploadToEmby: wallUploadToEmby
             });
             if (result.success) {
-                setWallPreview(result.data.image);
-                showToast(`流体墙幕预览生成成功 (${result.data.mode}模式)`);
+                setWallPreview(result.data.previewUrl || result.data.image);
+                showToast(`流体墙幕${wallUploadToEmby ? '生成并上传' : '预览生成'}成功 (${result.data.mode}模式)`);
             } else {
                 showToast(result.error || '生成失败', true);
             }
@@ -869,6 +894,19 @@ export const EmbyView: React.FC = () => {
                             <input type="text" value={config.emby.missingEpisodes?.cronSchedule} onChange={e => updateMissing('cronSchedule', e.target.value)} className={inputClass} placeholder="Cron Expression" />
                         </div>
                         <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-slate-200/50 h-[150px] overflow-y-auto p-4 text-sm text-slate-600 dark:text-slate-400">
+                            {/* 扫描进度提示 */}
+                            {scanStatus.running && (
+                                <div className="mb-3 p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded flex flex-col gap-1">
+                                    <div className="flex justify-between items-center text-xs text-purple-700 dark:text-purple-300">
+                                        <span className="truncate max-w-[180px]">{scanStatus.message || '正在初始化...'}</span>
+                                        <span className="font-bold">{scanStatus.percent}%</span>
+                                    </div>
+                                    <div className="h-1 w-full bg-purple-200 dark:bg-purple-900 rounded-full overflow-hidden">
+                                        <div className="h-full bg-purple-500 transition-all duration-300" style={{ width: `${scanStatus.percent}%` }}></div>
+                                    </div>
+                                </div>
+                            )}
+
                             {missingData.length > 0 ? (
                                 <ul className="space-y-2">
                                     {missingData.map(m => (
@@ -878,7 +916,18 @@ export const EmbyView: React.FC = () => {
                                         </li>
                                     ))}
                                 </ul>
-                            ) : <div className="text-center py-4">暂无缺集数据</div>}
+                            ) : (
+                                <div className="text-center py-4 flex flex-col items-center gap-2">
+                                    {scanStatus.running ? (
+                                        <>
+                                            <RefreshCw className="animate-spin text-purple-400" size={20} />
+                                            <span className="text-xs text-slate-400">正在深入扫描媒体库...</span>
+                                        </>
+                                    ) : (
+                                        <span>暂无缺集数据</span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </section>
@@ -936,7 +985,7 @@ export const EmbyView: React.FC = () => {
                                 {(isGenerating || isStackGenerating || isWallGenerating) ? <Loader2 className="animate-spin" size={14} /> : <CloudUpload size={14} />}
                                 {generatorMode === 'classic' ? '生成并上传'
                                     : generatorMode === 'stack_backend' ? '生成预览'
-                                        : (generatorMode === 'studio_grid' && wallUseBackend) ? '后端生成'
+                                        : (generatorMode === 'studio_grid' && wallUseBackend) ? (wallUploadToEmby ? '生成并上传' : '后端生成')
                                             : '渲染并同步'}
                             </button>
                         </div>
@@ -1285,6 +1334,17 @@ export const EmbyView: React.FC = () => {
                                                                     <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1"><span>FPS</span><span>{wallFps}</span></div>
                                                                     <input type="range" min="5" max="20" value={wallFps} onChange={e => setWallFps(Number(e.target.value))} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-500" />
                                                                 </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    id="wallUpload"
+                                                                    checked={wallUploadToEmby}
+                                                                    onChange={e => setWallUploadToEmby(e.target.checked)}
+                                                                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                                />
+                                                                <label htmlFor="wallUpload" className="text-xs font-bold text-slate-500 cursor-pointer">生成后上传到 Emby</label>
                                                             </div>
                                                         </div>
                                                     )}

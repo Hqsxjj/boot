@@ -655,7 +655,7 @@ export const api = {
     config: any;
     uploadToEmby?: boolean;
   }) => {
-    const res = await apiClient.post<ApiResponse<{ image: string; format: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-stack', options);
+    const res = await apiClient.post<ApiResponse<{ image: string; previewUrl?: string; format: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-stack', options);
     return res.data;
   },
 
@@ -664,7 +664,7 @@ export const api = {
     config: any;
     uploadToEmby?: boolean;
   }) => {
-    const res = await apiClient.post<ApiResponse<{ image: string; format: string; mode: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-wall', options);
+    const res = await apiClient.post<ApiResponse<{ image: string; previewUrl?: string; format: string; mode: string; localPath: string; uploaded: boolean }>>('/emby/cover/generate-wall', options);
     return res.data;
   },
 
@@ -863,6 +863,11 @@ export const api = {
 
   getCoverAssets: async () => {
     const res = await apiClient.get<ApiResponse<{ fonts: string[], stickers: string[] }>>('/emby/cover/assets');
+    return res.data;
+  },
+
+  getMissingScanStatus: async () => {
+    const res = await apiClient.get<ApiResponse<{ running: boolean; task?: { current: number; total: number; message: string } }>>('/emby/missing/scan/status');
     return res.data;
   }
 };

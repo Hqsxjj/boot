@@ -161,6 +161,30 @@ def start_missing_scan_background():
         'task': task.to_dict()
     }), 200
 
+@emby_bp.route('/missing/scan/status', methods=['GET'])
+@optional_auth
+def get_missing_scan_status():
+    """Get status of running missing episode scan."""
+    from services.background_tasks import get_background_service
+    bg_service = get_background_service()
+    running = bg_service.get_running_tasks(task_type='missing_scan')
+    
+    if running:
+        return jsonify({
+            'success': True, 
+            'data': {
+                'running': True, 
+                'task': running[0]
+            }
+        })
+    
+    return jsonify({
+        'success': True, 
+        'data': {
+            'running': False
+        }
+    })
+
 
 @emby_bp.route('/test-connection', methods=['POST'])
 @require_auth
@@ -1418,10 +1442,15 @@ def generate_wall_cover():
             else:
                 logger.warning(f"流体墙幕封面上传失败: {library_id}")
         
+        # 为了解决 Base64 过大的问题，返回静态预览 URL
+        # 前端可以使用该 URL 替代 image (base64)
+        preview_url = f"/api/emby/cover/preview/{safe_title}.png"
+        
         return jsonify({
             'success': True,
             'data': {
                 'image': result_b64,
+                'previewUrl': preview_url,
                 'format': 'apng',
                 'mode': mode,
                 'localPath': local_file_path,
@@ -1434,6 +1463,16 @@ def generate_wall_cover():
         logging.error(f"生成流体墙幕封面失败: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@emby_bp.route('/cover/preview/<path:filename>', methods=['GET'])
+def cover_preview_proxy(filename):
+    """Serve generated cover previews from local cache."""
+    import os
+    from flask import send_from_directory
+    data_path = os.environ.get('DATA_PATH', os.path.join(os.path.dirname(__file__), '..', 'data'))
+    data_dir = os.path.dirname(data_path) if data_path.endswith('.json') else data_path
+    cache_dir = os.path.join(data_dir, 'covers', 'wall_preview')
+    return send_from_directory(cache_dir, filename)
 
 @emby_bp.route('/cover/batch/start', methods=['POST'])
 @require_auth
