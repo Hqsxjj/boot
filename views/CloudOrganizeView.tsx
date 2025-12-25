@@ -3,7 +3,7 @@ import { AppConfig, ClassificationRule, MatchConditionType } from '../types';
 import { api } from '../services/api';
 // 确保 mockConfig 存在，如果不存在请创建一个空文件或根据需求调整
 import { DEFAULT_MOVIE_RULES, DEFAULT_TV_RULES } from '../services/mockConfig';
-import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2, FileText, AlertTriangle } from 'lucide-react';
+import { Save, RefreshCw, Cookie, FolderInput, Trash2, Plus, Film, Type, Globe, Tv, LayoutList, FolderOutput, Zap, RotateCcw, X, Edit, Check, BrainCircuit, Loader2, FileText } from 'lucide-react';
 import { SensitiveInput } from '../components/SensitiveInput';
 import { FileSelector } from '../components/FileSelector';
 import { OrganizeLogs } from '../components/OrganizeLogs';
@@ -79,7 +79,7 @@ export const CloudOrganizeView: React.FC = () => {
    const [selectorTarget, setSelectorTarget] = useState<'download' | 'download123' | 'source115' | 'target115' | 'source123' | 'target123' | null>(null);
    const [showOrganizeLogs, setShowOrganizeLogs] = useState(false);
    const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
-   const [isVerifying123, setIsVerifying123] = useState(false);
+
 
    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
    const [tempRule, setTempRule] = useState<ClassificationRule | null>(null);
@@ -322,23 +322,7 @@ export const CloudOrganizeView: React.FC = () => {
       }
    };
 
-   const handleLogin123 = async () => {
-      if (!config) return;
-      setIsVerifying123(true);
-      try {
-         const res = await api.login123WithOAuth(config.cloud123.clientId, config.cloud123.clientSecret);
-         if (res.success) {
-            setToast('123 云盘 OAuth 凭证验证并保存成功');
-         } else {
-            setToast(`验证失败: ${res.error || '未知错误'}`);
-         }
-      } catch (e) {
-         setToast('验证失败 (网络错误)');
-      } finally {
-         setIsVerifying123(false);
-         setTimeout(() => setToast(null), 5000);
-      }
-   };
+
 
    const handleDirSelect = (cid: string, name: string) => {
       if (selectorTarget === 'download') { updateNested('cloud115', 'downloadPath', cid); updateNested('cloud115', 'downloadDirName', name); }
@@ -463,34 +447,6 @@ export const CloudOrganizeView: React.FC = () => {
 
                   {activeTab === '123' && (
                      <div className="space-y-8 animate-in fade-in duration-300">
-                        {/* 123 Auth Settings */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                           <div>
-                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">OAuth Client ID</label>
-                              <input
-                                 type="text"
-                                 value={config.cloud123.clientId}
-                                 onChange={(e) => updateNested('cloud123', 'clientId', e.target.value)}
-                                 className={inputClass}
-                                 placeholder="从 123云盘开放平台获取"
-                              />
-                           </div>
-                           <div>
-                              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">OAuth Client Secret</label>
-                              <SensitiveInput
-                                 value={config.cloud123.clientSecret}
-                                 onChange={(e) => updateNested('cloud123', 'clientSecret', e.target.value)}
-                                 className={inputClass}
-                              />
-                           </div>
-                           <div className="md:col-span-2 flex items-center gap-4 p-4 bg-amber-50/50 dark:bg-amber-900/20 rounded-lg border border-amber-200/50 dark:border-amber-800/50">
-                              <AlertTriangle size={20} className="text-amber-500 flex-shrink-0" />
-                              <div className="text-sm text-amber-700 dark:text-amber-300">
-                                 123 云盘登录请前往 <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = '/user'; }} className="font-bold underline hover:text-amber-900 dark:hover:text-amber-100">用户中心</a> 进行配置
-                              </div>
-                           </div>
-                        </div>
-
                         {/* 123 Folders */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-orange-50/30 dark:bg-orange-900/10 p-6 rounded-xl border-[0.5px] border-orange-100 dark:border-orange-900/50">
                            <div>
