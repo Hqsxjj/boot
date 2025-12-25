@@ -669,6 +669,63 @@ export const EmbyView: React.FC = () => {
         }
     };
 
+    // 一键下载封面到本地
+    const handleDownloadCover = (previewData: string | null, filename: string) => {
+        if (!previewData) {
+            showToast('没有可下载的封面，请先生成预览', true);
+            return;
+        }
+
+        try {
+            // 处理 base64 或 URL 格式
+            let downloadUrl = previewData;
+
+            // 如果是 base64 data URL，直接使用
+            // 如果是普通 URL，需要 fetch 后转换
+            if (!previewData.startsWith('data:')) {
+                // 对于 URL 格式，创建一个临时链接下载
+                const link = document.createElement('a');
+                link.href = previewData;
+                link.download = `${filename}_${Date.now()}.png`;
+                link.target = '_blank';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('封面下载已开始');
+                return;
+            }
+
+            // base64 格式处理
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `${filename}_${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('封面已保存到本地');
+        } catch (e: any) {
+            showToast('下载失败: ' + (e.message || '未知错误'), true);
+        }
+    };
+
+    // 下载 Studio 画布为图片
+    const handleDownloadStudioCanvas = async () => {
+        const element = document.getElementById('studio-canvas');
+        if (!element) {
+            showToast('没有可下载的封面', true);
+            return;
+        }
+
+        try {
+            showToast('正在生成下载...');
+            const canvas = await html2canvas(element, { useCORS: true, backgroundColor: null });
+            const dataUrl = canvas.toDataURL('image/png');
+            handleDownloadCover(dataUrl, coverTitle || 'cover');
+        } catch (e: any) {
+            showToast('下载失败: ' + (e.message || '渲染错误'), true);
+        }
+    };
+
     // 多选/单选媒体库处理
     const toggleLibrarySelection = (libId: string) => {
         setSelectedLibraries(prev => {
@@ -1444,14 +1501,34 @@ export const EmbyView: React.FC = () => {
 
                                 {/* Action Buttons at bottom of Controls Pane */}
                                 <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200/50 dark:border-slate-700/50">
-                                    <div className="grid grid-cols-2 gap-2 mt-auto">
+                                    <div className="grid grid-cols-3 gap-2 mt-auto">
                                         <button
-                                            onClick={generatorMode === 'classic' ? handleGenerateClassic : generatorMode === 'stack_backend' ? handleGenerateStackBackend : handleGenerateStudio}
-                                            disabled={isGenerating || isStackGenerating || ((generatorMode === 'classic' || generatorMode === 'stack_backend') && !currentPreviewLib)}
-                                            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${(isGenerating || isStackGenerating) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : generatorMode === 'stack_backend' ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-600/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10'}`}
+                                            onClick={generatorMode === 'classic' ? handleGenerateClassic : generatorMode === 'stack_backend' ? handleGenerateStackBackend : (generatorMode === 'studio_grid' && wallUseBackend) ? handleGenerateWallBackend : handleGenerateStudio}
+                                            disabled={isGenerating || isStackGenerating || isWallGenerating || ((generatorMode === 'classic' || generatorMode === 'stack_backend') && !currentPreviewLib)}
+                                            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 ${(isGenerating || isStackGenerating || isWallGenerating) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : generatorMode === 'stack_backend' ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-600/20' : (generatorMode === 'studio_grid' && wallUseBackend) ? 'bg-teal-600 text-white hover:bg-teal-700 shadow-lg shadow-teal-600/20' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10'}`}
                                         >
-                                            {(isGenerating || isStackGenerating) ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
-                                            {generatorMode === 'classic' ? '生成预览' : generatorMode === 'stack_backend' ? '生成动画' : '生成并上传'}
+                                            {(isGenerating || isStackGenerating || isWallGenerating) ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                                            {generatorMode === 'classic' ? '生成预览' : generatorMode === 'stack_backend' ? '生成动画' : (generatorMode === 'studio_grid' && wallUseBackend) ? '后端生成' : '生成上传'}
+                                        </button>
+
+                                        {/* 保存到本地按钮 */}
+                                        <button
+                                            onClick={() => {
+                                                if (generatorMode === 'classic') {
+                                                    handleDownloadCover(coverPreview, coverTitle || 'classic_cover');
+                                                } else if (generatorMode === 'stack_backend') {
+                                                    handleDownloadCover(stackPreview, coverTitle || 'stack_cover');
+                                                } else if (generatorMode === 'studio_grid' && wallUseBackend) {
+                                                    handleDownloadCover(wallPreview, coverTitle || 'wall_cover');
+                                                } else {
+                                                    handleDownloadStudioCanvas();
+                                                }
+                                            }}
+                                            disabled={isGenerating || isStackGenerating || isWallGenerating}
+                                            className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all active:scale-95 bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/20"
+                                        >
+                                            <Download size={16} />
+                                            保存本地
                                         </button>
 
                                         {(generatorMode === 'classic' || generatorMode === 'stack_backend') && (
