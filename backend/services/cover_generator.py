@@ -4,6 +4,7 @@ Emby 封面图生成器服务
 """
 
 import io
+import os
 import base64
 import logging
 from typing import List, Dict, Any, Optional, Tuple
