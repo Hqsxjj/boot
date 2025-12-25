@@ -468,32 +468,36 @@ class Cloud123Service:
     def _get_share_files_api(self, share_code: str, access_code: str = None, parent_id: str = '0') -> Dict[str, Any]:
         """
         Helper to get share files via public REST API (无需登录).
+        
+        123云盘分享API:
+        - 根目录: POST /api/share/info
+        - 子目录: POST /api/share/get 或 /b/api/share/get (需要 ShareKey, ParentFileId)
         """
         import requests as http_requests
         
         try:
-            # 123 云盘公开分享 API - 不需要登录
-            base_url = "https://www.123pan.com/api"
-            
             headers = {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": f"https://www.123pan.com/s/{share_code}"
+                "Content-Type": "application/json;charset=UTF-8",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": f"https://www.123pan.com/s/{share_code}",
+                "Platform": "web",
+                "App-Version": "3"
             }
             
-            # 如果是根目录，获取分享信息
+            # 如果是根目录
             if not parent_id or parent_id == '0':
-                # 使用公开 API 获取分享信息
-                url = f"{base_url}/share/info"
+                # 使用 /api/share/info 获取根目录文件列表
+                url = "https://www.123pan.com/api/share/info"
                 payload = {
-                    'shareKey': share_code,
-                    'sharePwd': access_code or ''
+                    'ShareKey': share_code,
+                    'SharePwd': access_code or ''
                 }
                 
-                logger.info(f"123 公开 API 请求: {url}")
+                logger.info(f"123 公开 API 请求根目录: {url}")
                 response = http_requests.post(url, json=payload, headers=headers, timeout=30)
                 
                 if response.status_code != 200:
+                    logger.error(f"API 错误: {response.status_code}, {response.text[:200]}")
                     return {'success': False, 'error': f'API 错误: {response.status_code}'}
                 
                 result = response.json()
@@ -501,43 +505,57 @@ class Cloud123Service:
                     return {'success': False, 'error': result.get('message', '获取分享信息失败')}
                 
                 data = result.get('data', {})
-                file_list = data.get('InfoList', data.get('fileList', []))
+                file_list = data.get('InfoList', data.get('fileList', data.get('list', [])))
             else:
-                # 子目录
-                url = f"{base_url}/share/get"
+                # 子目录: 使用 /b/api/share/get 
+                url = "https://www.123pan.com/b/api/share/get"
                 payload = {
                     'ShareKey': share_code,
-                    'sharePwd': access_code or '',
-                    'parentFileId': int(parent_id),
-                    'limit': 100,
-                    'page': 1,
-                    'orderBy': 'file_name',
-                    'orderDirection': 'asc'
+                    'SharePwd': access_code or '',
+                    'ParentFileId': int(parent_id),
+                    'Page': 1,
+                    'Limit': 100,
+                    'OrderBy': 'file_name',
+                    'OrderDirection': 'asc'
                 }
                 
-                logger.info(f"123 公开 API 请求子目录: {url}, parentFileId={parent_id}")
+                logger.info(f"123 公开 API 请求子目录: {url}, ParentFileId={parent_id}")
                 response = http_requests.post(url, json=payload, headers=headers, timeout=30)
                 
                 if response.status_code != 200:
-                    return {'success': False, 'error': f'API 错误: {response.status_code}'}
+                    logger.error(f"API 错误: {response.status_code}, {response.text[:200]}")
+                    # 尝试备选端点
+                    url2 = "https://www.123pan.com/api/share/get"
+                    response = http_requests.post(url2, json=payload, headers=headers, timeout=30)
+                    if response.status_code != 200:
+                        return {'success': False, 'error': f'API 错误: {response.status_code}'}
                 
                 result = response.json()
+                logger.info(f"子目录 API 响应: code={result.get('code')}, keys={list(result.keys())}")
+                
                 if result.get('code') != 0:
                     return {'success': False, 'error': result.get('message', '获取子目录失败')}
                 
                 data = result.get('data', {})
-                file_list = data.get('InfoList', data.get('fileList', []))
+                file_list = data.get('InfoList', data.get('fileList', data.get('list', [])))
 
             formatted_files = []
             for item in file_list:
+                # 兼容多种字段名
+                file_id = item.get('FileId') or item.get('fileId') or item.get('file_id') or ''
+                file_name = item.get('FileName') or item.get('fileName') or item.get('name') or ''
+                file_size = item.get('Size') or item.get('size') or 0
+                file_type = item.get('Type') or item.get('type') or 0
+                
                 formatted_files.append({
-                    'id': str(item.get('FileId', item.get('fileId', ''))),
-                    'name': item.get('FileName', item.get('fileName', '')),
-                    'size': item.get('Size', item.get('size', 0)),
-                    'is_directory': item.get('Type', item.get('type', 0)) == 1,
+                    'id': str(file_id),
+                    'name': file_name,
+                    'size': file_size,
+                    'is_directory': file_type == 1,
                     'ext': item.get('Etag', item.get('etag', '')),
                 })
             
+            logger.info(f"123云盘分享 API 获取 {len(formatted_files)} 个文件")
             return {
                 'success': True,
                 'data': formatted_files
