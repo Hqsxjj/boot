@@ -687,13 +687,23 @@ export const ResourceSearchView: React.FC = () => {
         const link = resource.share_link || resource.share_links?.[0]?.link;
         if (!link) return;
 
+        // Check login status before save
+        const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
+        const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
+
+        if (match115 && !config?.cloud115?.hasValidSession) {
+            setToast('请先在用户中心登录 115 网盘');
+            setTimeout(() => setToast(null), 5000);
+            return;
+        }
+        if (match123 && !config?.cloud123?.hasValidSession) {
+            setToast('请先在用户中心登录 123 云盘');
+            setTimeout(() => setToast(null), 5000);
+            return;
+        }
+
         try {
             let response;
-
-            // Check for 115 link - supports both 115.com and 115cdn.com
-            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-            // Check for 123 link - supports 123pan.com, 123pan.cn, and 123684.com
-            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
                 // Check if 115 download path is configured
@@ -780,11 +790,23 @@ export const ResourceSearchView: React.FC = () => {
             return;
         }
 
+        // Check login status before save
+        const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
+        const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
+
+        if (match115 && !config?.cloud115?.hasValidSession) {
+            setToast('请先在用户中心登录 115 网盘');
+            setTimeout(() => setToast(null), 5000);
+            return;
+        }
+        if (match123 && !config?.cloud123?.hasValidSession) {
+            setToast('请先在用户中心登录 123 云盘');
+            setTimeout(() => setToast(null), 5000);
+            return;
+        }
+
         try {
             let response;
-
-            const match115 = link.match(/115(?:cdn)?\.com\/s\/([a-z0-9]+)/i);
-            const match123 = link.match(/(?:123pan\.(?:com|cn)|123684\.com)\/s\/([a-zA-Z0-9-]+)/i);
 
             if (match115) {
                 // Check if 115 download path is configured
