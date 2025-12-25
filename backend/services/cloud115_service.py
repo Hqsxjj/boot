@@ -601,11 +601,25 @@ class Cloud115Service:
         """
         获取分享链接中的文件列表
         
+        优先尝试使用公开 Web API (不需要登录)，失败后回退到需登录的方式
+        
         Args:
             share_code: 分享码
             access_code: 提取码
             cid: 子目录 ID，默认为 '0' 表示根目录
         """
+        import requests
+        
+        # 方法1: 尝试使用公开 Web API (无需登录)
+        try:
+            result = self._get_share_files_public_api(share_code, access_code, cid)
+            if result.get('success'):
+                return result
+            logger.warning(f"公开 API 获取分享失败: {result.get('error')}, 尝试登录方式")
+        except Exception as e:
+            logger.warning(f"公开 API 请求异常: {e}, 尝试登录方式")
+        
+        # 方法2: 回退到需要登录的方式
         try:
             from p115_bridge import get_p115_service
             
@@ -614,7 +628,7 @@ class Cloud115Service:
             if not cookies_json:
                 return {
                     'success': False,
-                    'error': '未登录 115 账号'
+                    'error': '公开 API 获取失败且未登录 115 账号，请先登录或在浏览器中打开链接'
                 }
             
             p115_service = get_p115_service(self.secret_store)
@@ -631,6 +645,77 @@ class Cloud115Service:
                 'success': False,
                 'error': str(e)
             }
+    
+    def _get_share_files_public_api(self, share_code: str, access_code: str = None, cid: str = '0') -> Dict[str, Any]:
+        """
+        使用 115 公开 Web API 获取分享文件列表 (无需登录)
+        
+        115 分享链接格式: https://115.com/s/{share_code}
+        API 端点: https://webapi.115.com/share/snap
+        """
+        import requests
+        
+        try:
+            # 115 公开分享 API
+            api_url = "https://webapi.115.com/share/snap"
+            
+            params = {
+                'share_code': share_code,
+                'receive_code': access_code or '',
+                'cid': cid,
+                'offset': 0,
+                'limit': 100
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': f'https://115.com/s/{share_code}',
+                'Accept': 'application/json, text/plain, */*'
+            }
+            
+            resp = requests.get(api_url, params=params, headers=headers, timeout=15)
+            resp.raise_for_status()
+            
+            data = resp.json()
+            
+            if data.get('state'):
+                files = data.get('data', {}).get('list', [])
+                formatted = []
+                for f in files:
+                    # 目录判断：115 API 中目录有 cid 而没有 fid，文件有 fid
+                    has_cid = f.get('cid') is not None
+                    has_fid = f.get('fid') is not None
+                    is_folder_by_field = f.get('fc') == 'folder' or f.get('ico') == 'folder'
+                    is_dir = is_folder_by_field or (has_cid and not has_fid)
+                    
+                    formatted.append({
+                        'id': str(f.get('cid') or f.get('fid') or f.get('file_id', '')),
+                        'name': f.get('n') or f.get('file_name') or f.get('name', ''),
+                        'size': f.get('s') or f.get('file_size') or f.get('size', 0),
+                        'is_directory': is_dir,
+                        'time': f.get('te') or f.get('t') or ''
+                    })
+                
+                logger.info(f"公开 API 成功获取 {len(formatted)} 个文件")
+                return {'success': True, 'data': formatted}
+            else:
+                error_msg = data.get('error', '') or data.get('message', '获取分享失败')
+                # 常见错误码处理
+                error_code = data.get('errno') or data.get('errNo')
+                if error_code == 4100009:
+                    error_msg = '分享链接已失效或不存在'
+                elif error_code == 4100012:
+                    error_msg = '提取码错误'
+                elif error_code == 4100003:
+                    error_msg = '需要提取码'
+                return {'success': False, 'error': error_msg}
+                
+        except requests.Timeout:
+            return {'success': False, 'error': '请求超时'}
+        except requests.RequestException as e:
+            return {'success': False, 'error': f'网络请求失败: {e}'}
+        except Exception as e:
+            return {'success': False, 'error': f'解析响应失败: {e}'}
     
     def create_offline_task(self, source_url: str, save_cid: str) -> Dict[str, Any]:
         """
