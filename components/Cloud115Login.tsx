@@ -150,7 +150,10 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
 
         try {
             const statusRes = await api.check115QrStatus(sessionId, 0, '');
-            const status = statusRes.data?.status || (statusRes as any).status || 'waiting';
+            // 后端返回格式: { success: true, data: { status: 'xxx', message: '...' } }
+            // 或错误格式: { success: false, status: 'expired', error: '...' }
+            const status = statusRes.data?.data?.status || statusRes.data?.status || (statusRes as any).status || 'waiting';
+            console.log('[115 QR Poll] statusRes:', statusRes, 'parsed status:', status);
 
             if (!isPollingRef.current) return; // 检查是否已取消
 
