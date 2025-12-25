@@ -274,6 +274,38 @@ export const ResourceSearchView: React.FC = () => {
         setSelectedResource(null);
     };
 
+    // 在新窗口中打开分享链接（网页浏览模式）
+    const openShareInBrowser = (cloudType: string, shareCode: string, accessCode?: string, cid?: string) => {
+        let url = '';
+
+        if (cloudType === '115') {
+            // 115 分享链接格式: https://115.com/s/{shareCode}?password={accessCode}
+            // 如果有 cid，添加到 hash: #/list/cid={cid}
+            url = `https://115.com/s/${shareCode}`;
+            if (accessCode) {
+                url += `?password=${encodeURIComponent(accessCode)}`;
+            }
+            if (cid && cid !== '0') {
+                url += `#/list/cid=${cid}`;
+            }
+        } else if (cloudType === '123') {
+            // 123 分享链接格式: https://www.123pan.com/s/{shareCode}
+            url = `https://www.123pan.com/s/${shareCode}`;
+            if (accessCode) {
+                url += `?提取码:${encodeURIComponent(accessCode)}`;
+            }
+        }
+
+        if (url) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+            setToast('已在新窗口打开分享链接');
+            setTimeout(() => setToast(null), 2000);
+        } else {
+            setToast('无法构造分享链接');
+            setTimeout(() => setToast(null), 2000);
+        }
+    };
+
     // Load share files for Modal (supports browsing folders)
     const loadModalShareFiles = async (cloudType: string, shareCode: string, accessCode: string, folderId: string) => {
         setIsFileLoading(true);
@@ -1297,6 +1329,26 @@ export const ResourceSearchView: React.FC = () => {
                                         className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                                     >
                                         取消
+                                    </button>
+                                    {/* 在浏览器中打开按钮 */}
+                                    <button
+                                        onClick={() => {
+                                            if (sharingResource) {
+                                                const key = `${sharingResource.cloudType}:${sharingResource.shareCode}`;
+                                                const breadcrumbs = resourceBreadcrumbs[key] || [];
+                                                const currentCid = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].id : '0';
+                                                openShareInBrowser(
+                                                    sharingResource.cloudType,
+                                                    sharingResource.shareCode,
+                                                    sharingResource.accessCode,
+                                                    currentCid
+                                                );
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
+                                    >
+                                        <ExternalLink size={18} />
+                                        在浏览器中打开
                                     </button>
                                     <button
                                         onClick={handleSaveSelectedFiles}
