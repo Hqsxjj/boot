@@ -467,57 +467,75 @@ class Cloud123Service:
 
     def _get_share_files_api(self, share_code: str, access_code: str = None, parent_id: str = '0') -> Dict[str, Any]:
         """
-        Helper to get share files via REST API.
+        Helper to get share files via public REST API (无需登录).
         """
+        import requests as http_requests
+        
         try:
-            # 如果是根目录 ('0' 或 None)，使用 /api/v1/share/info
+            # 123 云盘公开分享 API - 不需要登录
+            base_url = "https://www.123pan.com/api"
+            
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": f"https://www.123pan.com/s/{share_code}"
+            }
+            
+            # 如果是根目录，获取分享信息
             if not parent_id or parent_id == '0':
-                share_info_payload = {
+                # 使用公开 API 获取分享信息
+                url = f"{base_url}/share/info"
+                payload = {
                     'shareKey': share_code,
                     'sharePwd': access_code or ''
                 }
-                share_result = self._make_api_request('POST', '/api/v1/share/info', json_data=share_info_payload)
                 
-                if not share_result.get('success'):
-                    return {
-                        'success': False,
-                        'error': share_result.get('error', '无法获取分享信息')
-                    }
+                logger.info(f"123 公开 API 请求: {url}")
+                response = http_requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                data = share_result.get('data', {})
-                file_list = data.get('fileList', [])
+                if response.status_code != 200:
+                    return {'success': False, 'error': f'API 错误: {response.status_code}'}
+                
+                result = response.json()
+                if result.get('code') != 0:
+                    return {'success': False, 'error': result.get('message', '获取分享信息失败')}
+                
+                data = result.get('data', {})
+                file_list = data.get('InfoList', data.get('fileList', []))
             else:
-                # 如果是子目录，尝试使用 /api/v1/share/file/list (根据经验推断的 API endpoint)
-                # 或者尝试再次使用 share/info 但带上 parentFileId (如果支持)
-                # 经过调研，123云盘 API 可能使用 /share/file/list
+                # 子目录
+                url = f"{base_url}/share/get"
                 payload = {
-                    'shareKey': share_code,
+                    'ShareKey': share_code,
                     'sharePwd': access_code or '',
                     'parentFileId': int(parent_id),
                     'limit': 100,
-                    'page': 1
+                    'page': 1,
+                    'orderBy': 'file_name',
+                    'orderDirection': 'asc'
                 }
                 
-                # 尝试不同的 endpoints
-                # 1. /api/v1/share/file/list
-                result = self._make_api_request('POST', '/api/v1/share/file/list', json_data=payload)
+                logger.info(f"123 公开 API 请求子目录: {url}, parentFileId={parent_id}")
+                response = http_requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                if not result.get('success'):
-                    return {
-                        'success': False,
-                        'error': result.get('error', '无法获取子目录')
-                    }
+                if response.status_code != 200:
+                    return {'success': False, 'error': f'API 错误: {response.status_code}'}
+                
+                result = response.json()
+                if result.get('code') != 0:
+                    return {'success': False, 'error': result.get('message', '获取子目录失败')}
+                
                 data = result.get('data', {})
-                file_list = data.get('fileList', [])
+                file_list = data.get('InfoList', data.get('fileList', []))
 
             formatted_files = []
             for item in file_list:
                 formatted_files.append({
-                    'id': str(item.get('fileId', '')),
-                    'name': item.get('fileName', ''),
-                    'size': item.get('size', 0),
-                    'is_directory': item.get('type', 0) == 1,
-                    'ext': item.get('etag', ''),
+                    'id': str(item.get('FileId', item.get('fileId', ''))),
+                    'name': item.get('FileName', item.get('fileName', '')),
+                    'size': item.get('Size', item.get('size', 0)),
+                    'is_directory': item.get('Type', item.get('type', 0)) == 1,
+                    'ext': item.get('Etag', item.get('etag', '')),
                 })
             
             return {
@@ -525,7 +543,7 @@ class Cloud123Service:
                 'data': formatted_files
             }
         except Exception as e:
-            logger.error(f"Rest API get_share_files error: {e}")
+            logger.error(f"123 公开 API get_share_files error: {e}")
             return {'success': False, 'error': str(e)}
 
     def save_share(self, share_code: str, access_code: str = None,
