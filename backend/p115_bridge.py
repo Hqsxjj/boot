@@ -33,12 +33,15 @@ try:
 except ImportError:
     logger.warning("P115OpenClient 导入失败")
 
-# 支持的客户端列表及中文名称
+# 支持的客户端列表及中文名称 (p115client >= 0.0.7)
 LOGIN_APPS = {
     "tv": {"ssoent": "I1", "name": "电视端"},
     "android": {"ssoent": "F1", "name": "安卓"},
-    "ios": {"ssoent": "D1", "name": "iOS"},
-    "ipad": {"ssoent": "H1", "name": "iPad"},
+    "ios": {"ssoent": "D1", "name": "115生活iPhone版"},
+    "qios": {"ssoent": "D2", "name": "115管理iPhone版"},
+    "ipad": {"ssoent": "H1", "name": "115生活iPad版"},
+    "qipad": {"ssoent": "H2", "name": "115管理iPad版"},
+    "apple_tv": {"ssoent": "J1", "name": "115TV苹果版"},
     "115android": {"ssoent": "F3", "name": "115安卓"},
     "115ios": {"ssoent": "D3", "name": "115 iOS"},
     "desktop": {"ssoent": "A1", "name": "桌面端"},

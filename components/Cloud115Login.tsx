@@ -125,12 +125,15 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             } catch {
                 // 使用默认列表
                 setLoginApps([
-                    { key: 'android', ssoent: 'A1', name: '安卓' },
-                    { key: 'ios', ssoent: 'D1', name: 'iOS' },
-                    { key: 'ipad', ssoent: 'D2', name: 'iPad' },
-                    { key: 'tv', ssoent: 'T1', name: '电视端' },
-                    { key: 'qandroid', ssoent: 'Q1', name: '轻量版' },
+                    { key: 'android', ssoent: 'F1', name: '安卓' },
+                    { key: 'ios', ssoent: 'D1', name: '115生活iPhone版' },
+                    { key: 'qios', ssoent: 'D2', name: '115管理iPhone版' },
+                    { key: 'ipad', ssoent: 'H1', name: '115生活iPad版' },
+                    { key: 'qipad', ssoent: 'H2', name: '115管理iPad版' },
+                    { key: 'apple_tv', ssoent: 'J1', name: '115TV苹果版' },
+                    { key: 'tv', ssoent: 'I1', name: '电视端' },
                     { key: 'harmony', ssoent: 'S1', name: '鸿蒙' },
+                    { key: 'qandroid', ssoent: 'M1', name: '轻量版安卓' },
                 ]);
             }
         };
