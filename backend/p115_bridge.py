@@ -186,13 +186,35 @@ class StandardClientHolder:
             return
         
         try:
+            # 方式1: 尝试从 token_service (数据库) 加载
             if self._token_service:
                 self._client = create_cookie_client(self._token_service)
-            else:
-                self._client = P115CookieClient()
+                if self._client and self._client.is_logged_in:
+                    logger.info(f"[115 Cookie] 客户端已从数据库初始化")
+                    return
             
-            if self._client and self._client.is_logged_in:
-                logger.info(f"[115 Cookie] 客户端已初始化 (用户: {self._client.user_info().get('user_name', 'Unknown')})")
+            # 方式2: 尝试从 SecretStore 加载 (扫码登录保存在这里)
+            try:
+                from services.secret_store import SecretStore
+                from models.database import get_session_factory
+                secret_store = SecretStore(get_session_factory('secrets'))
+                cookies_json = secret_store.get_secret('cloud115_cookies')
+                if cookies_json:
+                    import json
+                    cookies = json.loads(cookies_json) if isinstance(cookies_json, str) else cookies_json
+                    if isinstance(cookies, dict):
+                        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+                    else:
+                        cookie_str = str(cookies)
+                    self._client = P115CookieClient(cookies=cookie_str)
+                    if self._client and self._client.is_logged_in:
+                        logger.info("[115 Cookie] 客户端已从 SecretStore 初始化")
+                        return
+            except Exception as e:
+                logger.debug(f"[115 Cookie] 从 SecretStore 加载失败: {e}")
+            
+            # 方式3: 创建空客户端
+            self._client = P115CookieClient()
         except Exception as e:
             logger.warning(f"[115 Cookie] 初始化客户端失败: {e}")
             self._client = P115CookieClient(token_service=self._token_service)
