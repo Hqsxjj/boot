@@ -168,13 +168,22 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                     onLoginSuccess?.();
                     break;
                 case 'expired':
-                    stopPolling();
-                    setQrState('expired');
+                    // Keep polling even if expired - user can manually refresh
+                    console.log('QR expired, continuing to poll...');
+                    setTimeout(() => {
+                        if (isPollingRef.current) {
+                            pollStatus(sessionId);
+                        }
+                    }, 3000);
                     break;
                 case 'error':
-                    stopPolling();
-                    setQrState('error');
-                    onToast?.((statusRes as any).error || '登录失败');
+                    // Keep polling on error too
+                    console.warn('QR status error, retrying...');
+                    setTimeout(() => {
+                        if (isPollingRef.current) {
+                            pollStatus(sessionId);
+                        }
+                    }, 3000);
                     break;
                 default:
                     // 'waiting' - 继续长轮询

@@ -26,11 +26,12 @@ def _add_session_flags(config: dict, secret_store: SecretStore) -> dict:
     cookies_json = secret_store.get_secret('cloud115_cookies')
     config['cloud115']['hasValidSession'] = bool(cookies_json)
     
-    # Check if we have valid 123 token, cookies, or OAuth credentials
+    # Check if we have valid 123 token, cookies, OAuth, or password credentials
     token_json = secret_store.get_secret('cloud123_token')
     cookies_123_json = secret_store.get_secret('cloud123_cookies')
     oauth_credentials = secret_store.get_secret('cloud123_oauth_credentials')
-    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials)
+    password_credentials = secret_store.get_secret('cloud123_password_credentials')
+    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials or password_credentials)
     
     return config
 
@@ -335,13 +336,14 @@ def _add_session_flags_from_cache(config: dict, secrets_cache: dict) -> dict:
         config['cloud115'] = {}
     config['cloud115']['hasValidSession'] = bool(cookies_json)
     
-    # 123 Session
+    # 123 Session - check all credential types including password
     token_json = secrets_cache.get('cloud123_token')
     cookies_123_json = secrets_cache.get('cloud123_cookies')
     oauth_credentials = secrets_cache.get('cloud123_oauth_credentials')
+    password_credentials = secrets_cache.get('cloud123_password_credentials')
     if 'cloud123' not in config:
         config['cloud123'] = {}
-    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials)
+    config['cloud123']['hasValidSession'] = bool(token_json or cookies_123_json or oauth_credentials or password_credentials)
     
     return config
 
