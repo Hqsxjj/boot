@@ -1,10 +1,11 @@
 /**
  * Cloud115Login.tsx - 115 网盘登录组件
  * 
- * 支持三种登录方式：
- * 1. Cookie 导入 - 手动粘贴 Cookie 字符串
- * 2. 扫码登录 - 选择终端类型，生成标准二维码
- * 3. 第三方 App ID - 输入 App ID，生成 PKCE 二维码
+ * 支持两种扫码方式：
+ * 1. 115网盘扫码 - 使用 115 官方 App 扫码，获取 Cookie 作为凭证
+ * 2. 第三方AppID扫码 - 使用开放平台 PKCE 认证，获取 Token 作为凭证
+ * 
+ * 另外支持 Cookie 手动导入
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -16,12 +17,12 @@ import {
     RefreshCw,
     Save,
     Check,
-    Copy,
     Download,
     Loader2,
     Eye,
     EyeOff,
-    CheckCircle2
+    CheckCircle2,
+    KeyRound
 } from 'lucide-react';
 
 // ==================== 类型定义 ====================
@@ -155,7 +156,8 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             const statusRes = await api.check115QrStatus(sessionId, 0, '');
             // 后端返回格式: { success: true, data: { status: 'xxx', message: '...' } }
             // 或错误格式: { success: false, status: 'expired', error: '...' }
-            const status = statusRes.data?.data?.status || statusRes.data?.status || (statusRes as any).status || 'waiting';
+            const resData = statusRes?.data as any;
+            const status = resData?.data?.status || resData?.status || (statusRes as any).status || 'waiting';
             console.log('[115 QR Poll] statusRes:', statusRes, 'parsed status:', status);
 
             if (!isPollingRef.current) return; // 检查是否已取消
@@ -169,7 +171,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 case 'success':
                     stopPolling();
                     setQrState('success');
-                    onToast?.('登录成功，Cookie 已自动保存');
+                    onToast?.('登录成功，凭证已自动保存');
                     setLocalConnected(true);
                     onLoginSuccess?.();
                     break;
@@ -238,7 +240,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
             } else if (e.response?.status === 401) {
                 onToast?.('登录已过期，请重新登录');
             } else {
-                onToast?.(`二维码生成失败: ${e.response?.data?.error || e.message} `);
+                onToast?.(`二维码生成失败: ${e.response?.data?.error || e.message}`);
             }
         }
     };
@@ -257,7 +259,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')} `,
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 },
                 body: JSON.stringify({ cookies }),
             });
@@ -272,17 +274,9 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                 onToast?.(result.error || 'Cookie 导入失败');
             }
         } catch (e: any) {
-            onToast?.(`导入失败: ${e.message} `);
+            onToast?.(`导入失败: ${e.message}`);
         } finally {
             setIsSaving(false);
-        }
-    };
-
-    // ========== 复制二维码链接 ==========
-    const copyQrLink = () => {
-        if (qrImage) {
-            navigator.clipboard.writeText(qrImage);
-            onToast?.('二维码链接已复制');
         }
     };
 
@@ -290,20 +284,22 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
     const renderTabs = () => (
         <div className="flex flex-wrap gap-2 mb-6 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
             {[
-                { id: 'qrcode' as LoginMethod, label: '扫码登录', icon: QrCode },
-                { id: 'cookie' as LoginMethod, label: 'Cookie', icon: Cookie },
-                { id: 'open_app' as LoginMethod, label: '三方App', icon: Smartphone },
+                { id: 'qrcode' as LoginMethod, label: '115网盘扫码', icon: QrCode, desc: '获取Cookie凭证' },
+                { id: 'open_app' as LoginMethod, label: '三方AppID扫码', icon: KeyRound, desc: '获取Token凭证' },
+                { id: 'cookie' as LoginMethod, label: 'Cookie导入', icon: Cookie, desc: '' },
             ].map((tab) => (
                 <button
                     key={tab.id}
                     onClick={() => handleMethodChange(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-bold transition-all ${loginMethod === tab.id
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-md text-sm font-bold transition-all ${loginMethod === tab.id
                         ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                         }`}
                 >
-                    <tab.icon size={16} />
-                    {tab.label}
+                    <div className="flex items-center gap-2">
+                        <tab.icon size={16} />
+                        {tab.label}
+                    </div>
                 </button>
             ))}
         </div>
@@ -355,9 +351,20 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
         </div>
     );
 
-    // ========== 渲染扫码登录 ==========
+    // ========== 渲染扫码登录（标准 115 扫码） ==========
     const renderQrCodeLogin = () => (
         <div className="space-y-6 animate-in fade-in duration-300">
+            {/* 说明卡片 */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                <h4 className="font-bold text-blue-700 dark:text-blue-300 text-sm mb-1">
+                    📱 115网盘扫码登录
+                </h4>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                    使用 115 官方 App 扫码，获取 <strong>Cookie</strong> 作为登录凭证。
+                    适用于大多数场景。
+                </p>
+            </div>
+
             {/* 终端选择 */}
             <div className="max-w-xs mx-auto">
                 <label className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase mb-2">
@@ -382,9 +389,20 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
         </div>
     );
 
-    // ========== 渲染第三方 App 登录 ==========
+    // ========== 渲染第三方 App 登录（Open Platform PKCE） ==========
     const renderOpenAppLogin = () => (
         <div className="space-y-6 animate-in fade-in duration-300">
+            {/* 说明卡片 */}
+            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                <h4 className="font-bold text-purple-700 dark:text-purple-300 text-sm mb-1">
+                    🔐 第三方AppID扫码登录
+                </h4>
+                <p className="text-xs text-purple-600 dark:text-purple-400">
+                    使用 115 开放平台 PKCE 认证，获取 <strong>Token</strong> 作为登录凭证。
+                    需要您在 115 开放平台申请 App ID。
+                </p>
+            </div>
+
             {/* App ID 输入 */}
             <div>
                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
@@ -398,7 +416,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                     className={inputClass}
                 />
                 <p className="text-xs text-slate-400 mt-2">
-                    💡 使用 115 开放平台申请的第三方应用 ID
+                    💡 在 <a href="https://115.com/open" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">115开放平台</a> 申请第三方应用后获取
                 </p>
             </div>
 
@@ -431,7 +449,7 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                             src={qrImage}
                             alt="115 登录二维码"
                             className={`w-48 h-48 rounded-xl border-4 border-white shadow-xl transition-all ${qrState === 'expired' ? 'opacity-20 grayscale' : ''
-                                } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''} `}
+                                } ${qrState === 'success' ? 'ring-4 ring-green-400 ring-offset-2' : ''}`}
                         />
 
                         {/* 状态覆盖层 */}
@@ -469,13 +487,20 @@ export const Cloud115Login: React.FC<Cloud115LoginProps> = ({
                             qrState === 'expired' ? 'text-red-400' :
                                 qrState === 'error' ? 'text-red-400' :
                                     'text-slate-400'
-                        } `}>
+                        }`}>
                         {qrState === 'waiting' && '等待扫描...'}
                         {qrState === 'scanned' && '✓ 已扫描，请在手机上确认'}
-                        {qrState === 'success' && '✓ 登录成功！'}
+                        {qrState === 'success' && '✓ 登录成功！凭证已保存'}
                         {qrState === 'expired' && '二维码已过期'}
                         {qrState === 'error' && '获取失败，请重试'}
                     </p>
+
+                    {/* 凭证类型提示 */}
+                    {qrState === 'success' && (
+                        <p className="text-xs text-slate-500 mt-2">
+                            {loginMethod === 'open_app' ? '已保存 Token 凭证' : '已保存 Cookie 凭证'}
+                        </p>
+                    )}
 
                     {/* 操作按钮 */}
                     {qrState !== 'success' && qrImage && (

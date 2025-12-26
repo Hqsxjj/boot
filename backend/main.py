@@ -179,7 +179,7 @@ def create_app(config=None):
     
     from blueprints.keywords import set_keyword_store
     from services.keyword_store import KeywordStore
-    keyword_store_instance = KeywordStore(store)
+    keyword_store_instance = KeywordStore(appdata_session_factory)
     set_keyword_store(keyword_store_instance)
 
     telegram_bot_service = init_bot_blueprint(store, secret_store)

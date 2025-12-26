@@ -171,7 +171,9 @@ def poll_login_status(session_id: str):
                 'success': True,
                 'data': {
                     'status': 'success',
-                    'message': 'Login successful and cookies stored'
+                    'message': 'Login successful and credentials stored',
+                    'credentialType': 'token' if login_method == 'open_app' else 'cookie',
+                    'loginMethod': login_method
                 }
             }), 200
         

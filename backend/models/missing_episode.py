@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String, Integer, DateTime
 from datetime import datetime
-from .database import Base
+from .database import AppDataBase
 
-class MissingEpisode(Base):
+class MissingEpisode(AppDataBase):
     __tablename__ = 'missing_episodes'
 
     id = Column(String, primary_key=True)  # series_id + "_" + season_number

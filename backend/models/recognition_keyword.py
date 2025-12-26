@@ -4,10 +4,10 @@
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Integer, Text
 from sqlalchemy.sql import func
-from .database import Base
+from .database import AppDataBase
 
 
-class RecognitionKeyword(Base):
+class RecognitionKeyword(AppDataBase):
     """Model for storing accumulated recognition keywords from AI parsing."""
     __tablename__ = 'recognition_keywords'
     

@@ -1,0 +1,1 @@
+(self, /, passport: 'int | str | PathLike' = '', password: 'str' = '', token: 'None | str | PathLike' = None, client_id: 'str' = '', client_secret: 'str' = '', refresh_token: 'str' = '', check_for_relogin: 'bool' = True)
